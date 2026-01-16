@@ -1,5 +1,5 @@
 def main():
-    print("Hello from spiders!")
+    print("Hello from db-spiders!")
 
 
 if __name__ == "__main__":
