@@ -6,9 +6,11 @@
 #     https://docs.scrapy.org/en/latest/topics/settings.html
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+import os
 
 BOT_NAME = "db_spiders"
 
+# 爬虫模块路径
 SPIDER_MODULES = ["db_spiders.spiders"]
 NEWSPIDER_MODULE = "db_spiders.spiders"
 
@@ -19,24 +21,22 @@ ADDONS = {}
 #USER_AGENT = "db_spiders (+http://www.yourdomain.com)"
 
 # Obey robots.txt rules
-ROBOTSTXT_OBEY = True
+ROBOTSTXT_OBEY = False  # 是否遵守robots.txt规则
 
 # Concurrency and throttling settings
-#CONCURRENT_REQUESTS = 16
-CONCURRENT_REQUESTS_PER_DOMAIN = 1
-DOWNLOAD_DELAY = 1
-
-# Disable cookies (enabled by default)
-#COOKIES_ENABLED = False
-
-# Disable Telnet Console (enabled by default)
-#TELNETCONSOLE_ENABLED = False
+CONCURRENT_REQUESTS = 16    # 总并发数
+CONCURRENT_REQUESTS_PER_DOMAIN = 8  # 每个域名的并发数
+DOWNLOAD_DELAY = 2  # 每个请求间隔时间
+DOWNLOAD_TIMEOUT = 30  # 下载超时时间
 
 # Override the default request headers:
-#DEFAULT_REQUEST_HEADERS = {
-#    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-#    "Accept-Language": "en",
-#}
+DEFAULT_REQUEST_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate",
+    "Connection": "keep-alive",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+}
 
 # Enable or disable spider middlewares
 # See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
@@ -46,9 +46,9 @@ DOWNLOAD_DELAY = 1
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-#DOWNLOADER_MIDDLEWARES = {
+DOWNLOADER_MIDDLEWARES = {
 #    "db_spiders.middlewares.DbSpidersDownloaderMiddleware": 543,
-#}
+}
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
@@ -58,9 +58,9 @@ DOWNLOAD_DELAY = 1
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
+ITEM_PIPELINES = {
 #    "db_spiders.pipelines.DbSpidersPipeline": 300,
-#}
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
@@ -83,5 +83,23 @@ DOWNLOAD_DELAY = 1
 #HTTPCACHE_IGNORE_HTTP_CODES = []
 #HTTPCACHE_STORAGE = "scrapy.extensions.httpcache.FilesystemCacheStorage"
 
-# Set settings whose default value is deprecated to a future-proof value
-FEED_EXPORT_ENCODING = "utf-8"
+# 日志配置
+LOG_LEVEL = "INFO"  # 日志级别: DEBUG, INFO, WARNING, ERROR
+LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+LOG_DATEFORMAT = "%Y-%m-%d %H:%M:%S"
+
+# 重试设置
+RETRY_ENABLED = True  # 是否启用重试
+RETRY_TIMES = 3  # 重试次数
+RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]  # 触发重试的HTTP状态码
+
+# 数据存储目录
+DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "data", "raw"
+)
+
+# 其他设置
+COOKIES_ENABLED = True  # 启用Cookies
+TELNETCONSOLE_ENABLED = False  # 禁用Telnet
+FEED_EXPORT_ENCODING = "utf-8"  # 导出编码为UTF-8
