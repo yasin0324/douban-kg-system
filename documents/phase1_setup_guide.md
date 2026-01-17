@@ -1,23 +1,25 @@
 # 第一阶段：环境搭建与数据爬虫开发详细指南
 
 > 本文档提供完整的环境搭建和数据爬虫开发操作步骤
-> 目标：2周内完成环境搭建，采集1000+部豆瓣电影数据
+> 目标：2 周内完成环境搭建，采集 1000+部豆瓣电影数据
 
 ---
 
 ## 目录
 
-- [一、项目整体架构](#一项目整体架构)
-- [二、开发环境准备](#二开发环境准备)
-- [三、Python环境与uv配置](#三python环境与uv配置)
-- [四、配置项目依赖](#四配置项目依赖)
-- [五、Neo4j本地安装](#五neo4j本地安装)
-- [六、前端环境配置](#六前端环境配置)
-- [七、Scrapy爬虫开发](#七scrapy爬虫开发)
-- [八、数据采集与验证](#八数据采集与验证)
-- [九、常见问题排查](#九常见问题排查)
-- [十、后续任务清单](#十后续任务清单)
-****
+-   [一、项目整体架构](#一项目整体架构)
+-   [二、开发环境准备](#二开发环境准备)
+-   [三、Python 环境与 uv 配置](#三python环境与uv配置)
+-   [四、配置项目依赖](#四配置项目依赖)
+-   [五、Neo4j 本地安装](#五neo4j本地安装)
+-   [六、前端环境配置](#六前端环境配置)
+-   [七、Scrapy 爬虫开发](#七scrapy爬虫开发)
+-   [八、数据采集与验证](#八数据采集与验证)
+-   [九、常见问题排查](#九常见问题排查)
+-   [十、后续任务清单](#十后续任务清单)
+
+---
+
 ---
 
 ## 一、项目整体架构
@@ -70,30 +72,34 @@ douban-kg-system/
 #### Windows 系统准备
 
 1. **Python 3.11+**
-   - 下载地址：https://www.python.org/downloads/
-   - 选择 Python 3.11.x 或 3.12.x
-   - 安装时勾选 "Add Python to PATH"
+
+    - 下载地址：https://www.python.org/downloads/
+    - 选择 Python 3.11.x 或 3.12.x
+    - 安装时勾选 "Add Python to PATH"
 
 2. **Git**
-   - 下载地址：https://git-scm.com/download/win
-   - 安装后运行：`git --version` 确认
+
+    - 下载地址：https://git-scm.com/download/win
+    - 安装后运行：`git --version` 确认
 
 3. **Node.js 18+**
-   - 下载地址：https://nodejs.org/
-   - 选择 LTS 版本（推荐 18.x 或 20.x）
-   - 安装后运行：`node --version` 和 `npm --version` 确认
 
-4. **Neo4j Desktop**（用于Neo4j本地管理）
-   - 下载地址：https://neo4j.com/download/
-   - 选择 Neo4j Desktop 版本
+    - 下载地址：https://nodejs.org/
+    - 选择 LTS 版本（推荐 18.x 或 20.x）
+    - 安装后运行：`node --version` 和 `npm --version` 确认
+
+4. **Neo4j Desktop**（用于 Neo4j 本地管理）
+
+    - 下载地址：https://neo4j.com/download/
+    - 选择 Neo4j Desktop 版本
 
 5. **Visual Studio Code**（推荐编辑器）
-   - 下载地址：https://code.visualstudio.com/
-   - 推荐插件：
-     - Python
-     - Pylance
-     - Vue Language Features (Volar)
-     - GitLens
+    - 下载地址：https://code.visualstudio.com/
+    - 推荐插件：
+        - Python
+        - Pylance
+        - Vue Language Features (Volar)
+        - GitLens
 
 ### 2.2 环境检查命令
 
@@ -119,7 +125,7 @@ npm --version
 
 ---
 
-## 三、Python环境与uv配置
+## 三、Python 环境与 uv 配置
 
 ### 3.1 安装 uv（Python 包管理工具）
 
@@ -311,22 +317,23 @@ uv run scrapy --version
 
 ---
 
-## 五、Neo4j本地安装
+## 五、Neo4j 本地安装
 
 ### 5.1 安装 Neo4j Desktop
 
 1. 下载并安装 Neo4j Desktop
 2. 创建一个新项目，命名为 "douban-kg"
 3. 创建数据库实例：
-   - 点击 "Add Database"
-   - 命名：douban-kg
-   - 版本：选择 5.x（推荐 5.15.x）
-   - 密码：设置一个密码（例如：douban123）
-   - 点击 "Create"
+
+    - 点击 "Add Database"
+    - 命名：douban-kg
+    - 版本：选择 5.x（推荐 5.15.x）
+    - 密码：设置一个密码（例如：douban123）
+    - 点击 "Create"
 
 4. 启动数据库：
-   - 点击 "Start" 按钮启动数据库
-   - 等待状态变为 "Active"
+    - 点击 "Start" 按钮启动数据库
+    - 等待状态变为 "Active"
 
 ### 5.2 测试 Neo4j 连接
 
@@ -374,13 +381,14 @@ npm init vite@latest . -- --template vue
 ```
 
 按照提示选择：
-- TypeScript? No
-- JSX? No
-- Vue Router? Yes
-- Pinia? Yes
-- Vitest? No
-- Playwright? No
-- ESLint? Yes
+
+-   TypeScript? No
+-   JSX? No
+-   Vue Router? Yes
+-   Pinia? Yes
+-   Vitest? No
+-   Playwright? No
+-   ESLint? Yes
 
 ### 6.2 安装依赖
 
@@ -399,27 +407,27 @@ npm install axios element-plus echarts vue-echarts @element-plus/icons-vue
 修改 `db-frontend/vite.config.js`：
 
 ```javascript
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
-  plugins: [vue()],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      }
-    }
-  }
-})
+    plugins: [vue()],
+    resolve: {
+        alias: {
+            "@": fileURLToPath(new URL("./src", import.meta.url)),
+        },
+    },
+    server: {
+        port: 5173,
+        proxy: {
+            "/api": {
+                target: "http://localhost:8000",
+                changeOrigin: true,
+            },
+        },
+    },
+});
 ```
 
 ### 6.4 测试前端启动
@@ -433,7 +441,7 @@ npm run dev
 
 ---
 
-## 七、Scrapy爬虫开发
+## 七、Scrapy 爬虫开发
 
 ### 7.1 创建 Scrapy 项目结构
 
@@ -505,7 +513,6 @@ class DoubanMovieItem(scrapy.Item):
     image_url = scrapy.Field()         # 封面图片URL
     crawled_at = scrapy.Field()        # 爬取时间
 ```
-
 
 ### 7.3 配置 Scrapy 设置
 
@@ -824,7 +831,288 @@ class DoubanChartSpider(scrapy.Spider):
             movie_item["image_url"] = image_url
 
             # 输出日志
- 
+            self.logger.info(f"发现电影: {title} (ID: {movie_id}, 评分: {rating})")
+
+            # 请求详情页获取更完整的信息
+            yield scrapy.Request(
+                url=movie_url,
+                callback=self.parse_movie_detail,
+                meta={"item": movie_item}
+            )
+
+    def parse_movie_detail(self, response):
+        """解析电影详情页，补充详细信息"""
+
+        # 获取基础数据项
+        movie_item = response.meta["item"]
+
+        # 提取原标题
+        original_title = response.css('span[property="v:itemreviewed"]::text').get()
+        if original_title:
+            movie_item["original_title"] = original_title.strip()
+
+        # 提取详细信息（从 #info 区域）
+        info_div = response.css('#info')
+
+        # 导演列表
+        directors = info_div.css('a[rel="v:directedBy"]::text').getall()
+        if directors:
+            movie_item["directors"] = [d.strip() for d in directors]
+
+        # 编剧列表
+        writers = info_div.css('span::text').re_all(r'编剧[:：]\s*(.+?)\s*/')
+        if not writers:
+            writers = info_div.css('a[rel="v:writer"]::text').getall()
+        movie_item["writers"] = writers
+
+        # 主演列表
+        actors = info_div.css('a[rel="v:starring"]::text').getall()
+        if actors:
+            movie_item["actors"] = [a.strip() for a in actors]
+
+        # 类型列表
+        genres = info_div.css('span[property="v:genre"]::text').getall()
+        if genres:
+            movie_item["genres"] = [g.strip() for g in genres]
+
+        # 上映日期
+        release_date = response.css('span[property="v:initialReleaseDate"]::text').get()
+        if release_date:
+            movie_item["release_date"] = release_date.strip()
+
+        # 年份
+        year = response.css('span.year::text').get()
+        if year:
+            year = year.strip("()").strip()
+            movie_item["year"] = year
+
+        # 时长
+        duration = response.css('span[property="v:runtime"]::text').get()
+        if duration:
+            movie_item["duration"] = duration.strip()
+
+        # 语言
+        languages = info_div.css('::text').re_all(r'语言[:：]\s*(.+?)\s*/')
+        movie_item["languages"] = languages
+
+        # 制片国家
+        countries = info_div.css('::text').re_all(r'制片国家/地区[:：]\s*(.+?)\s*/')
+        movie_item["countries"] = countries
+
+        # 简介
+        summary = response.css('span[property="v:summary"]::text').get()
+        if summary:
+            movie_item["summary"] = summary.strip()
+        else:
+            # 尝试其他选择器
+            summary = response.css('div#link-report div.all::text').get()
+            if summary:
+                movie_item["summary"] = summary.strip()
+
+        # 返回完整的数据项
+        yield movie_item
+
+    def _parse_movie_info(self, info, directors, actors, genres, year):
+        """辅助方法：解析电影信息字符串"""
+        # 简单的字符串解析，可以根据实际情况调整
+        info = info.replace("导演:", "导演:")
+        info = info.replace("主演:", "主演:")
+        info = info.replace("类型:", "类型:")
+
+        parts = info.split("/")
+
+        for part in parts:
+            part = part.strip()
+            if "导演:" in part:
+                dir_part = part.replace("导演:", "").strip()
+                if dir_part:
+                    directors = dir_part.split("/")
+            elif "主演:" in part:
+                actor_part = part.replace("主演:", "").strip()
+                if actor_part:
+                    actors = actor_part.split("/")
+            elif "类型:" in part:
+                genre_part = part.replace("类型:", "").strip()
+                if genre_part:
+                    genres = genre_part.split("/")
+            elif "年份:" in part:
+                year = part.replace("年份:", "").strip()
+```
+
+### 7.7 创建豆瓣详情页爬虫（按标签爬取）
+
+**创建 `db-spiders/spiders/douban_detail.py`：**
+
+```python
+"""豆瓣电影详情页爬虫（按标签爬取）"""
+import scrapy
+from db_spiders.items import DoubanMovieItem
+
+
+class DoubanDetailSpider(scrapy.Spider):
+    """豆瓣电影详情页爬虫
+
+    按标签分类爬取电影：
+    - 标签列表：剧情、喜剧、动作、爱情、科幻、悬疑、恐怖、动画等
+    - 每个标签爬取多页
+    """
+
+    name = "douban_detail"
+    allowed_domains = ["douban.com", "movie.douban.com"]
+
+    # 标签列表（按优先级排序）
+    tags = ["剧情", "喜剧", "动作", "爱情", "科幻", "悬疑", "恐怖", "动画"]
+
+    # 每个标签爬取的页数
+    pages_per_tag = 5
+
+    custom_settings = {
+        "DOWNLOAD_DELAY": 2,
+        "CONCURRENT_REQUESTS": 8,
+    }
+
+    def start_requests(self):
+        """生成起始请求"""
+        for tag in self.tags:
+            for page in range(self.pages_per_tag):
+                # 构造标签页URL
+                # 格式：https://movie.douban.com/tag/#/?sort=S&range=0,10&tags=剧情&start=20
+                start = page * 20
+                url = f"https://movie.douban.com/tag/#/?sort=S&range=0,10&tags={tag}&start={start}"
+
+                self.logger.info(f"爬取标签: {tag}, 页码: {page + 1}")
+
+                yield scrapy.Request(
+                    url=url,
+                    callback=self.parse_tag_page,
+                    meta={"tag": tag, "page": page + 1}
+                )
+
+    def parse_tag_page(self, response):
+        """解析标签页面，提取电影列表"""
+
+        # 豆瓣标签页需要使用 JavaScript 渲染，普通爬虫无法直接获取
+        # 这里使用豆瓣的标签搜索接口
+        # 格式：https://movie.douban.com/j/new_search_subjects?sort=U&range=0,10&tags=剧情&start=0
+
+        tag = response.meta["tag"]
+        page = response.meta["page"]
+        start = (page - 1) * 20
+
+        # 使用 JSON 接口
+        api_url = f"https://movie.douban.com/j/new_search_subjects?sort=U&range=0,10&tags={tag}&start={start}"
+
+        self.logger.info(f"请求标签API: {tag}, 页码: {page}")
+
+        yield scrapy.Request(
+            url=api_url,
+            callback=self.parse_tag_api,
+            meta={"tag": tag, "page": page}
+        )
+
+    def parse_tag_api(self, response):
+        """解析标签API返回的JSON数据"""
+
+        import json
+
+        try:
+            data = json.loads(response.text)
+            movies = data.get("data", [])
+
+            self.logger.info(f"标签 {response.meta['tag']} 第 {response.meta['page']} 页找到 {len(movies)} 部电影")
+
+            for movie in movies:
+                movie_id = movie.get("id")
+                title = movie.get("title")
+                url = movie.get("url")
+                rate = movie.get("rate")
+                cover = movie.get("cover")
+
+                if not url:
+                    continue
+
+                # 创建基础数据项
+                movie_item = DoubanMovieItem()
+                movie_item["movie_id"] = str(movie_id)
+                movie_item["title"] = title
+                movie_item["rating"] = rate
+                movie_item["url"] = url
+                movie_item["image_url"] = cover
+
+                # 请求详情页
+                yield scrapy.Request(
+                    url=url,
+                    callback=self.parse_movie_detail,
+                    meta={"item": movie_item}
+                )
+
+        except json.JSONDecodeError as e:
+            self.logger.error(f"JSON解析错误: {e}")
+
+    def parse_movie_detail(self, response):
+        """解析电影详情页"""
+
+        movie_item = response.meta["item"]
+
+        # 这里复用 douban_chart.py 中的 parse_movie_detail 逻辑
+        # 为简化，这里只提取基础信息
+
+        # 提取导演
+        directors = response.css('a[rel="v:directedBy"]::text').getall()
+        if directors:
+            movie_item["directors"] = [d.strip() for d in directors]
+
+        # 提取主演
+        actors = response.css('a[rel="v:starring"]::text').getall()
+        if actors:
+            movie_item["actors"] = [a.strip() for a in actors]
+
+        # 提取类型
+        genres = response.css('span[property="v:genre"]::text').getall()
+        if genres:
+            movie_item["genres"] = [g.strip() for g in genres]
+
+        # 提取年份
+        year = response.css('span.year::text').get()
+        if year:
+            movie_item["year"] = year.strip("()").strip()
+
+        # 提取评分人数
+        rating_count = response.css('a.rating_people span::text').get()
+        if rating_count:
+            movie_item["rating_count"] = rating_count.strip()
+
+        # 提取简介
+        summary = response.css('span[property="v:summary"]::text').get()
+        if summary:
+            movie_item["summary"] = summary.strip()
+
+        yield movie_item
+```
+
+### 7.8 创建运行入口
+
+**创建 `db-spiders/main.py`：**
+
+```python
+"""爬虫运行入口"""
+import sys
+from scrapy.cmdline import execute
+
+
+def main():
+    """运行爬虫的主函数"""
+
+    # 可以在这里添加命令行参数处理
+    spider_name = sys.argv[1] if len(sys.argv) > 1 else "douban_chart"
+
+    # 运行爬虫
+    execute(["scrapy", "crawl", spider_name])
+
+
+if __name__ == "__main__":
+    main()
+```
 
 ---
 
@@ -1079,11 +1367,11 @@ if __name__ == "__main__":
 uv run python scripts/validate_data.py
 ```
 
-### 8.5 达到1000部数据的策略
+### 8.5 达到 1000 部数据的策略
 
-如果爬取的数据量不足1000部，可以：
+如果爬取的数据量不足 1000 部，可以：
 
-#### 策略1：增加标签页的页数
+#### 策略 1：增加标签页的页数
 
 修改 `db-spiders/spiders/douban_detail.py`：
 
@@ -1092,7 +1380,7 @@ uv run python scripts/validate_data.py
 pages_per_tag = 10  # 从5改为10
 ```
 
-#### 策略2：添加更多标签
+#### 策略 2：添加更多标签
 
 修改 `db-spiders/spiders/douban_detail.py`：
 
@@ -1105,7 +1393,7 @@ tags = [
 ]
 ```
 
-#### 策略3：多次运行爬虫
+#### 策略 3：多次运行爬虫
 
 ```bash
 # 多次运行爬虫，采集不同时间的数据
@@ -1122,6 +1410,7 @@ uv run scrapy crawl douban_chart
 #### 问题：uv 命令找不到
 
 **症状：**
+
 ```
 uv: command not found
 ```
@@ -1139,6 +1428,7 @@ pip install uv
 #### 问题：uv sync 失败
 
 **症状：**
+
 ```
 error: Failed to resolve dependencies
 ```
@@ -1158,6 +1448,7 @@ uv sync --reinstall
 #### 问题：爬虫被豆瓣反爬（403 Forbidden）
 
 **症状：**
+
 ```
 2025-01-16 23:00:00 [scrapy.downloadermiddlewares.redirect] DEBUG: Redirecting (403)
 ```
@@ -1165,6 +1456,7 @@ uv sync --reinstall
 **解决方案：**
 
 1. **增加延迟**：修改 `settings.py`
+
 ```python
 DOWNLOAD_DELAY = 5  # 增加到5秒
 ```
@@ -1172,11 +1464,13 @@ DOWNLOAD_DELAY = 5  # 增加到5秒
 2. **检查 User-Agent**：确保中间件正常工作
 
 3. **添加 Cookies**：在 `settings.py` 中添加
+
 ```python
 COOKIES_ENABLED = True
 ```
 
 4. **使用代理**（如果需要）：
+
 ```python
 # 在 request 中设置代理
 yield scrapy.Request(url=url, meta={'proxy': 'http://your-proxy:port'})
@@ -1185,6 +1479,7 @@ yield scrapy.Request(url=url, meta={'proxy': 'http://your-proxy:port'})
 #### 问题：fake-useragent 报错
 
 **症状：**
+
 ```
 fake_useragent.errors.FakeUserAgentError
 ```
@@ -1193,4 +1488,297 @@ fake_useragent.errors.FakeUserAgentError
 
 修改 `middlewares.py`，增强容错能力：
 
-```pyt
+```python
+def process_request(self, request, spider):
+    try:
+        request.headers["User-Agent"] = self.ua.random
+    except Exception as e:
+        # 使用备用列表
+        request.headers["User-Agent"] = random.choice(self.fallback_ua_list)
+```
+
+#### 问题：JSON 解析错误
+
+**症状：**
+
+```
+json.JSONDecodeError: Expecting value: line 1 column 1
+```
+
+**解决方案：**
+
+检查豆瓣API返回的数据格式是否正确，可能需要更新选择器。
+
+---
+
+### 9.3 Neo4j 相关问题
+
+#### 问题：Neo4j 无法连接
+
+**症状：**
+
+```
+neo4j.exceptions.ServiceUnavailable: Unable to connect to bolt://localhost:7687
+```
+
+**解决方案：**
+
+1. **检查 Neo4j 是否启动**
+   - 打开 Neo4j Desktop
+   - 确保数据库状态为 "Active"
+
+2. **检查端口**
+   - 默认端口：7687 (Bolt), 7474 (HTTP), 7473 (HTTPS)
+   - 确保端口没有被占用
+
+3. **测试连接**
+   - 打开 Neo4j Browser
+   - 输入密码，确认可以连接
+
+#### 问题：内存不足
+
+**症状：**
+
+```
+Java heap space error
+```
+
+**解决方案：**
+
+在 Neo4j Desktop 中：
+1. 停止数据库
+2. 点击 "Settings"
+3. 找到 "dbms.memory.heap.initial_size" 和 "dbms.memory.heap.max_size"
+4. 增加内存分配（例如：512m）
+
+---
+
+### 9.4 前端相关问题
+
+#### 问题：npm install 失败
+
+**症状：**
+
+```
+npm ERR! code ENOENT
+```
+
+**解决方案：**
+
+```bash
+# 清理 npm 缓存
+npm cache clean --force
+
+# 删除 node_modules 和 package-lock.json
+rm -rf node_modules package-lock.json
+
+# 重新安装
+npm install
+```
+
+#### 问题：Vite 启动失败
+
+**症状：**
+
+```
+Error: Cannot find module 'vite'
+```
+
+**解决方案：**
+
+```bash
+# 确保在 db-frontend 目录下
+cd db-frontend
+
+# 重新安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+```
+
+---
+
+## 十、后续任务清单
+
+### 10.1 第一周任务（本周完成）
+
+- [x] 创建项目目录结构
+- [x] 配置 pyproject.toml（根项目、db-spiders、db-backend）
+- [x] 安装 uv 并配置虚拟环境
+- [x] 安装 Scrapy 及相关依赖
+- [x] 创建 Scrapy 爬虫项目结构
+- [x] 实现豆瓣排行榜爬虫（douban_chart）
+- [x] 实现豆瓣标签爬虫（douban_detail）
+- [x] 配置反爬中间件（User-Agent 轮换）
+- [x] 实现数据存储管道（JSON）
+- [x] 运行爬虫，采集初始数据
+- [ ] 验证数据质量（运行 validate_data.py）
+- [ ] 调整采集策略，确保达到1000部数据
+- [ ] 编写环境搭建文档
+
+### 10.2 第二周任务（下周完成）
+
+- [ ] 优化爬虫性能（并发控制、请求延迟）
+- [ ] 实现断点续爬功能
+- [ ] 扩展数据采集范围（演员、导演详细信息）
+- [ ] 实现数据去重机制
+- [ ] 添加错误处理与重试逻辑
+- [ ] 数据验证与清洗（基础版本）
+- [ ] 确保最终数据量达到1000+部
+- [ ] 数据完整率达到90%以上
+- [ ] 编写数据采集报告
+
+### 10.3 第三周任务（数据处理阶段）
+
+- [ ] 数据质量分析（缺失值、异常值、重复值）
+- [ ] 实现数据清洗 Pipeline（使用 Pandas）
+- [ ] 缺失值处理策略（删除、填充、标记）
+- [ ] 数据格式标准化（日期、评分、类型）
+- [ ] 异常值检测与处理
+- [ ] 数据质量评分系统
+- [ ] 清洗后数据验证
+
+### 10.4 第四周任务（知识抽取阶段）
+
+- [ ] 设计知识图谱 Schema（节点类型、关系类型、属性）
+- [ ] 实现实体抽取（电影、导演、演员、类型）
+- [ ] 实现关系抽取（出演、导演、类型归属）
+- [ ] 实现属性抽取（评分、上映日期等）
+- [ ] 构建知识三元组（实体-关系-实体/属性）
+- [ ] 实体消歧（同名演员/导演区分）
+- [ ] 生成 Neo4j 导入文件
+
+---
+
+## 附录：常用命令速查
+
+### uv 命令
+
+```bash
+# 安装 uv
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 初始化项目
+uv init
+
+# 同步依赖
+uv sync
+
+# 添加依赖
+uv add <package-name> --package db-spiders
+
+# 添加开发依赖
+uv add <package-name> --dev
+
+# 运行命令
+uv run <command>
+
+# 激活虚拟环境
+uv shell
+
+# 查看已安装的包
+uv pip list
+```
+
+### Scrapy 命令
+
+```bash
+# 运行爬虫
+scrapy crawl <spider_name>
+
+# 列出所有爬虫
+scrapy list
+
+# 检查爬虫代码
+scrapy check
+
+# 测试 URL 解析
+scrapy parse <url>
+
+# 导出为 JSON
+scrapy crawl <spider_name> -o output.json
+
+# 导出为 CSV
+scrapy crawl <spider_name> -o output.csv
+
+# 导出为 XML
+scrapy crawl <spider_name> -o output.xml
+```
+
+### Neo4j 命令
+
+```bash
+# 在 Neo4j Browser 中执行
+
+# 查看所有节点
+MATCH (n) RETURN n
+
+# 统计节点数量
+MATCH (n) RETURN count(n)
+
+# 删除所有数据（危险操作！）
+MATCH (n) DETACH DELETE n
+
+# 创建索引
+CREATE INDEX movie_title_idx FOR (m:Movie) ON (m.title)
+```
+
+### Git 命令
+
+```bash
+# 查看状态
+git status
+
+# 添加所有更改
+git add .
+
+# 提交更改
+git commit -m "描述你的更改"
+
+# 推送到远程仓库
+git push
+
+# 拉取最新代码
+git pull
+
+# 查看提交历史
+git log
+
+# 查看分支
+git branch
+
+# 创建新分支
+git branch <branch-name>
+
+# 切换分支
+git checkout <branch-name>
+```
+
+---
+
+## 文档总结
+
+本文档提供了完整的第一阶段环境搭建和数据爬虫开发操作指南，包括：
+
+1. ✅ 项目整体架构设计
+2. ✅ 开发环境准备（Python、Git、Node.js、Neo4j）
+3. ✅ uv 包管理工具配置
+4. ✅ pyproject.toml 标准化配置
+5. ✅ Neo4j 本地安装与配置
+6. ✅ 前端 Vue3 环境配置（使用 npm）
+7. ✅ Scrapy 爬虫完整开发流程
+8. ✅ 反爬策略实现（User-Agent 轮换、请求延迟）
+9. ✅ 数据采集与质量验证
+10. ✅ 常见问题排查指南
+
+**关键成功指标：**
+- 📊 数据量：≥1000 部电影
+- 📈 字段完整率：≥90%
+- ✨ 无重复数据
+- 🎯 数据质量评分：≥90
+
+**预计完成时间：** 2周（第1-2周）
+
+**下一步：** 按照本文档逐步执行，遇到问题参考"常见问题排查"章节。
+
