@@ -152,19 +152,14 @@ uv init
 
 # 同步依赖，创建虚拟环境
 uv sync
-
-# 激活虚拟环境
-uv shell
 ```
-
-激活后，命令行提示符应该显示类似 `(douban-kg-system)` 的环境标识。
 
 ### 3.3 锁定 Python 版本
 
 在项目根目录创建 `.python-version` 文件：
 
 ```bash
-echo "3.11" > .python-version
+3.11
 ```
 
 ---
@@ -185,16 +180,18 @@ requires-python = ">=3.11"
 dependencies = []
 
 # uv workspace 配置
+[tool.uv]
+package = false
+
 [tool.uv.workspace]
 members = ["db-spiders", "db-backend"]
 
 # 开发依赖
-[tool.uv]
-dev-dependencies = [
-    "pytest>=7.4.0",
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
-    "black>=23.12.0",
-    "ruff>=0.1.9",
+    "ruff>=0.3.0",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
 ]
@@ -203,18 +200,22 @@ dev-dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# Black 代码格式化配置
-[tool.black]
-line-length = 88
-target-version = ['py311']
-
-# Ruff 代码检查配置
+# Ruff 配置
 [tool.ruff]
-line-length = 88
-select = ["E", "F", "I", "N", "W"]
-target-version = "py311"
+line-length = 88 # 保持与 Black 一致的行宽
 
-# MyPy 类型检查配置
+[tool.ruff.lint]
+# 启用 Pyflakes (F), Pycodestyle (E, W), Isort (I), Naming (N)
+select = ["E", "F", "I", "N", "W"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# MyPy 配置
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
