@@ -14,7 +14,7 @@ BOT_NAME = "db_spiders"
 SPIDER_MODULES = ["db_spiders.spiders"]
 NEWSPIDER_MODULE = "db_spiders.spiders"
 
-ADDONS = {}
+ADDONS: dict[str, object] = {}
 
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
@@ -35,7 +35,11 @@ DEFAULT_REQUEST_HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     "Accept-Encoding": "gzip, deflate",
     "Connection": "keep-alive",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0"
+    ),
 }
 
 # Enable or disable spider middlewares
@@ -46,7 +50,7 @@ DEFAULT_REQUEST_HEADERS = {
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-DOWNLOADER_MIDDLEWARES = {
+DOWNLOADER_MIDDLEWARES: dict[str, object] = {
     #    "db_spiders.middlewares.DbSpidersDownloaderMiddleware": 543,
 }
 

@@ -3,7 +3,7 @@ import scrapy
 
 class DoubanMovieItem(scrapy.Item):
     """电影数据项"""
-    
+
     # 基础信息
     movie_id = scrapy.Field()          # 电影ID
     title = scrapy.Field()             # 电影标题
