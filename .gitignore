@@ -65,6 +65,7 @@ Desktop.ini
 .direnv/
 
 .opencode/
+.trae
 
 node_modules/
 npm-debug.log*
