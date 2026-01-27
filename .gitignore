@@ -65,6 +65,7 @@ Desktop.ini
 .direnv/
 
 .opencode/
+.sisyphus/
 .trae
 
 node_modules/
