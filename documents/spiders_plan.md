@@ -493,3 +493,86 @@ scrapy crawl movie_meta
 _文档版本: 1.0_  
 _创建时间: 2026-01-30_  
 _项目名称: db-spiders_
+
+---
+
+## 11. 分阶段执行清单与验收
+
+> 目标：每阶段形成可验证的最小闭环，降低联调与排障成本。
+
+### 11.1 阶段1：Seed + 电影元数据最小闭环
+
+**执行范围**
+
+- movie_subject → subjects 表
+- movie_meta → movies 表
+
+**执行清单**
+
+- 初始化数据库（导入 DDL）
+- 运行 movie_subject 抓取种子
+- 运行 movie_meta 抓取电影详情
+- 验证去重逻辑与增量 SQL
+
+**验收标准**
+
+- subjects 表有新增记录，douban_id 唯一
+- movies 表核心字段（name、year、score）非空
+- 重复运行 movie_meta 无重复写入（只更新或跳过）
+
+### 11.2 阶段2：人物信息采集
+
+**执行范围**
+
+- rebuild_pid.py → person_obj 表
+- person_meta → person 表
+
+**执行清单**
+
+- 运行 rebuild_pid.py 提取 person_id
+- 运行 person_meta 抓取人物详情
+- 校验 actor_ids / director_ids 解析结果
+
+**验收标准**
+
+- person_obj 表 person_id 去重成功
+- person 表核心字段（name、profession）非空
+- 人物详情页解析稳定（随机抽检 10 条）
+
+### 11.3 阶段3：评论与评分采集
+
+**执行范围**
+
+- movie_comment → comments 表
+
+**执行清单**
+
+- 运行 movie_comment 抓取评论分页
+- 校验分页终止条件
+- 校验评分与评论时间解析
+
+**验收标准**
+
+- comments 表新增记录，comment_time 格式正确
+- 评分字段在预期范围（1~5）
+- 10 部电影评论数量非 0
+
+### 11.4 阶段4（可选）：稳定性与性能
+
+**执行范围**
+
+- 代理池健康检查
+- 重试与退避策略
+- 并发与限速参数
+
+**执行清单**
+
+- 验证代理池成功率
+- 调整并发与延迟配置
+- 日志结构化输出检查
+
+**验收标准**
+
+- 100 次请求成功率 ≥ 90%
+- 平均响应时间在可接受范围
+- 采集过程无明显异常波动
