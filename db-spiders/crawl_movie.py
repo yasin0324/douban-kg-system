@@ -11,6 +11,7 @@ import sys
 import time
 import random
 import threading
+import string
 from queue import Queue
 from playwright.sync_api import sync_playwright
 BASE_DIR = os.path.dirname(__file__)
@@ -20,6 +21,10 @@ from db_spiders import validator
 
 # Thread-safe lock for database operations
 db_lock = threading.Lock()
+# Global Pause Event (Set = Running, Clear = Paused)
+PAUSE_EVENT = threading.Event()
+PAUSE_EVENT.set()  # Start in running state
+
 # Statistics
 stats = {
     'inserted': 0,
@@ -88,6 +93,31 @@ def get_uncrawled_movies(limit=None):
     else:
         cursor.execute(sql)
     return [row['douban_id'] for row in cursor.fetchall()]
+
+def generate_bid():
+    """Generate random BID for Douban"""
+    return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(11))
+
+def get_random_ua():
+    """Get a random modern User-Agent"""
+    user_agents = [
+        # Chrome / Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        # Chrome / Mac
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        # Safari / Mac
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+        # Edge / Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+        # Firefox / Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+        # Firefox / Mac
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
+    ]
+    return random.choice(user_agents)
 
 def extract_movie_data(page, douban_id):
     """Extract movie data from page"""
@@ -305,6 +335,43 @@ def extract_movie_data(page, douban_id):
     except Exception as e:
         return None
 
+def extract_related_movies(page):
+    """Extract related movie IDs (BFS)"""
+    try:
+        # Get all links in recommendations section
+        links = page.locator('#recommendations dl dd a').all()
+        ids = []
+        for link in links:
+            href = link.get_attribute('href')
+            if href and 'subject' in href:
+                # Extract ID from url like https://movie.douban.com/subject/12345/
+                match = re.search(r'subject/(\d+)', href)
+                if match:
+                    ids.append(match.group(1))
+        return list(set(ids))
+    except:
+        return []
+
+def save_new_seeds(ids):
+    """Save new IDs to subjects table (Ignore if exists)"""
+    if not ids:
+        return 0
+    
+    with db_lock:
+        cursor = connection.cursor()
+        count = 0
+        try:
+            # Batch insert
+            values = [(str(mid), 'movie') for mid in ids]
+            sql = "INSERT IGNORE INTO subjects (douban_id, type) VALUES (%s, %s)"
+            cursor.executemany(sql, values)
+            connection.commit()
+            count = cursor.rowcount
+        except Exception as e:
+            # print(f"Seed save error: {e}")
+            pass
+        return count
+
 def save_to_database(data, allow_update=False):
     """Save movie data to database (thread-safe)"""
     with db_lock:
@@ -344,15 +411,78 @@ def save_to_database(data, allow_update=False):
             connection.rollback()
             return "failed"
 
+def scheduler_thread():
+    """Monitor crawling progress and trigger breaks"""
+    print("[Scheduler] Started monitoring...")
+    last_break_count = 0
+    last_long_break_time = time.time()
+    
+    # Settings
+    MICRO_BREAK_THRESHOLD = 200  # movies
+    MICRO_BREAK_DURATION = 180   # seconds (3 mins)
+    LONG_BREAK_INTERVAL = 14400  # seconds (4 hours)
+    LONG_BREAK_DURATION = 2700   # seconds (45 mins)
+    
+    while True:
+        time.sleep(10)  # Check every 10s
+        
+        # 1. Check Long Break (Time-based)
+        if time.time() - last_long_break_time > LONG_BREAK_INTERVAL:
+            print(f"\n{'='*40}")
+            print(f"🌙 BEDTIME! Scheduler triggered LONG BREAK.")
+            print(f"sleeping for {LONG_BREAK_DURATION/60} minutes...")
+            print(f"{'='*40}\n")
+            
+            PAUSE_EVENT.clear()  # Pause all workers
+            time.sleep(LONG_BREAK_DURATION)
+            last_long_break_time = time.time()
+            PAUSE_EVENT.set()    # Resume
+            
+            print(f"\n{'='*40}")
+            print(f"☀️ WAKE UP! Resuming work.")
+            print(f"{'='*40}\n")
+            continue
+
+        # 2. Check Micro Break (Count-based)
+        current_total = stats['inserted'] + stats['updated'] + stats['skipped'] + stats['failed'] + stats['not_found']
+        if current_total - last_break_count >= MICRO_BREAK_THRESHOLD:
+            print(f"\n{'='*40}")
+            print(f"☕ COFFEE BREAK! {MICRO_BREAK_THRESHOLD} movies done.")
+            print(f"Pausing for {MICRO_BREAK_DURATION} seconds...")
+            print(f"{'='*40}\n")
+            
+            PAUSE_EVENT.clear()
+            time.sleep(MICRO_BREAK_DURATION)
+            last_break_count = current_total
+            PAUSE_EVENT.set()
+            
+            print(f"\n{'='*40}")
+            print(f"▶️ Resuming work.")
+            print(f"{'='*40}\n")
+
 def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_existing=False):
     """Worker thread that processes movies from the queue"""
     with sync_playwright() as p:
+        user_agent = get_random_ua()
+        bid = generate_bid()
+        
+        print(f"[Worker-{worker_id}] Init browser with UA: {user_agent[:30]}... BID: {bid}")
+        
         browser = p.chromium.launch(headless=headless)
         context = browser.new_context(
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            user_agent=user_agent,
             viewport={'width': 1920, 'height': 1080},
             locale='zh-CN'
         )
+        
+        # Inject BID cookie
+        context.add_cookies([{
+            'name': 'bid', 
+            'value': bid, 
+            'domain': '.douban.com', 
+            'path': '/'
+        }])
+        
         page = context.new_page()
         
         try:
@@ -362,6 +492,9 @@ def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_exi
                     movie_id = movie_queue.get(timeout=1)
                     if movie_id is None:  # Sentinel value to stop
                         break
+                    
+                    # Wait if paused
+                    PAUSE_EVENT.wait()
                     
                     url = f'https://movie.douban.com/subject/{movie_id}/'
                     print(f"[Worker-{worker_id}] Crawling: {url}")
@@ -441,6 +574,16 @@ def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_exi
                                     print(f"[Worker-{worker_id}]   ✗ Failed to save")
                                     with stats_lock:
                                         stats['failed'] += 1
+                                    with stats_lock:
+                                        stats['failed'] += 1
+                                
+                                # BFS Extraction
+                                related_ids = extract_related_movies(page)
+                                if related_ids:
+                                    new_seeds = save_new_seeds(related_ids)
+                                    if new_seeds > 0:
+                                        print(f"[Worker-{worker_id}]   🌱 Discovered {new_seeds} new seeds")
+                                
                                 success = True
                             else:
                                 print(f"[Worker-{worker_id}]   ✗ Failed to extract data")
@@ -490,55 +633,82 @@ def crawl_movies_concurrent(num_workers=2, headless=True, delay_range=(2, 5), ma
     """
     # Get uncrawled movies or use provided ids
     if movie_ids is None:
-        movie_ids = get_uncrawled_movies(limit=max_movies)
+        # Initial check for explicit IDs mode
         mode = "subjects (uncrawled)"
     else:
         movie_ids = dedupe_ids(movie_ids)
         mode = "explicit ids"
     
-    if not movie_ids:
-        print("No movies to crawl!")
-        return
-    
-    total = len(movie_ids)
-    print(f"\n{'='*60}")
-    print(f"🚀 CONCURRENT CRAWLING MODE")
-    print(f"{'='*60}")
-    print(f"Movies to crawl: {total}")
-    print(f"Mode: {mode}")
-    print(f"Concurrent workers: {num_workers}")
-    print(f"Headless mode: {headless}")
-    print(f"Delay range: {delay_range[0]}-{delay_range[1]} seconds")
-    print(f"Update existing: {update_existing}")
-    print(f"{'='*60}\n")
-    
-    # Create queue and add all movie IDs
-    movie_queue = Queue()
-    for movie_id in movie_ids:
-        movie_queue.put(movie_id)
-    
-    # Start worker threads
-    threads = []
-    start_time = time.time()
-    
-    for i in range(num_workers):
-        thread = threading.Thread(
-            target=worker_thread,
-            args=(i+1, movie_queue, delay_range, headless, update_existing)
-        )
-        thread.start()
-        threads.append(thread)
-    
-    # Wait for all tasks to complete
-    movie_queue.join()
-    
-    # Send stop signal to all workers
-    for _ in range(num_workers):
-        movie_queue.put(None)
-    
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
+    # Start scheduler ONCE (outside the loop)
+    scheduler = threading.Thread(target=scheduler_thread, daemon=True)
+    scheduler.start()
+
+    # Infinite loop for continuous crawling
+    iteration = 0
+    while True:
+        iteration += 1
+        
+        # If in explicit IDs mode, run once and break
+        if mode == "explicit ids":
+             current_batch_ids = movie_ids
+        else:
+             # Fetch next batch from DB
+             current_batch_ids = get_uncrawled_movies(limit=max_movies if max_movies else 500)
+
+        if not current_batch_ids:
+            print(f"\n[Loop] Database empty or all crawled. Waiting 60s for new seeds...")
+            time.sleep(60)
+            continue
+        
+        total = len(current_batch_ids)
+        print(f"\n{'='*60}")
+        print(f"🚀 CONCURRENT CRAWLING - BATCH #{iteration}")
+        print(f"{'='*60}")
+        print(f"Movies in batch: {total}")
+        print(f"Workers: {num_workers}")
+        print(f"{'='*60}\n")
+        
+        # Create queue and add movie IDs
+        movie_queue = Queue()
+        for mid in current_batch_ids:
+            movie_queue.put(mid)
+        
+        # Start worker threads for this batch
+        threads = []
+        for i in range(num_workers):
+            thread = threading.Thread(
+                target=worker_thread,
+                args=(i+1, movie_queue, delay_range, headless, update_existing)
+            )
+            thread.start()
+            threads.append(thread)
+        
+        # Wait for all tasks to complete
+        movie_queue.join()
+        
+        # Send stop signal to all workers
+        for _ in range(num_workers):
+            movie_queue.put(None)
+        
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+            
+        print(f"\n✅ Batch #{iteration} completed.")
+        
+        # If explicitly running a limited number of movies or specific IDs, break after first run
+        if mode == "explicit ids" or (max_movies and total < max_movies): # If we fetched less than limit? No.
+             # If max_movies is set, user likely wants just that many.
+             # But 'max_movies' argument is ambiguous: batch size or total limit?
+             # Given the argument name 'max', usually implies total.
+             # But user wants infinite loop.
+             # Let's assume: if --max is passed, run ONCE. If NOT passed, run FOREVER.
+             if max_movies:
+                 print("Max limit reached (batch mode). Exiting.")
+                 break
+             
+        if mode == "explicit ids":
+            break
     
     elapsed_time = time.time() - start_time
     
