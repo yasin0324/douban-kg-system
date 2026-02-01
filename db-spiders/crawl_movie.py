@@ -80,10 +80,12 @@ def dedupe_ids(ids):
 def get_uncrawled_movies(limit=None):
     """Get movies that haven't been crawled yet"""
     cursor = connection.cursor()
-    sql = '''SELECT douban_id FROM subjects 
-             WHERE type="movie" 
-             AND douban_id NOT IN (SELECT douban_id FROM movies) 
-             ORDER BY douban_id DESC'''
+    sql = '''SELECT s.douban_id 
+             FROM subjects s
+             LEFT JOIN movies m ON s.douban_id = m.douban_id
+             WHERE s.type="movie" 
+             AND m.douban_id IS NULL
+             ORDER BY s.douban_id DESC'''
     params = []
     if limit is not None:
         sql += ' LIMIT %s'
@@ -485,6 +487,15 @@ def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_exi
         
         page = context.new_page()
         
+        # Optimize: Block images and media to speed up loading
+        def intercept_route(route):
+            if route.request.resource_type in ["image", "media", "font", "stylesheet"]:
+                route.abort()
+            else:
+                route.continue_()
+        
+        page.route("**/*", intercept_route)
+        
         try:
             while True:
                 try:
@@ -508,21 +519,29 @@ def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_exi
                             if retry_count > 0:
                                 print(f"[Worker-{worker_id}]   Retrying {retry_count}...")
                             
-                            # Navigate to page with longer timeout
-                            response = page.goto(url, wait_until='domcontentloaded', timeout=45000)
+                            # Navigate to page with optimized wait
+                            # 'domcontentloaded' is faster than 'load'
+                            response = page.goto(url, wait_until='domcontentloaded', timeout=30000)
                             
-                            # Wait for stability
+                            # Removed 'networkidle' wait as it's too slow for static text scraping
+                            # Instead, we just wait for the title or content selector
                             try:
-                                page.wait_for_load_state('networkidle', timeout=3000)
+                                page.wait_for_selector('#content h1', timeout=3000)
                             except:
                                 pass
                             
                             # Check HTTP status
-                            if response and response.status == 404:
-                                print(f"[Worker-{worker_id}]   ⚠ HTTP 404: Movie {movie_id} not found")
-                                with stats_lock:
-                                    stats['not_found'] += 1
-                                break # Don't retry real 404s
+                            if response:
+                                if response.status in [403, 429]:
+                                    print(f"[Worker-{worker_id}]   ⚠ HTTP {response.status}: Rate limit detected! Pausing...")
+                                    time.sleep(random.uniform(30, 60))
+                                    raise Exception(f"HTTP {response.status}")
+                                
+                                if response.status == 404:
+                                    print(f"[Worker-{worker_id}]   ⚠ HTTP 404: Movie {movie_id} not found")
+                                    with stats_lock:
+                                        stats['not_found'] += 1
+                                    break # Don't retry real 404s
                             
                             # Check title for anti-scraping
                             try:
