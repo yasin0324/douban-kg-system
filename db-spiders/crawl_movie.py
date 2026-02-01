@@ -38,7 +38,7 @@ stats_lock = threading.Lock()
 MOVIE_FIELDS = [
     'douban_id', 'type', 'slug', 'name', 'alias', 'cover', 'year',
     'genres', 'regions', 'languages', 'official_site', 'mins', 'imdb_id',
-    'tags', 'storyline', 'douban_score', 'douban_votes', 'release_date',
+    'storyline', 'douban_score', 'douban_votes', 'release_date',
     'directors', 'actors', 'actor_ids', 'director_ids'
 ]
 
@@ -294,13 +294,6 @@ def extract_movie_data(page, douban_id):
             data['douban_votes'] = int(votes) if votes else None
         except:
             data['douban_votes'] = None
-        
-        # Tags
-        try:
-            tags = page.locator('div.tags-body a').all_text_contents()
-            data['tags'] = '/'.join(tags) if tags else None
-        except:
-            data['tags'] = None
         
         # Storyline
         try:
