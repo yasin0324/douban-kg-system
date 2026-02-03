@@ -3,6 +3,7 @@
 """
 Concurrent Playwright-based crawler for Douban movies
 Uses multiple browser instances for faster crawling
+Supports distributed crawling across multiple machines
 """
 
 import os
@@ -12,12 +13,18 @@ import time
 import random
 import threading
 import string
+import socket
+import uuid
 from queue import Queue
 from playwright.sync_api import sync_playwright
 BASE_DIR = os.path.dirname(__file__)
 sys.path.insert(0, BASE_DIR)
 from db_spiders.database import connection
 from db_spiders import validator
+
+# Generate unique worker ID for distributed crawling
+WORKER_ID = f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+print(f"[Worker] ID: {WORKER_ID}")
 
 # Thread-safe lock for database operations
 db_lock = threading.Lock()
@@ -77,24 +84,86 @@ def dedupe_ids(ids):
         result.append(movie_id)
     return result
 
-def get_uncrawled_movies(limit=None):
-    """Get movies that haven't been crawled yet"""
-    cursor = connection.cursor()
-    sql = '''SELECT s.douban_id 
-             FROM subjects s
-             LEFT JOIN movies m ON s.douban_id = m.douban_id
-             WHERE s.type="movie" 
-             AND m.douban_id IS NULL
-             ORDER BY s.douban_id DESC'''
-    params = []
-    if limit is not None:
-        sql += ' LIMIT %s'
-        params.append(limit)
-    if params:
-        cursor.execute(sql, params)
-    else:
-        cursor.execute(sql)
-    return [row['douban_id'] for row in cursor.fetchall()]
+def get_uncrawled_movies(limit=None, use_distributed_lock=True):
+    """
+    Get movies that haven't been crawled yet.
+    
+    For distributed crawling, uses crawl_status field to prevent duplicates:
+    - 0: pending (not crawled)
+    - 1: in progress (being crawled)
+    - 2: completed
+    - 3: failed
+    
+    If crawl_status column doesn't exist, falls back to simple query.
+    """
+    with db_lock:
+        cursor = connection.cursor()
+        
+        if use_distributed_lock:
+            try:
+                # Check if crawl_status column exists
+                cursor.execute("SHOW COLUMNS FROM subjects LIKE 'crawl_status'")
+                has_status_column = cursor.fetchone() is not None
+            except:
+                has_status_column = False
+            
+            if has_status_column:
+                # Reset stale locks (tasks locked > 30 minutes ago)
+                cursor.execute('''
+                    UPDATE subjects 
+                    SET crawl_status = 0, crawl_locked_at = NULL, crawl_worker = NULL 
+                    WHERE crawl_status = 1 
+                    AND crawl_locked_at < NOW() - INTERVAL 30 MINUTE
+                ''')
+                connection.commit()
+                
+                # Use distributed lock: atomically claim tasks
+                batch_size = limit or 100
+                sql = '''
+                    SELECT s.douban_id 
+                    FROM subjects s
+                    LEFT JOIN movies m ON s.douban_id = m.douban_id
+                    WHERE s.type = 'movie' 
+                    AND m.douban_id IS NULL
+                    AND s.crawl_status = 0
+                    ORDER BY s.douban_id DESC
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                '''
+                cursor.execute(sql, (batch_size,))
+                rows = cursor.fetchall()
+                ids = [row['douban_id'] for row in rows]
+                
+                if ids:
+                    # Mark as in-progress
+                    placeholders = ','.join(['%s'] * len(ids))
+                    cursor.execute(f'''
+                        UPDATE subjects 
+                        SET crawl_status = 1, 
+                            crawl_locked_at = NOW(), 
+                            crawl_worker = %s 
+                        WHERE douban_id IN ({placeholders})
+                    ''', [WORKER_ID] + ids)
+                    connection.commit()
+                
+                return ids
+        
+        # Fallback: simple query without distributed lock
+        sql = '''SELECT s.douban_id 
+                 FROM subjects s
+                 LEFT JOIN movies m ON s.douban_id = m.douban_id
+                 WHERE s.type="movie" 
+                 AND m.douban_id IS NULL
+                 ORDER BY s.douban_id DESC'''
+        params = []
+        if limit is not None:
+            sql += ' LIMIT %s'
+            params.append(limit)
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+        return [row['douban_id'] for row in cursor.fetchall()]
 
 def generate_bid():
     """Generate random BID for Douban"""
@@ -371,24 +440,29 @@ def save_to_database(data, allow_update=False):
     """Save movie data to database (thread-safe)"""
     with db_lock:
         cursor = connection.cursor()
+        douban_id = data['douban_id']
         
         # Check if already exists
-        cursor.execute("SELECT douban_id FROM movies WHERE douban_id = %s", (data['douban_id'],))
+        cursor.execute("SELECT douban_id FROM movies WHERE douban_id = %s", (douban_id,))
         exists = cursor.fetchone()
         
         if exists:
             if not allow_update:
+                # Mark as completed in subjects table
+                _update_crawl_status(cursor, douban_id, 2)
                 return "skipped"
             update_fields = [f for f in MOVIE_FIELDS if f != 'douban_id']
             set_clause = ', '.join([f"{f} = %s" for f in update_fields])
-            values = [data.get(f) for f in update_fields] + [data['douban_id']]
+            values = [data.get(f) for f in update_fields] + [douban_id]
             sql = f"UPDATE movies SET {set_clause} WHERE douban_id = %s"
             try:
                 cursor.execute(sql, values)
                 connection.commit()
+                _update_crawl_status(cursor, douban_id, 2)  # Mark completed
                 return "updated"
             except Exception:
                 connection.rollback()
+                _update_crawl_status(cursor, douban_id, 3)  # Mark failed
                 return "failed"
         
         # Insert new movie
@@ -401,10 +475,35 @@ def save_to_database(data, allow_update=False):
         try:
             cursor.execute(sql, values)
             connection.commit()
+            _update_crawl_status(cursor, douban_id, 2)  # Mark completed
             return "inserted"
         except Exception:
             connection.rollback()
+            _update_crawl_status(cursor, douban_id, 3)  # Mark failed
             return "failed"
+
+
+def _update_crawl_status(cursor, douban_id, status):
+    """Update crawl_status in subjects table (helper function)
+    Status: 0=pending, 1=in_progress, 2=completed, 3=failed
+    """
+    try:
+        cursor.execute('''
+            UPDATE subjects 
+            SET crawl_status = %s, crawl_locked_at = NULL 
+            WHERE douban_id = %s
+        ''', (status, douban_id))
+        connection.commit()
+    except:
+        pass  # Ignore if column doesn't exist
+
+
+def mark_crawl_failed(douban_id):
+    """Mark a movie as failed to crawl (404, etc.)"""
+    with db_lock:
+        cursor = connection.cursor()
+        _update_crawl_status(cursor, douban_id, 3)  # 3 = failed
+
 
 def scheduler_thread():
     """Monitor crawling progress and trigger breaks"""
@@ -534,6 +633,8 @@ def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_exi
                                     print(f"[Worker-{worker_id}]   ⚠ HTTP 404: Movie {movie_id} not found")
                                     with stats_lock:
                                         stats['not_found'] += 1
+                                    # Mark as completed (not_found is a final state)
+                                    mark_crawl_failed(movie_id)
                                     break # Don't retry real 404s
                             
                             # Check title for anti-scraping
@@ -562,6 +663,7 @@ def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_exi
                                     print(f"[Worker-{worker_id}]   ⚠ Page not found (Body check): {movie_id}")
                                     with stats_lock:
                                         stats['not_found'] += 1
+                                    mark_crawl_failed(movie_id)
                                     break
                             
                             # Extract data
