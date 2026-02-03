@@ -60,9 +60,23 @@ def main():
             bar = '█' * filled_length + '-' * (bar_length - filled_length)
             
             # Clear line and print status
+            # Dynamic unit adjustment
+            if crawl_speed > 60:
+                speed_str = f"{crawl_speed/60:.1f} /s"
+            else:
+                speed_str = f"{crawl_speed:.1f} /min"
+
+            eta_str = "--:--"
+            if crawl_speed > 0:
+                mins_left = remaining / crawl_speed
+                if mins_left > 60:
+                    eta_str = f"{mins_left/60:.1f}h"
+                else:
+                    eta_str = f"{mins_left:.0f}m"
+
             sys.stdout.write(
                 f"\r\033[K[{bar}] {percent:.1f}% | {current_crawled}/{total} | Remain: {remaining} "
-                f"| Crawl: {crawl_speed:.1f}/min | Seeds: {seed_speed:.1f}/min | Avg: {avg_speed:.1f}/min"
+                f"| Speed: {speed_str} (Avg: {avg_speed:.1f}/min) | ETA: {eta_str}"
             )
             sys.stdout.flush()
             
