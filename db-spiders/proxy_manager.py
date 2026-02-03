@@ -31,50 +31,46 @@ class ProxyManager:
             [{'server': 'http://ip:port', 'username': '...', 'password': '...'}]
         """
         api_url = BASE_API_URL.format(num=num)
-        try:
-            logger.info(f"Fetching {num} new proxies from KDL...")
-            response = requests.get(api_url, timeout=10)
-            
-            if response.status_code != 200:
-                logger.error(f"API Error: HTTP {response.status_code}")
-                return []
+        
+        for attempt in range(3):
+            try:
+                logger.info(f"Fetching {num} new proxies from KDL (Attempt {attempt+1}/3)...")
+                response = requests.get(api_url, timeout=20) # Increased timeout
                 
-            text = response.text.strip()
-            
-            # Check for API errors (KDL often returns errors in plain text)
-            if '{' in text and 'msg' in text: # Simple check for JSON error
-                logger.error(f"API returned error message: {text}")
-                return []
-                
-            proxy_list = text.split('\n')
-            formatted_proxies = []
-            
-            # Use a Set to deduplicate IPs if API returns duplicates (rare)
-            # but more importantly, we assume these are NEW IPs.
-            
-            for ip_port in proxy_list:
-                if not ip_port.strip():
+                if response.status_code != 200:
+                    logger.error(f"API Error: HTTP {response.status_code}")
+                    time.sleep(2)
                     continue
+                    
+                text = response.text.strip()
                 
-                # Format for Playwright
-                # "server": "http://ip:port"
-                # "username": ...
-                # "password": ...
+                # Check for API errors (KDL often returns errors in plain text)
+                if '{' in text and 'msg' in text: # Simple check for JSON error
+                     logger.error(f"API returned error message: {text}")
+                     return []
+                     
+                proxy_list = text.split('\n')
+                formatted_proxies = []
                 
-                # KDL returns just "ip:port" usually
-                proxy_config = {
-                    "server": f"http://{ip_port.strip()}",
-                    "username": PROXY_USERNAME,
-                    "password": PROXY_PASSWORD
-                }
-                formatted_proxies.append(proxy_config)
-            
-            logger.info(f"Successfully fetched {len(formatted_proxies)} proxies.")
-            return formatted_proxies
-            
-        except Exception as e:
-            logger.error(f"Failed to fetch proxies: {e}")
-            return []
+                for ip_port in proxy_list:
+                    if not ip_port.strip():
+                        continue
+                    
+                    proxy_config = {
+                        "server": f"http://{ip_port.strip()}",
+                        "username": PROXY_USERNAME,
+                        "password": PROXY_PASSWORD
+                    }
+                    formatted_proxies.append(proxy_config)
+                
+                logger.info(f"Successfully fetched {len(formatted_proxies)} proxies.")
+                return formatted_proxies
+                
+            except Exception as e:
+                logger.error(f"Failed to fetch proxies (Attempt {attempt+1}): {e}")
+                time.sleep(3)
+        
+        return []
 
 if __name__ == "__main__":
     # Test the manager
