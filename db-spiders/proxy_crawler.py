@@ -30,6 +30,7 @@ from db_spiders import validator
 from proxy_manager import ProxyManager
 from crawl_movie import (
     get_uncrawled_movies, 
+    mark_crawl_failed,
     save_new_seeds, 
     save_to_database, 
     save_to_database, 
@@ -323,6 +324,7 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         
                         if status == 404:
                              with stats_lock: stats['not_found'] += 1
+                             await loop.run_in_executor(None, mark_crawl_failed, movie_id)
                              continue
 
                         data = await async_extract_movie_data(page, movie_id)
@@ -346,9 +348,13 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         else:
                              # print(f"[{w_id}] ❌ Extract Failed {movie_id}")
                              with stats_lock: stats['failed'] += 1
+                             # Release task so it can be retried or inspected later
+                             await loop.run_in_executor(None, release_task, movie_id)
                             
                     except Exception as e:
                         # print(f"[{w_id}] Err: {e}")
+                        # Ensure we release the lock on unexpected errors
+                        await loop.run_in_executor(None, release_task, movie_id)
                         pass
                     finally:
                         if context:
