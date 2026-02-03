@@ -44,10 +44,26 @@ from crawl_movie import (
 
 # ================= CONFIGURATION =================
 # DEVICE CONFIGURATION
-IPS_PER_BATCH = 5       
-WORKERS_PER_IP = 12     
+IPS_PER_BATCH = 30     
+WORKERS_PER_IP = 10    
 MAX_IP_LIFE_SECONDS = 1800 # 30 mins max life just in case
 MAX_CONSECUTIVE_ERRORS = 5 # If IP fails 5 times in a row, retire it
+
+# REQUEST CONFIGURATION - Tuned for Windows
+REQUEST_DELAY_MIN = 2.5  # Min delay between requests (increased for Windows)
+REQUEST_DELAY_MAX = 4.5  # Max delay between requests
+STARTUP_JITTER_MIN = 0.5
+STARTUP_JITTER_MAX = 4.0
+
+# ANTI-DETECTION - Reduce aggressiveness on Windows
+INITIAL_IPS = 2  # Start with fewer IPs to warm up gradually
+MAX_IPS_RAMP_UP = IPS_PER_BATCH  # Gradually increase to max
+RAMP_UP_INTERVAL = 60  # Seconds between adding new IPs
+
+# WORKER RAMP-UP PER IP
+INITIAL_WORKERS_PER_IP = 2  # Start with fewer workers per IP
+WORKER_RAMP_UP_INTERVAL = 25  # Seconds between adding workers per IP
+WORKER_RAMP_UP_COUNT = 2  # How many workers to add each time
 
 # GLOBAL RESOURCES
 PROXY_MANAGER = ProxyManager()
@@ -56,6 +72,26 @@ STOP_EVENT = asyncio.Event()
 def generate_bid():
     """Generate random BID for Douban"""
     return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(11))
+
+def get_browser_headers(user_agent):
+    """Generate realistic browser headers to avoid detection"""
+    # Determine if it's Chrome, Firefox, Safari, or Edge based on UA
+    headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Cache-Control': 'max-age=0',
+        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"' if 'Windows' in user_agent else '"macOS"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': user_agent,
+    }
+    return headers
 
 # ================= ASYNC EXTRACTION HELPERS =================
 
@@ -231,6 +267,7 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
     """
     Runs a group of workers for a single IP.
     Terminates if IP expires or hits error limit.
+    Workers are ramped up gradually to avoid 429.
     """
     print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
     
@@ -239,12 +276,17 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
     start_time = time.time()
     
     # Shared state for this group
-    group_state = {'active': True}
+    group_state = {
+        'active': True,
+        'current_workers': 0,
+        'max_workers': INITIAL_WORKERS_PER_IP,  # Start with fewer workers
+        'worker_id_counter': 0
+    }
     
     async def single_worker(w_id):
         nonlocal consecutive_errors
         
-        await asyncio.sleep(random.uniform(0, 3)) # startup jitter
+        await asyncio.sleep(random.uniform(STARTUP_JITTER_MIN, STARTUP_JITTER_MAX)) # startup jitter
         
         while group_state['active'] and not STOP_EVENT.is_set():
             async with global_sem:
@@ -272,13 +314,16 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                     
                     context = None
                     try:
-                        # NEW: Inject BID
+                        # NEW: Inject BID with realistic headers
+                        ua = get_random_ua()
                         context = await GLOBAL_BROWSER.new_context(
                             proxy=proxy_config,
-                            user_agent=get_random_ua(),
+                            user_agent=ua,
                             viewport={'width': 1920, 'height': 1080},
                             locale='zh-CN',
-                            java_script_enabled=True
+                            java_script_enabled=True,
+                            extra_http_headers=get_browser_headers(ua),
+                            ignore_https_errors=True,
                         )
                         
                         bid = generate_bid()
@@ -288,15 +333,19 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         
                         page = await context.new_page()
                         
+                        # Add request interception for blocking resources
                         await page.route("**/*", lambda route: route.abort() 
                             if route.request.resource_type in ["image", "media", "font"] 
                             else route.continue_()
                         )
                         
+                        # Small delay to allow proxy to stabilize
+                        await asyncio.sleep(random.uniform(0.5, 1.5))
+                        
                         url = f'https://movie.douban.com/subject/{movie_id}/'
                         
                         try:
-                            response = await page.goto(url, wait_until='domcontentloaded', timeout=15000)
+                            response = await page.goto(url, wait_until='domcontentloaded', timeout=20000)
                         except Exception as e:
                             # print(f"[{w_id}] ❌ Net: {e}")
                             consecutive_errors += 1
@@ -367,13 +416,59 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                 except Exception as e:
                     pass
                 
-            await asyncio.sleep(random.uniform(1, 3))
+            await asyncio.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
-    # Spawn workers
-    for i in range(WORKERS_PER_IP):
-        tasks.append(asyncio.create_task(single_worker(f"{ip_id}-W{i}")))
+    # Worker ramp-up manager
+    async def worker_ramp_up_manager():
+        """Gradually spawn more workers over time"""
+        last_ramp = time.time()
         
-    await asyncio.gather(*tasks)
+        while group_state['active'] and not STOP_EVENT.is_set():
+            now = time.time()
+            
+            # Time to add more workers?
+            if (now - last_ramp > WORKER_RAMP_UP_INTERVAL and 
+                group_state['max_workers'] < WORKERS_PER_IP):
+                
+                old_max = group_state['max_workers']
+                group_state['max_workers'] = min(
+                    group_state['max_workers'] + WORKER_RAMP_UP_COUNT, 
+                    WORKERS_PER_IP
+                )
+                
+                # Spawn new workers up to the new max
+                new_workers_needed = group_state['max_workers'] - group_state['current_workers']
+                for _ in range(new_workers_needed):
+                    wid = group_state['worker_id_counter']
+                    group_state['worker_id_counter'] += 1
+                    group_state['current_workers'] += 1
+                    tasks.append(asyncio.create_task(single_worker(f"{ip_id}-W{wid}")))
+                
+                if old_max != group_state['max_workers']:
+                    print(f"[{ip_id}] 📈 Workers: {group_state['current_workers']}/{WORKERS_PER_IP}")
+                last_ramp = now
+            
+            await asyncio.sleep(2)
+    
+    # Spawn initial workers
+    for i in range(INITIAL_WORKERS_PER_IP):
+        group_state['worker_id_counter'] += 1
+        group_state['current_workers'] += 1
+        tasks.append(asyncio.create_task(single_worker(f"{ip_id}-W{i}")))
+    
+    # Start ramp-up manager
+    ramp_task = asyncio.create_task(worker_ramp_up_manager())
+    
+    # Wait for all workers to finish
+    await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Cancel ramp-up manager
+    ramp_task.cancel()
+    try:
+        await ramp_task
+    except asyncio.CancelledError:
+        pass
+    
     # Callback to notify main loop this group is dead
     group_finished_callback(ip_id)
 
@@ -381,7 +476,7 @@ async def main():
     global GLOBAL_BROWSER
     
     print(f"🚀 Starting Dynamic Async Proxy Crawler")
-    print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs")
+    print(f"⚙️ Target Pool: {MAX_IPS_RAMP_UP} active IPs (starting with {INITIAL_IPS}, ramping up)")
     
     # Prerequisite: Reset any stale locks from previous crashes
     print("🧹 Resetting stale locks...")
@@ -390,10 +485,11 @@ async def main():
     async with async_playwright() as p:
         GLOBAL_BROWSER = await p.chromium.launch(
             headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox']
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
         )
         
-        global_sem = asyncio.Semaphore(IPS_PER_BATCH * WORKERS_PER_IP)
+        # Use INITIAL_IPS for semaphore, will expand
+        global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
         
         # Queue Management
         q = asyncio.Queue()
@@ -425,13 +521,22 @@ async def main():
                 active_groups.remove(gid)
                 
         ip_counter = 0
+        last_ramp_up = time.time()
+        current_max_ips = INITIAL_IPS
         
         while not STOP_EVENT.is_set():
+            # Gradually ramp up IP count to avoid detection
+            now = time.time()
+            if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < MAX_IPS_RAMP_UP:
+                current_max_ips = min(current_max_ips + 2, MAX_IPS_RAMP_UP)
+                print(f"📈 Ramping up: max IPs now = {current_max_ips}")
+                last_ramp_up = now
+            
             # Maintain pool size
-            needed = IPS_PER_BATCH - len(active_groups)
+            needed = current_max_ips - len(active_groups)
             
             if needed > 0:
-                print(f"🔧 Pool Low ({len(active_groups)}/{IPS_PER_BATCH}). Fetching {needed} IPs...")
+                print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
                 loop = asyncio.get_event_loop()
                 proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
                 
@@ -465,12 +570,16 @@ async def main():
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH)
+    parser.add_argument('--ips', type=int, default=MAX_IPS_RAMP_UP)
     parser.add_argument('--workers', type=int, default=WORKERS_PER_IP)
+    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS)
+    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP)
     args = parser.parse_args()
     
-    IPS_PER_BATCH = args.ips
+    MAX_IPS_RAMP_UP = args.ips
     WORKERS_PER_IP = args.workers
+    INITIAL_IPS = args.initial_ips
+    INITIAL_WORKERS_PER_IP = args.initial_workers
     
     try:
         asyncio.run(main())
