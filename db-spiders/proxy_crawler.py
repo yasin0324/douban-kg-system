@@ -37,6 +37,7 @@ from crawl_movie import (
     fetch_open_tasks,
     try_claim_task, 
     release_task,
+    reset_stale_tasks,
     stats, stats_lock
 )
 
@@ -375,6 +376,10 @@ async def main():
     
     print(f"🚀 Starting Dynamic Async Proxy Crawler")
     print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs")
+    
+    # Prerequisite: Reset any stale locks from previous crashes
+    print("🧹 Resetting stale locks...")
+    reset_stale_tasks()
     
     async with async_playwright() as p:
         GLOBAL_BROWSER = await p.chromium.launch(

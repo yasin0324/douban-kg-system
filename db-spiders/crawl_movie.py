@@ -84,6 +84,35 @@ def dedupe_ids(ids):
         result.append(movie_id)
     return result
 
+def reset_stale_tasks(cursor=None):
+    """Reset tasks that have been locked for too long (e.g. crashed workers)"""
+    sql = '''
+        UPDATE subjects 
+        SET crawl_status = 0, crawl_locked_at = NULL, crawl_worker = NULL 
+        WHERE crawl_status = 1 
+        AND crawl_locked_at < NOW() - INTERVAL 30 MINUTE
+    '''
+    
+    if cursor is None:
+        with db_lock:
+            try:
+                cursor = connection.cursor()
+                cursor.execute(sql)
+                connection.commit()
+            except Exception:
+                pass
+            finally:
+                try:
+                    cursor.close()
+                except:
+                    pass
+    else:
+        try:
+            cursor.execute(sql)
+            connection.commit()
+        except Exception:
+            pass
+
 def get_uncrawled_movies(limit=None, use_distributed_lock=True):
     """
     Get movies that haven't been crawled yet.
@@ -109,13 +138,7 @@ def get_uncrawled_movies(limit=None, use_distributed_lock=True):
             
             if has_status_column:
                 # Reset stale locks (tasks locked > 30 minutes ago)
-                cursor.execute('''
-                    UPDATE subjects 
-                    SET crawl_status = 0, crawl_locked_at = NULL, crawl_worker = NULL 
-                    WHERE crawl_status = 1 
-                    AND crawl_locked_at < NOW() - INTERVAL 30 MINUTE
-                ''')
-                connection.commit()
+                reset_stale_tasks(cursor)
                 
                 # Use distributed lock: atomically claim tasks
                 batch_size = limit or 100
