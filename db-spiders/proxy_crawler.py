@@ -374,7 +374,7 @@ async def main():
             while True:
                 if q.qsize() < 1000:
                     loop = asyncio.get_event_loop()
-                    new_ids = await loop.run_in_executor(None, get_uncrawled_movies, 5000)
+                    new_ids = await loop.run_in_executor(None, get_uncrawled_movies, 500)
                     if not new_ids and q.qsize() == 0:
                         print("🏁 Database exhausted.")
                         STOP_EVENT.set()

@@ -296,6 +296,7 @@ source = { editable = "db-spiders" }
 dependencies = [
     { name = "playwright" },
     { name = "pymysql" },
+    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -307,6 +308,7 @@ dev = [
 requires-dist = [
     { name = "playwright", specifier = ">=1.41.0" },
     { name = "pymysql", specifier = ">=1.1.0" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
 ]
 
 [package.metadata.requires-dev]

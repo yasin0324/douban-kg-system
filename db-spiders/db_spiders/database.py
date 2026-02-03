@@ -15,6 +15,10 @@ Environment variables (optional, will override defaults):
 """
 
 import os
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
+
 import pymysql
 
 # MySQL Configuration - can be overridden by environment variables
