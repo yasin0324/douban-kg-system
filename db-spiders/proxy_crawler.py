@@ -57,7 +57,6 @@ STARTUP_JITTER_MAX = 4.0
 
 # ANTI-DETECTION - Reduce aggressiveness on Windows
 INITIAL_IPS = 2  # Start with fewer IPs to warm up gradually
-MAX_IPS_RAMP_UP = IPS_PER_BATCH  # Gradually increase to max
 RAMP_UP_INTERVAL = 60  # Seconds between adding new IPs
 
 # WORKER RAMP-UP PER IP
@@ -476,7 +475,7 @@ async def main():
     global GLOBAL_BROWSER
     
     print(f"🚀 Starting Dynamic Async Proxy Crawler")
-    print(f"⚙️ Target Pool: {MAX_IPS_RAMP_UP} active IPs (starting with {INITIAL_IPS}, ramping up)")
+    print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
     
     # Prerequisite: Reset any stale locks from previous crashes
     print("🧹 Resetting stale locks...")
@@ -527,8 +526,8 @@ async def main():
         while not STOP_EVENT.is_set():
             # Gradually ramp up IP count to avoid detection
             now = time.time()
-            if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < MAX_IPS_RAMP_UP:
-                current_max_ips = min(current_max_ips + 2, MAX_IPS_RAMP_UP)
+            if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
+                current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
                 print(f"📈 Ramping up: max IPs now = {current_max_ips}")
                 last_ramp_up = now
             
@@ -570,13 +569,13 @@ async def main():
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ips', type=int, default=MAX_IPS_RAMP_UP)
+    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH)
     parser.add_argument('--workers', type=int, default=WORKERS_PER_IP)
     parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS)
     parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP)
     args = parser.parse_args()
     
-    MAX_IPS_RAMP_UP = args.ips
+    IPS_PER_BATCH = args.ips
     WORKERS_PER_IP = args.workers
     INITIAL_IPS = args.initial_ips
     INITIAL_WORKERS_PER_IP = args.initial_workers
