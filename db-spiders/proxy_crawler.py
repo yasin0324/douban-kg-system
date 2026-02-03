@@ -32,7 +32,11 @@ from crawl_movie import (
     get_uncrawled_movies, 
     save_new_seeds, 
     save_to_database, 
+    save_to_database, 
     get_random_ua,
+    fetch_open_tasks,
+    try_claim_task, 
+    release_task,
     stats, stats_lock
 )
 
@@ -245,7 +249,6 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                 try:
                     # Check life
                     if time.time() - start_time > MAX_IP_LIFE_SECONDS:
-                        group_state['active'] = False
                         print(f"[{ip_id}] ⏰ Expired.")
                         break
                         
@@ -253,6 +256,17 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         movie_id = q.get_nowait()
                     except asyncio.QueueEmpty:
                         break # Queue empty
+
+                    # === JIT LOCKING START ===
+                    # Try to lock the task atomically
+                    loop = asyncio.get_event_loop()
+                    locked = await loop.run_in_executor(None, try_claim_task, movie_id)
+                    if not locked:
+                         # Task already taken by another worker/instance or completed
+                        #  print(f"[{w_id}] 🔒 Failed to lock {movie_id}, skipping...")
+                         q.task_done()
+                         continue
+                    # === JIT LOCKING END ===
                     
                     context = None
                     try:
@@ -284,6 +298,8 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         except Exception as e:
                             # print(f"[{w_id}] ❌ Net: {e}")
                             consecutive_errors += 1
+                            # Unlock for retry
+                            await loop.run_in_executor(None, release_task, movie_id) 
                             q.put_nowait(movie_id) # Retry
                             raise e
                             
@@ -291,6 +307,8 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         if status in [403, 429]:
                             print(f"[{w_id}] ⚠️ {status} Blocked!")
                             consecutive_errors += 1
+                            # Unlock for retry
+                            await loop.run_in_executor(None, release_task, movie_id)
                             q.put_nowait(movie_id)
                             
                             # Check fuse
@@ -374,7 +392,8 @@ async def main():
             while True:
                 if q.qsize() < 200:
                     loop = asyncio.get_event_loop()
-                    new_ids = await loop.run_in_executor(None, get_uncrawled_movies, 500)
+                    # Use fetch_open_tasks instead of get_uncrawled_movies (no locking)
+                    new_ids = await loop.run_in_executor(None, fetch_open_tasks, 500)
                     if not new_ids and q.qsize() == 0:
                         print("🏁 Database exhausted.")
                         STOP_EVENT.set()

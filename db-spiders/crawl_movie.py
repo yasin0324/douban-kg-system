@@ -165,6 +165,56 @@ def get_uncrawled_movies(limit=None, use_distributed_lock=True):
             cursor.execute(sql)
         return [row['douban_id'] for row in cursor.fetchall()]
 
+def fetch_open_tasks(limit=1000):
+    """
+    Fetch open tasks (status=0) WITHOUT locking them.
+    Used for JIT locking in proxy_crawler.
+    """
+    with db_lock:
+        cursor = connection.cursor()
+        sql = '''
+            SELECT s.douban_id 
+            FROM subjects s
+            LEFT JOIN movies m ON s.douban_id = m.douban_id
+            WHERE s.type = 'movie' 
+            AND m.douban_id IS NULL
+            AND s.crawl_status = 0
+            ORDER BY s.douban_id DESC
+            LIMIT %s
+        '''
+        cursor.execute(sql, (limit,))
+        return [row['douban_id'] for row in cursor.fetchall()]
+
+def try_claim_task(douban_id, worker_id=WORKER_ID):
+    """
+    Atomically try to lock a formatted task.
+    Returns True if successfully locked, False otherwise.
+    """
+    with db_lock:
+        cursor = connection.cursor()
+        try:
+            cursor.execute('''
+                UPDATE subjects 
+                SET crawl_status = 1, 
+                    crawl_locked_at = NOW(), 
+                    crawl_worker = %s 
+                WHERE douban_id = %s AND crawl_status = 0
+            ''', (worker_id, douban_id))
+            connection.commit()
+            return cursor.rowcount > 0
+        except:
+            return False
+
+def release_task(douban_id):
+    """Reset task status to 0 (e.g. for retry)"""
+    with db_lock:
+        cursor = connection.cursor()
+        try:
+            cursor.execute('UPDATE subjects SET crawl_status = 0, crawl_locked_at = NULL, crawl_worker = NULL WHERE douban_id = %s', (douban_id,))
+            connection.commit()
+        except:
+            pass
+
 def generate_bid():
     """Generate random BID for Douban"""
     return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(11))
