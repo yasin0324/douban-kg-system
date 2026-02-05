@@ -238,8 +238,7 @@ async def async_extract_movie_data(page, douban_id):
             story = '\n'.join([p.strip() for p in summary])
         data['storyline'] = story.strip() if story else None
         
-        # Slug (skipped for speed)
-        data['slug'] = None
+
         
         return data
     except Exception as e:

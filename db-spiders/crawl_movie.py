@@ -43,7 +43,7 @@ stats = {
 stats_lock = threading.Lock()
 
 MOVIE_FIELDS = [
-    'douban_id', 'type', 'slug', 'name', 'alias', 'cover', 'year',
+    'douban_id', 'type', 'name', 'alias', 'cover', 'year',
     'genres', 'regions', 'languages', 'official_site', 'mins', 'imdb_id',
     'storyline', 'douban_score', 'douban_votes', 'release_date',
     'directors', 'actors', 'actor_ids', 'director_ids'
@@ -460,12 +460,7 @@ def extract_movie_data(page, douban_id):
         except:
             data['official_site'] = None
         
-        # Generate slug
-        from db_spiders.util import shorturl
-        try:
-            data['slug'] = shorturl(str(douban_id))
-        except:
-            data['slug'] = None
+
         
         return data
         
@@ -629,6 +624,11 @@ def scheduler_thread():
 
 def worker_thread(worker_id, movie_queue, delay_range, headless=True, update_existing=False):
     """Worker thread that processes movies from the queue"""
+    # Staggered start to avoid burst
+    start_delay = (worker_id - 1) * 15
+    print(f"[Worker-{worker_id}] Waiting {start_delay}s to start...")
+    time.sleep(start_delay)
+
     with sync_playwright() as p:
         user_agent = get_random_ua()
         bid = generate_bid()
@@ -916,12 +916,12 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='Concurrent Douban movie crawler using Playwright')
-    parser.add_argument('--workers', type=int, default=2, help='Number of concurrent browser instances (default: 2)')
+    parser.add_argument('--workers', type=int, default=1, help='Number of concurrent browser instances (default: 1 for safety)')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode')
     parser.add_argument('--visible', action='store_true', help='Run with visible browsers')
     parser.add_argument('--max', type=int, default=None, help='Maximum number of movies to crawl')
-    parser.add_argument('--delay-min', type=int, default=2, help='Minimum delay between requests (seconds)')
-    parser.add_argument('--delay-max', type=int, default=5, help='Maximum delay between requests (seconds)')
+    parser.add_argument('--delay-min', type=int, default=10, help='Minimum delay between requests (seconds) - Safe Mode')
+    parser.add_argument('--delay-max', type=int, default=20, help='Maximum delay between requests (seconds) - Safe Mode')
     parser.add_argument('--test', action='store_true', help='Test mode: crawl 10 movies with 2 workers')
     parser.add_argument('--ids', type=str, default=None, help='Comma/space separated douban_id list')
     parser.add_argument('--ids-file', type=str, default=None, help='Path to file with douban_id list')
