@@ -6,8 +6,8 @@ import logging
 
 # Configuration for Kuaidaili (KDL)
 # API Url template - num will be replaced
-BASE_API_URL = "https://dps.kdlapi.com/api/getdps/?secret_id=oia711htubvbiw4rgmz0&num={num}&signature=v147qflq1gdyxmwu2rde3f717hz9dpmg&sep=1"
-PROXY_USERNAME = "d3051442632"
+BASE_API_URL = "https://dps.kdlapi.com/api/getdps/?secret_id=ojw36l56b9tp40yo69fv&num={num}&signature=3hbwjjednw5vp12wxs8a3e6nvg0yricp&sep=1"
+PROXY_USERNAME = "d2289523148"
 PROXY_PASSWORD = "r2432tcw"
 
 # Logger configuration
@@ -21,7 +21,7 @@ class ProxyManager:
         # List of API URLs to try in order
         self.api_templates = [
             # Old API (Expires soon)
-            "https://dps.kdlapi.com/api/getdps/?secret_id=oia711htubvbiw4rgmz0&num={num}&signature=v147qflq1gdyxmwu2rde3f717hz9dpmg&sep=1",
+            "https://dps.kdlapi.com/api/getdps/?secret_id=ojw36l56b9tp40yo69fv&num={num}&signature=3hbwjjednw5vp12wxs8a3e6nvg0yricp&sep=1",
             # New API (Backup)
             "https://dps.kdlapi.com/api/getdps/?secret_id=oban91iiljso7jppe5xk&num={num}&signature=mm7vjarupyxf6j6gk2avqpcext06jw67&sep=1"
         ]
