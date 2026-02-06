@@ -476,7 +476,7 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         # Small delay for proxy stabilization
                         await asyncio.sleep(random.uniform(0.5, 1.5))
                         
-                        url = f'https://movie.douban.com/celebrity/{person_id}/'
+                        url = f'https://www.douban.com/personage/{person_id}/'
                         
                         try:
                             response = await page.goto(url, wait_until='domcontentloaded', timeout=20000)
