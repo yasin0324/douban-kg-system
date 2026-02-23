@@ -347,6 +347,13 @@ wheels = [
 name = "douban-kg-system"
 version = "0.1.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "neo4j" },
+    { name = "pandas" },
+    { name = "pymysql" },
+    { name = "python-dotenv" },
+    { name = "tqdm" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -358,6 +365,13 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "neo4j", specifier = ">=6.1.0" },
+    { name = "pandas", specifier = ">=2.3.3" },
+    { name = "pymysql", specifier = ">=1.1.2" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "tqdm", specifier = ">=4.67.1" },
+]
 
 [package.metadata.requires-dev]
 dev = [
