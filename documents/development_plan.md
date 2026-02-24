@@ -49,13 +49,15 @@
 | | **阶段一** | 第1-2周 | 环境搭建 & 数据采集 | 1000+电影数据，爬虫系统 |
 | | **阶段二** | 第3-4周 | 数据处理 & 知识抽取 | 清洗数据，实体关系三元组 |
 | | **阶段三** | 第5-6周 | 知识图谱构建 & API开发 | Neo4j图谱，7000+节点，15000+关系，FastAPI基础接口 |
-| | **阶段四** | 第7-8周 | 推荐算法研究与前端开发 | 3种推荐算法实现，Vue3推荐系统界面 |
+| | **阶段四** | 第7周 | 前后端主链路打通 | Vue3界面、图谱可视化、前后端接口联调、系统可演示（不含推荐） |
+| | **阶段五** | 第8周 | 推荐算法增强与验证 | PPR/Content/Hybrid 可用，CF按数据门槛启用，推荐评估报告 |
 
 ### 关键里程碑
 - **第2周末**：成功采集1000+部电影的完整数据
 - **第4周末**：完成数据质量评分 ≥90%，知识抽取准确率 ≥95%
 - **第6周末**：知识图谱加载完成，FastAPI基础接口可用
-- **第8周末**：完整系统演示，推荐算法功能完成，Vue3前端界面可用
+- **第7周末**：完成非推荐主链路打通（前后端+图谱可视化+数据连通）
+- **第8周末**：推荐算法功能完成并通过评估，完整系统演示
 
 ---
 
@@ -500,203 +502,117 @@ RETURN path
 
 ---
 
-### 第7周：推荐算法研究实现
+### 第7周：Vue3前端开发与主链路打通（不含推荐）
 
 #### 3.25 任务清单
-- [ ] 研究基于图结构的推荐算法（Personalized PageRank）
-- [ ] 研究基于内容的推荐算法（TF-IDF、余弦相似度）
-- [ ] 研究向量嵌入方法（词向量、图嵌入）
-- [ ] 实现Personalized PageRank推荐算法
-- [ ] 实现基于内容的推荐算法
-- [ ] 设计混合推荐策略（加权融合）
-- [ ] 实现混合推荐算法
-- [ ] 推荐算法性能测试
-
-#### 3.26 交付物
-- 推荐算法研究文档（`docs/recommendation_research.md`）
-- Personalized PageRank实现（`recommendation/ppr_recommender.py`）
-- 基于内容推荐实现（`recommendation/content_recommender.py`）
-- 混合推荐引擎（`recommendation/hybrid_recommender.py`）
-- 推荐算法测试报告（`docs/recommendation_test_report.md`）
-- 推荐算法API接口（`api/routes/recommendation.py`）
-
-#### 3.27 成功标准
-
-**功能标准：**
-- 实现3种推荐算法（图结构、内容、混合）
-- 每种算法可独立运行
-- 推荐结果合理且多样化
-- 混合算法有效融合多种策略
-
-**可观察标准：**
-- 推荐响应时间<2秒
-- 推荐列表包含相关电影（相关性≥70%）
-- 推荐结果多样性（前10部不重复）
-- 不同算法产生不同推荐结果
-
-**通过/失败标准：**
-- ✅ 通过：3种算法均可用，推荐质量达标，支持多种推荐策略
-- ❌ 失败：任一算法不可用或推荐质量差
-
-#### 3.28 测试验证
-
-**算法测试：**
-```python
-from recommendation.ppr_recommender import PPRRecommender
-from recommendation.content_recommender import ContentRecommender
-from recommendation.hybrid_recommender import HybridRecommender
-
-ppr = PPRRecommender()
-content = ContentRecommender()
-hybrid = HybridRecommender()
-
-movie_id = "1292052"  # 肖申克的救赎
-
-# 1. Personalized PageRank测试
-start = time.time()
-ppr_recs = ppr.recommend(movie_id, top_k=10)
-latency = time.time() - start
-assert latency < 2.0, f"PPR延迟: {latency:.2f}s"
-assert len(ppr_recs) == 10
-
-# 2. 基于内容推荐测试
-start = time.time()
-content_recs = content.recommend(movie_id, top_k=10)
-latency = time.time() - start
-assert latency < 2.0, f"内容推荐延迟: {latency:.2f}s"
-assert len(content_recs) == 10
-
-# 3. 混合推荐测试
-start = time.time()
-hybrid_recs = hybrid.recommend(movie_id, top_k=10, weights=[0.4, 0.3, 0.3])
-latency = time.time() - start
-assert latency < 2.0, f"混合推荐延迟: {latency:.2f}s"
-assert len(hybrid_recs) == 10
-
-# 4. 推荐质量测试
-# 检查推荐电影的评分
-avg_rating = sum(r['rating'] for r in hybrid_recs) / len(hybrid_recs)
-assert avg_rating >= 8.0, f"推荐电影平均分: {avg_rating:.2f}"
-
-# 5. 多样性测试
-rec_titles = [r['title'] for r in hybrid_recs]
-assert len(set(rec_titles)) == len(rec_titles), "存在重复推荐"
-
-# 6. 算法差异性测试
-ppr_titles = set(r['title'] for r in ppr_recs)
-content_titles = set(r['title'] for r in content_recs)
-# 不同算法应有差异
-assert len(ppr_titles & content_titles) < 5, "不同算法结果过于相似"
-```
-
-**API测试：**
-```python
-# 测试不同推荐策略
-response1 = requests.get(f"{base_url}/recommend/{movie_id}?algorithm=ppr&top_k=10")
-assert response1.status_code == 200
-
-response2 = requests.get(f"{base_url}/recommend/{movie_id}?algorithm=content&top_k=10")
-assert response2.status_code == 200
-
-response3 = requests.get(f"{base_url}/recommend/{movie_id}?algorithm=hybrid&top_k=10")
-assert response3.status_code == 200
-
-# 验证不同算法返回不同结果
-result1 = set(r['title'] for r in response1.json())
-result2 = set(r['title'] for r in response2.json())
-assert len(result1 & result2) < 5
-```
-
-**预期结果：**
-- 所有推荐算法测试通过
-- 响应时间<2秒
-- 推荐质量达标（评分、多样性）
-- 不同算法产生不同结果
-- API接口可调用不同算法
-
----
-
-### 第8周：Vue3前端开发与系统集成
-
-#### 3.29 任务清单
 - [ ] Vue3项目初始化（Vite + Vue Router + Pinia）
 - [ ] UI组件库集成（Element Plus）
 - [ ] 电影搜索页面开发
 - [ ] 电影详情页面开发
 - [ ] 图谱可视化组件（ECharts）
-- [ ] 前后端接口联调
-- [ ] 系统整体测试
+- [ ] 前后端接口联调（auth/movies/persons/graph/stats）
+- [ ] 系统整体测试（非推荐路径）
 - [ ] 文档整理与演示准备
 
-#### 3.30 交付物
+#### 3.26 交付物
 - Vue3前端项目（`frontend/`目录）
 - 电影搜索页面（`frontend/src/views/Search.vue`）
 - 电影详情页面（`frontend/src/views/Detail.vue`）
-- 推荐结果页面（`frontend/src/views/Recommendation.vue`）
 - 图谱可视化组件（`frontend/src/components/GraphVisualization.vue`）
 - API集成配置（`frontend/src/api/`）
+- 非推荐主链路联调清单（`docs/integration_checklist.md`）
 - 系统用户手册（`docs/user_guide.md`）
-- 系统演示脚本（`scripts/demo.sh`）
+
+#### 3.27 成功标准
+
+**功能标准：**
+- 前端页面完整实现，交互流畅
+- 非推荐核心 API 全部成功对接
+- 图谱可视化正常显示（1 跳稳定加载）
+- 系统可完整演示（登录->搜索->详情->图谱）
+
+**可观察标准：**
+- 页面加载时间 <2 秒
+- 前端无控制台错误
+- 图谱交互响应流畅（展开/过滤）
+- 响应式设计支持不同屏幕
+
+**通过/失败标准：**
+- ✅ 通过：非推荐主链路完整打通，可稳定演示
+- ❌ 失败：前后端主链路存在阻塞点或图谱页面不可用
+
+#### 3.28 测试验证
+
+**前端测试：**
+```bash
+cd frontend
+npm install
+npm run dev
+npm run build
+```
+
+**集成测试（非推荐）**：
+```python
+assert requests.get("http://localhost:8000/health").status_code == 200
+assert requests.get(f"{base_url}/api/movies/search?q=肖申克&page=1&size=20").status_code == 200
+assert requests.get(f"{base_url}/api/graph/movie/1292052?depth=1&node_limit=150&edge_limit=300").status_code == 200
+```
+
+**预期结果：**
+- 前端构建成功、非推荐接口全部联通、演示流程顺畅
+
+---
+
+### 第8周：推荐算法增强与系统收口
+
+#### 3.29 任务清单
+- [ ] 实现 Personalized PageRank 推荐算法
+- [ ] 实现基于内容推荐算法
+- [ ] 实现混合推荐策略（PPR + Content）
+- [ ] 协同过滤（CF）可选实现（满足数据门槛时启用）
+- [ ] 推荐 API 接口联调与缓存优化
+- [ ] 推荐质量评估（Precision/Recall/NDCG/多样性）
+- [ ] 全系统回归测试与演示脚本完善
+
+#### 3.30 交付物
+- 推荐算法研究文档（`docs/recommendation_research.md`）
+- Personalized PageRank实现（`recommendation/ppr_recommender.py`）
+- 基于内容推荐实现（`recommendation/content_recommender.py`）
+- 混合推荐引擎（`recommendation/hybrid_recommender.py`）
+- 可选协同过滤实现（`recommendation/cf_recommender.py`）
+- 推荐算法测试报告（`docs/recommendation_test_report.md`）
+- 推荐算法API接口（`api/routes/recommendation.py`）
 
 #### 3.31 成功标准
 
 **功能标准：**
-- 前端页面完整实现，交互流畅
-- 所有API接口成功对接
-- 推荐结果正常展示
-- 图谱可视化正常显示
-- 系统可完整演示
+- PPR、Content、Hybrid 三种核心算法可独立运行
+- 推荐 API 支持算法切换
+- CF 在达到门槛时可启用，未达门槛自动降级
+- 推荐结果可在前端页面正常展示
 
 **可观察标准：**
-- 页面加载时间<2秒
-- 前端无控制台错误
-- 推荐结果实时更新
-- 响应式设计支持不同屏幕
+- 推荐响应时间 <2 秒（P95）
+- 推荐列表相关性 ≥70%
+- 推荐结果多样性达标（前10部不重复）
+- 不同算法产生可区分的结果
 
 **通过/失败标准：**
-- ✅ 通过：所有功能正常运行，系统可完整演示
-- ❌ 失败：前端功能不可用或无法完整演示
+- ✅ 通过：核心推荐算法可用、质量达标、系统完整演示通过
+- ❌ 失败：核心算法不可用或推荐质量明显不足
 
 #### 3.32 测试验证
 
-**前端测试：**
-```bash
-# 1. 前端启动测试
-cd frontend
-npm install
-npm run dev
-# 预期: 服务启动成功，http://localhost:5173可访问
-
-# 2. 构建测试
-npm run build
-# 预期: 构建成功，无错误
-```
-
-**集成测试：**
-
+**算法/API 测试：**
 ```python
-# 后端运行健康检查
-response = requests.get("http://localhost:8000/health")
-assert response.status_code == 200
-
-# 每种算法都有10条推荐
-for algo in ['ppr', 'content', 'hybrid']:
-    assert len(data[algo]) == 10
+for algo in ["ppr", "content", "hybrid"]:
+    resp = requests.get(f"{base_url}/recommend/{movie_id}?algorithm={algo}&top_k=10")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 10
 ```
-
-**系统演示流程测试：**
-
-1. 打开前端页面，搜索"肖申克的救赎"
-2. 查看电影详情页，显示基本信息
-3. 点击"查看推荐"，跳转到推荐页面
-5. 点击图谱可视化，查看电影相关图谱
-6. 所有页面操作流畅，无报错
 
 **预期结果：**
-- 前端构建成功，无错误
-- 所有API对接成功
-- 系统演示流程顺畅
-- 无控制台错误或崩溃
+- 推荐算法测试通过，前后端推荐链路可用，系统收口完成
 
 ---
 
@@ -707,8 +623,9 @@ for algo in ['ppr', 'content', 'hybrid']:
 **功能性：**
 - ✅ 成功采集1000+部电影的完整数据
 - ✅ 知识图谱包含至少7000个节点和15000条边
-- ✅ 实现3种推荐算法（基于图结构、基于内容、混合推荐）
-- ✅ 推荐算法支持多种策略选择
+- ✅ 先完成非推荐主链路打通（前后端+图谱可视化+数据连通）
+- ✅ 实现核心推荐算法（PPR、内容、混合），CF按门槛启用
+- ✅ 推荐算法支持多种策略选择与自动降级
 - ✅ FastAPI后端接口完整可用
 - ✅ Vue3前端界面完整可用
 
@@ -733,7 +650,7 @@ for algo in ['ppr', 'content', 'hybrid']:
 - 所有核心功能正常运行
 - 关键质量指标达标
 - 系统可稳定演示
-- 推荐系统支持多种策略
+- 推荐系统支持多种策略（含可选CF）
 - 文档齐全
 - 前后端完整对接
 
@@ -867,14 +784,15 @@ for algo in ['ppr', 'content', 'hybrid']:
 | | 第4周 | 35h | 10h | 45h | 6.4h |
 | | 第5周 | 35h | 10h | 45h | 6.4h |
 | | 第6周 | 35h | 10h | 45h | 6.4h |
-| | 第7周 | 38h | 10h | 48h | 6.9h |
-| | 第8周 | 35h | 10h | 45h | 6.4h |
+| | 第7周 | 37h | 10h | 47h | 6.7h |
+| | 第8周 | 36h | 10h | 46h | 6.6h |
 | | **总计** | **283h** | **80h** | **363h** | **平均 6.5h/天** |
 
 **备注：**
 - 核心工作：主要开发任务（编码、测试、调试）
 - 辅助工作：文档编写、学习研究、问题排查
-- 第7周增加工作量用于推荐算法研究
+- 第7周增加工作量用于前后端联调与图谱可视化打通
+- 第8周重点完成推荐算法增强与系统收口
 - 预留62小时（15%）作为缓冲时间
 
 ### 7.2 工作时间建议
@@ -898,10 +816,10 @@ for algo in ['ppr', 'content', 'hybrid']:
 | | **Neo4j & Cypher** | 12h | 第5周 |
 | | **HanLP/NLP** | 8h | 第4周 |
 | | **FastAPI** | 8h | 第5-6周 |
-| | **Vue3 + Vite** | 12h | 第1周 + 第8周 |
-| | **推荐算法** | 15h | 第7周 |
-| | **Element Plus** | 5h | 第8周 |
-| | **ECharts** | 5h | 第8周 |
+| | **Vue3 + Vite** | 12h | 第1周 + 第7周 |
+| | **推荐算法** | 15h | 第8周 |
+| | **Element Plus** | 5h | 第7周 |
+| | **ECharts** | 5h | 第7周 |
 | | **总计** | **73h** | 分散在各周 |
 
 ### 7.4 健康与效率建议
@@ -1056,7 +974,8 @@ graduation_project/
 - [ ] 所有核心功能已实现并测试通过
 - [ ] 数据规模达到目标（1000+电影、7000+节点、15000+关系）
 - [ ] 所有质量指标达标（数据完整率≥95%、知识抽取准确率≥95%等）
-- [ ] 3种推荐算法均可用
+- [ ] 非推荐主链路已完整打通并可演示
+- [ ] 核心推荐算法可用（PPR、内容、混合），CF按门槛启用
 - [ ] 系统可稳定运行（无严重Bug、错误率<1%）
 - [ ] API文档完整且准确
 - [ ] 代码覆盖率≥70%（核心模块）
@@ -1077,14 +996,14 @@ graduation_project/
 
 ## 9. 总结
 
-本开发计划书为豆瓣电影知识图谱项目提供了详细的8周开发路线图，涵盖从数据采集、知识抽取、图谱构建到推荐算法研究与前端开发的全过程。计划强调：
+本开发计划书为豆瓣电影知识图谱项目提供了详细的8周开发路线图，涵盖从数据采集、知识抽取、图谱构建到前后端打通与推荐增强的全过程。计划强调：
 
 1. **可执行性**：每周任务明确，交付物具体，成功标准可量化
 2. **风险管理**：识别主要风险并提供缓解策略和应急计划
 3. **质量保证**：每个阶段都有测试验证方案和证据要求
 4. **资源合理**：工作量估算现实，硬件软件需求明确
 5. **前后端分离**：FastAPI + Vue3架构，现代化技术栈
-6. **多策略推荐**：研究并对比3种推荐算法
+6. **分阶段推荐**：先打通主链路，再完成推荐增强（核心三算法 + 可选CF）
 
 **关键成功因素：**
 
@@ -1092,14 +1011,15 @@ graduation_project/
 - 优先完成核心功能（MVP），再进行优化
 - 遇到问题及时沟通，避免积累
 - 充分利用缓冲时间，确保项目按时完成
-- 重点关注推荐算法的研究与实现
+- 第7周优先保证前后端与图谱可视化主链路稳定
+- 第8周重点推进推荐算法研究与效果验证
 
 **预期成果：**
-一个功能完整的电影知识图谱推荐系统，包括数据采集、知识图谱构建、3种推荐算法的研究、Vue3前端界面，为毕业设计答辩提供强有力的技术支撑。系统将展现基于知识图谱的推荐算法优势，实现推荐系统功能。
+一个功能完整的电影知识图谱推荐系统，包括数据采集、知识图谱构建、前后端主链路打通、核心推荐算法（PPR/内容/混合）与可选协同过滤增强、Vue3前端界面，为毕业设计答辩提供强有力的技术支撑。
 
 ---
 
 **文档版本**: v2.1
 **创建日期**: 2026-01-13
-**最后更新**: 2026-01-13
-**更新内容**: 调整技术栈为FastAPI+Vue3，删除智能问答系统，重点强化推荐算法研究与实现
+**最后更新**: 2026-02-24
+**更新内容**: 调整实施顺序为“先打通非推荐主链路，再完成推荐增强”，并同步CF可选策略口径
