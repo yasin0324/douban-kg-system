@@ -66,6 +66,7 @@ Desktop.ini
 
 .opencode/
 .sisyphus/
+.agent/
 .trae
 
 node_modules/
