@@ -1,6 +1,6 @@
 # 前端开发规划书（MVP 阶段）
 
-**版本**: v1.0 | **日期**: 2026-02-25
+**版本**: v1.1 | **日期**: 2026-02-28 | **最后更新**: 2026-02-28
 
 ---
 
@@ -258,70 +258,78 @@ db-frontend/
 │   └── favicon.ico
 ├── src/
 │   ├── api/                     # API 封装
-│   │   ├── index.js             # Axios 实例 + 拦截器
+│   │   ├── index.js             # Axios 实例 + 拦截器（Token 自动附加、401 自动刷新）
 │   │   ├── auth.js              # 认证相关 API
 │   │   ├── movies.js            # 电影相关 API
 │   │   ├── persons.js           # 影人相关 API
 │   │   ├── graph.js             # 图谱相关 API
 │   │   ├── stats.js             # 统计相关 API
 │   │   └── users.js             # 用户行为 API
-│   ├── assets/                  # 静态资源（图标/字体）
+│   ├── assets/
+│   │   └── styles/
+│   │       └── main.scss        # 全局样式（CSS 变量 + 暗色主题 + Element Plus 覆盖）
 │   ├── components/              # 通用组件
 │   │   ├── layout/
-│   │   │   ├── AppHeader.vue    # 顶部导航
-│   │   │   └── AppFooter.vue    # 底部
+│   │   │   ├── AppHeader.vue    # 顶部导航（Logo/搜索/用户/毛玻璃效果）
+│   │   │   └── AppFooter.vue    # 底部版权
 │   │   ├── movie/
-│   │   │   ├── MovieCard.vue    # 电影卡片
-│   │   │   └── MovieList.vue    # 电影列表
+│   │   │   ├── MovieCard.vue    # 电影卡片（封面+评分角标+hover 上浮）
+│   │   │   └── MovieList.vue    # 电影响应式网格
 │   │   ├── person/
-│   │   │   └── PersonCard.vue   # 影人卡片
+│   │   │   └── PersonCard.vue   # 影人卡片（头像+角色+合作次数）
 │   │   └── graph/
-│   │       └── GraphView.vue    # ECharts 图谱
+│   │       └── GraphView.vue    # ECharts 图谱（待实现）
 │   ├── router/
-│   │   └── index.js             # 路由配置
+│   │   └── index.js             # 路由配置（11 条路由 + 懒加载 + 登录守卫）
 │   ├── stores/
-│   │   └── auth.js              # 认证状态管理
+│   │   └── auth.js              # 认证状态管理（token/refreshToken/user + localStorage 持久化）
+│   ├── utils/
+│   │   └── image.js             # 图片代理工具（proxyImage — 解决豆瓣 CDN 防盗链）
 │   ├── views/                   # 页面视图
-│   │   ├── HomeView.vue
-│   │   ├── SearchView.vue
-│   │   ├── MovieFilterView.vue
-│   │   ├── MovieDetailView.vue
-│   │   ├── PersonDetailView.vue
-│   │   ├── GraphView.vue
-│   │   ├── PathView.vue
-│   │   ├── StatsView.vue
-│   │   ├── LoginView.vue
-│   │   ├── RegisterView.vue
-│   │   └── ProfileView.vue
-│   ├── App.vue
-│   └── main.js
+│   │   ├── HomeView.vue         # ✅ 首页（Hero+统计+标签云+高分电影）
+│   │   ├── SearchView.vue       # ✅ 搜索结果（电影/影人双 Tab+分页）
+│   │   ├── MovieFilterView.vue  # ✅ 电影筛选（类型/年代/评分+分页）
+│   │   ├── MovieDetailView.vue  # ✅ 电影详情（海报+评分+演职+偏好操作）
+│   │   ├── PersonDetailView.vue # ✅ 影人详情（信息+作品+合作者）
+│   │   ├── GraphView.vue        # 占位（Phase 3）
+│   │   ├── PathView.vue         # 占位（Phase 3）
+│   │   ├── StatsView.vue        # 占位（Phase 4）
+│   │   ├── LoginView.vue        # 占位（Phase 4）
+│   │   ├── RegisterView.vue     # 占位（Phase 4）
+│   │   └── ProfileView.vue      # 占位（Phase 4）
+│   ├── App.vue                  # 根组件（Header+router-view 过渡动画+Footer）
+│   └── main.js                  # 入口（Vue+Pinia+Router+ElementPlus+暗色主题）
 ├── .env                         # VITE_API_BASE=http://localhost:8000
-├── index.html
+├── index.html                   # lang=zh-CN, dark 主题, SEO meta
 ├── package.json
-└── vite.config.js
+└── vite.config.js               # 开发代理 /api → localhost:8000
 ```
 
 ---
 
 ## 5. 分阶段实施计划
 
-### Phase 1：工程骨架（0.5 天）
+### Phase 1：工程骨架（0.5 天）✅ 已完成 (2026-02-25)
 
-- Vite 创建 Vue3 项目
-- 安装 Element Plus / ECharts / Axios / Pinia / Vue Router
-- 配置 Vite 代理（开发时转发 `/api` → `http://localhost:8000`）
-- 搭建 Layout（Header + Footer + router-view）
-- 配置路由表（所有页面占位）
-- 编写 Axios 实例 + API 模块
-- 编写 Pinia auth store
+- ✅ Vite 创建 Vue3 项目（`create-vue@latest --router --pinia --bare`）
+- ✅ 安装 Element Plus / ECharts / Axios / Pinia / Vue Router / Sass
+- ✅ 配置 Vite 代理（开发时转发 `/api` → `http://localhost:8000`）
+- ✅ 搭建 Layout（AppHeader 毛玻璃导航 + AppFooter + router-view 过渡动画）
+- ✅ 配置路由表（11 条路由，全部懒加载 + 登录守卫）
+- ✅ 编写 Axios 实例 + 6 个 API 模块（auth/movies/persons/graph/stats/users）
+- ✅ 编写 Pinia auth store（token 持久化 + 自动刷新）
+- ✅ 全局 SCSS 暗色主题（CSS 变量 + Element Plus 覆盖）
 
-### Phase 2：核心浏览（1-1.5 天）
+### Phase 2：核心浏览（1-1.5 天）✅ 已完成 (2026-02-25)
 
-- 首页（高分电影 + 统计概览 + 类型标签云）
-- 搜索结果页（电影/影人双 Tab）
-- 电影筛选页（类型/年代/评分筛选）
-- 电影详情页（信息 + 演职人员 + 偏好操作）
-- 影人详情页（信息 + 作品列表 + 合作者）
+- ✅ 通用组件：MovieCard（封面+评分+hover 动效）、MovieList（响应式网格）、PersonCard（头像+角色）
+- ✅ 首页（Hero 搜索框 + 统计概览 13.6 万电影/19.8 万影人 + 32 个类型标签云 + 高分电影卡片）
+- ✅ 搜索结果页（电影/影人双 Tab + 分页器）
+- ✅ 电影筛选页（类型标签选择 + 年代 Slider + 评分 Slider + 重置 + 94480 部电影网格）
+- ✅ 电影详情页（海报 + 评分星级 + 剧情简介 + 导演/演员列表 + 喜欢/想看/评分/图谱/豆瓣链接）
+- ✅ 影人详情页（基本信息 + 统计徽章 + 作品列表全部/导演/演员 Tab + 合作者网格）
+- ✅ **补充**：后端图片代理 `/api/proxy/image`（解决豆瓣 CDN Referer 防盗链 418 问题）
+- ✅ **补充**：前端 `utils/image.js` proxyImage 工具函数
 
 ### Phase 3：图谱可视化（1 天）
 
@@ -334,9 +342,8 @@ db-frontend/
 ### Phase 4：用户系统 + 收尾（0.5-1 天）
 
 - 登录 / 注册页
-- Axios Token 拦截器
 - 个人中心（偏好/评分管理）
-- 统计看板（6 个图表）
+- 统计看板（6 个 ECharts 图表）
 - 全局 loading / 错误处理 / 响应式适配
 - 联调测试
 
@@ -381,8 +388,9 @@ db-frontend/
 | 统计 | GET    | `/api/stats/top-actors`              | 统计页            |
 | 统计 | GET    | `/api/stats/top-directors`           | 统计页            |
 | 统计 | GET    | `/api/stats/rating-distribution`     | 统计页            |
+| 代理 | GET    | `/api/proxy/image?url={url}`         | 全局（图片代理）  |
 
-共计 **33 个 API** 对接。
+共计 **34 个 API** 对接（含 1 个图片代理接口）。
 
 ---
 
