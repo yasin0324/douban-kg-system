@@ -33,7 +33,7 @@ from proxy_manager import ProxyManager
 
 # ================= CONFIGURATION =================
 # DEVICE CONFIGURATION
-IPS_PER_BATCH = 30     
+IPS_PER_BATCH = 50     
 WORKERS_PER_IP = 10    
 MAX_IP_LIFE_SECONDS = 4500  # 1 hour max (backup safeguard, errors auto-retire IP earlier)
 MAX_CONSECUTIVE_ERRORS = 6  # If IP fails 6 times in a row, retire it
@@ -287,8 +287,9 @@ def save_person_to_database(data):
 
 async def async_extract_person_data(page, person_id):
     """
-    Extract person data from Douban celebrity page.
-    URL format: https://movie.douban.com/celebrity/{person_id}/
+    Extract person data from Douban personage page.
+    URL format: https://www.douban.com/personage/{person_id}/
+    Supports both old (#headline .info) and new (section) page layouts.
     """
     try:
         # Wait for content to load
@@ -319,53 +320,63 @@ async def async_extract_person_data(page, person_id):
         except:
             data['name'] = None
         
-        # Get all info items from the info block
-        info_text = await get_text('#headline .info')
+        # Get info text from multiple possible selectors (old and new layout)
+        info_text = None
+        for selector in ['#headline .info', 'section', '#content']:
+            info_text = await get_text(selector)
+            if info_text and ('\u6027\u522b' in info_text or '\u51fa\u751f' in info_text or '\u804c\u4e1a' in info_text):
+                break
+            info_text = None
         
         if info_text:
             lines = info_text.split('\n')
             for line in lines:
                 line = line.strip()
+                if not line:
+                    continue
                 
                 # Sex
-                if '性别:' in line or '性别：' in line:
-                    sex = line.replace('性别:', '').replace('性别：', '').strip()
-                    if '男' in sex:
-                        data['sex'] = '男'
-                    elif '女' in sex:
-                        data['sex'] = '女'
+                if '\u6027\u522b:' in line or '\u6027\u522b\uff1a' in line:
+                    sex = line.replace('\u6027\u522b:', '').replace('\u6027\u522b\uff1a', '').strip()
+                    if '\u7537' in sex:
+                        data['sex'] = '\u7537'
+                    elif '\u5973' in sex:
+                        data['sex'] = '\u5973'
                     else:
                         data['sex'] = None
                 
-                # English name
-                elif '外文名:' in line or '外文名：' in line or '英文名:' in line or '英文名：' in line:
-                    name_en = line.replace('外文名:', '').replace('外文名：', '')
-                    name_en = name_en.replace('英文名:', '').replace('英文名：', '').strip()
+                # English name / Foreign name (check 更多外文名 first to avoid substring match)
+                elif '\u66f4\u591a\u5916\u6587\u540d:' in line or '\u66f4\u591a\u5916\u6587\u540d\uff1a' in line:
+                    # "更多外文名" - store separately, don't overwrite name_en
+                    pass
+                elif '\u5916\u6587\u540d:' in line or '\u5916\u6587\u540d\uff1a' in line or '\u82f1\u6587\u540d:' in line or '\u82f1\u6587\u540d\uff1a' in line:
+                    name_en = line.replace('\u5916\u6587\u540d:', '').replace('\u5916\u6587\u540d\uff1a', '')
+                    name_en = name_en.replace('\u82f1\u6587\u540d:', '').replace('\u82f1\u6587\u540d\uff1a', '').strip()
                     data['name_en'] = name_en if name_en else None
                 
                 # More Chinese names
-                elif '更多中文名:' in line or '更多中文名：' in line:
-                    name_zh = line.replace('更多中文名:', '').replace('更多中文名：', '').strip()
+                elif '\u66f4\u591a\u4e2d\u6587\u540d:' in line or '\u66f4\u591a\u4e2d\u6587\u540d\uff1a' in line:
+                    name_zh = line.replace('\u66f4\u591a\u4e2d\u6587\u540d:', '').replace('\u66f4\u591a\u4e2d\u6587\u540d\uff1a', '').strip()
                     data['name_zh'] = name_zh if name_zh else None
                 
                 # Birth date
-                elif '出生日期:' in line or '出生日期：' in line:
-                    birth_str = line.replace('出生日期:', '').replace('出生日期：', '').strip()
+                elif '\u51fa\u751f\u65e5\u671f:' in line or '\u51fa\u751f\u65e5\u671f\uff1a' in line:
+                    birth_str = line.replace('\u51fa\u751f\u65e5\u671f:', '').replace('\u51fa\u751f\u65e5\u671f\uff1a', '').strip()
                     data['birth'] = validator.str_to_date(validator.match_date(birth_str))
                 
                 # Death date
-                elif '死亡日期:' in line or '死亡日期：' in line:
-                    death_str = line.replace('死亡日期:', '').replace('死亡日期：', '').strip()
+                elif '\u6b7b\u4ea1\u65e5\u671f:' in line or '\u6b7b\u4ea1\u65e5\u671f\uff1a' in line:
+                    death_str = line.replace('\u6b7b\u4ea1\u65e5\u671f:', '').replace('\u6b7b\u4ea1\u65e5\u671f\uff1a', '').strip()
                     data['death'] = validator.str_to_date(validator.match_date(death_str))
                 
                 # Birthplace
-                elif '出生地:' in line or '出生地：' in line:
-                    birthplace = line.replace('出生地:', '').replace('出生地：', '').strip()
+                elif '\u51fa\u751f\u5730:' in line or '\u51fa\u751f\u5730\uff1a' in line:
+                    birthplace = line.replace('\u51fa\u751f\u5730:', '').replace('\u51fa\u751f\u5730\uff1a', '').strip()
                     data['birthplace'] = birthplace if birthplace else None
                 
                 # Profession
-                elif '职业:' in line or '职业：' in line:
-                    profession = line.replace('职业:', '').replace('职业：', '').strip()
+                elif '\u804c\u4e1a:' in line or '\u804c\u4e1a\uff1a' in line:
+                    profession = line.replace('\u804c\u4e1a:', '').replace('\u804c\u4e1a\uff1a', '').strip()
                     data['profession'] = profession if profession else None
         
         # Set defaults for missing fields
@@ -373,20 +384,34 @@ async def async_extract_person_data(page, person_id):
             if field not in data:
                 data[field] = None
         
-        # Biography - try to get full version first, then short version
+        # Biography - try multiple selectors for both old and new layout
         try:
-            # Try to get the full biography (hidden by default)
-            bio = await get_text('div#intro .bd .all')
-            if not bio:
-                # Try short version
-                bio = await get_text('div#intro .bd span.short')
-                if not bio:
-                    # Try direct content
-                    bio = await get_text('div#intro .bd')
+            bio = None
+            for bio_selector in [
+                'div#intro .bd .all',          # old layout: full bio
+                'div#intro .bd span.short',    # old layout: short bio
+                'div#intro .bd',               # old layout: direct
+                'section:has-text("\u4eba\u7269\u7b80\u4ecb")',   # new layout
+            ]:
+                bio = await get_text(bio_selector)
+                if bio and len(bio) > 20:
+                    break
+                bio = None
             
             if bio:
-                # Clean up biography text
-                bio = bio.replace('(展开全部)', '').replace('展开全部', '').strip()
+                # Clean up: remove section headers and UI text
+                for noise in ['\u4eba\u7269\u7b80\u4ecb', '(\u5c55\u5f00\u5168\u90e8)', '\u5c55\u5f00\u5168\u90e8', '(\u5c55\u5f00)', '\u5c55\u5f00',
+                              '\u56fe\u7247', '\u83b7\u5956\u60c5\u51b5', '\u6700\u8fd1\u76845\u90e8\u4f5c\u54c1', '\u6536\u85cf\u4eba\u6570\u6700\u591a\u76845\u90e8\u4f5c\u54c1']:
+                    bio = bio.replace(noise, '')
+                # Remove dot separators like · · · · · · (varying counts and spacing)
+                bio = re.sub(r'[\u00b7\u2027\u30fb\xb7·\s]+$', '', bio)  # trailing dots
+                bio = re.sub(r'^[\u00b7\u2027\u30fb\xb7·\s]+', '', bio)  # leading dots
+                bio = bio.strip()
+                # Only keep the first paragraph (before other sections)
+                if '\u56fe\u7247' in bio:
+                    bio = bio.split('\u56fe\u7247')[0].strip()
+                if '\u83b7\u5956' in bio:
+                    bio = bio.split('\u83b7\u5956')[0].strip()
                 data['biography'] = bio if bio else None
             else:
                 data['biography'] = None
@@ -485,6 +510,17 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                             await loop.run_in_executor(None, release_person_task, person_id)
                             q.put_nowait(person_id)
                             raise e
+                        
+                        # Handle sec.douban.com security redirect
+                        if 'sec.douban.com' in page.url:
+                            try:
+                                await page.wait_for_url('**/personage/**', timeout=15000)
+                            except:
+                                # Redirect didn't complete, retry this task
+                                consecutive_errors += 1
+                                await loop.run_in_executor(None, release_person_task, person_id)
+                                q.put_nowait(person_id)
+                                continue
                         
                         status = response.status
                         if status in [403, 429]:
