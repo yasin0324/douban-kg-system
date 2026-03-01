@@ -109,7 +109,7 @@ def import_movies(driver, mysql_cursor):
     total = mysql_cursor.fetchone()['cnt']
 
     mysql_cursor.execute("""
-        SELECT douban_id, name, type, douban_score, release_date, cover, year,
+        SELECT douban_id, name, type, douban_score, douban_votes, release_date, cover, year,
                regions, languages, mins, storyline, alias
         FROM movies
     """)
@@ -124,6 +124,7 @@ def import_movies(driver, mysql_cursor):
             'title': row['name'],
             'content_type': row.get('type', 'movie'),
             'rating': float(row['douban_score']) if row.get('douban_score') else None,
+            'votes': int(row['douban_votes']) if row.get('douban_votes') else None,
             'release_date': str(row['release_date']) if row.get('release_date') else None,
             'cover': row.get('cover'),
             'year': row.get('year'),
@@ -160,6 +161,7 @@ def _insert_movie_batch(driver, batch):
     SET movie.title = m.title,
         movie.content_type = m.content_type,
         movie.rating = m.rating,
+        movie.votes = m.votes,
         movie.release_date = m.release_date,
         movie.cover = m.cover,
         movie.year = m.year,

@@ -28,22 +28,25 @@ def genres(session=Depends(get_neo4j_session)):
 def top(
     genre: str = Query(None),
     limit: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("weighted", description="排序方式: weighted/rating/votes"),
     session=Depends(get_neo4j_session),
 ):
-    return movie_service.get_top_movies(session, genre, limit)
+    return movie_service.get_top_movies(session, genre, limit, sort_by)
 
 
 @router.get("/filter", summary="多条件筛选")
 def filter_movies(
     genre: str = Query(None),
+    content_type: str = Query(None, description="内容类型: movie/tv"),
     year_from: int = Query(None),
     year_to: int = Query(None),
     rating_min: float = Query(None),
+    sort_by: str = Query("weighted", description="排序方式: weighted/rating/votes"),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     session=Depends(get_neo4j_session),
 ):
-    return movie_service.filter_movies(session, genre, year_from, year_to, rating_min, page, size)
+    return movie_service.filter_movies(session, genre, content_type, year_from, year_to, rating_min, page, size, sort_by)
 
 
 @router.get("/{mid}", summary="电影详情")

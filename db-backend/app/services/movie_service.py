@@ -97,26 +97,36 @@ def get_movie_credits(session, mid: str) -> Optional[dict]:
     return {"mid": record["mid"], "directors": directors, "actors": actors}
 
 
-def get_top_movies(session, genre: str = None, limit: int = 20) -> list:
-    """高分电影排行"""
+def get_top_movies(session, genre: str = None, limit: int = 20, sort_by: str = "weighted") -> list:
+    """高分电影排行（支持加权排序）"""
+    # 排序子句
+    if sort_by == "votes":
+        order_clause = "ORDER BY m.votes DESC"
+    elif sort_by == "rating":
+        order_clause = "ORDER BY m.rating DESC"
+    else:  # weighted (贝叶斯加权)
+        order_clause = "ORDER BY (50000 * 7.0 + coalesce(m.votes, 0) * m.rating) / (50000 + coalesce(m.votes, 0)) DESC"
+
     if genre:
         result = session.run(
-            """
-            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre {name: $genre})
+            f"""
+            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre {{name: $genre}})
             WHERE m.rating IS NOT NULL
-            RETURN m.mid AS mid, m.title AS title, m.rating AS rating, m.year AS year, m.cover AS cover
-            ORDER BY m.rating DESC
+            RETURN m.mid AS mid, m.title AS title, m.rating AS rating,
+                   m.votes AS votes, m.year AS year, m.cover AS cover
+            {order_clause}
             LIMIT $limit
             """,
             genre=genre, limit=limit,
         )
     else:
         result = session.run(
-            """
+            f"""
             MATCH (m:Movie)
             WHERE m.rating IS NOT NULL
-            RETURN m.mid AS mid, m.title AS title, m.rating AS rating, m.year AS year, m.cover AS cover
-            ORDER BY m.rating DESC
+            RETURN m.mid AS mid, m.title AS title, m.rating AS rating,
+                   m.votes AS votes, m.year AS year, m.cover AS cover
+            {order_clause}
             LIMIT $limit
             """,
             limit=limit,
@@ -133,13 +143,15 @@ def get_genres(session) -> list:
 def filter_movies(
     session,
     genre: str = None,
+    content_type: str = None,
     year_from: int = None,
     year_to: int = None,
     rating_min: float = None,
     page: int = 1,
     size: int = 20,
+    sort_by: str = "weighted",
 ) -> dict:
-    """多条件筛选电影"""
+    """多条件筛选电影（支持贝叶斯加权排序）"""
     conditions = ["m.rating IS NOT NULL"]
     params: dict = {"skip": (page - 1) * size, "limit": size}
 
@@ -147,6 +159,9 @@ def filter_movies(
     if genre:
         match_clause = "MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre {name: $genre})"
         params["genre"] = genre
+    if content_type:
+        conditions.append("m.content_type = $content_type")
+        params["content_type"] = content_type
     if year_from:
         conditions.append("m.year >= $year_from")
         params["year_from"] = year_from
@@ -159,6 +174,14 @@ def filter_movies(
 
     where = " AND ".join(conditions)
 
+    # 排序子句
+    if sort_by == "votes":
+        order_clause = "ORDER BY m.votes DESC"
+    elif sort_by == "rating":
+        order_clause = "ORDER BY m.rating DESC"
+    else:  # weighted（贝叶斯加权，默认）
+        order_clause = "ORDER BY (50000 * 7.0 + coalesce(m.votes, 0) * m.rating) / (50000 + coalesce(m.votes, 0)) DESC"
+
     # 获取总数
     count_q = f"{match_clause} WHERE {where} RETURN count(m) AS total"
     total = session.run(count_q, **params).single()["total"]
@@ -166,8 +189,9 @@ def filter_movies(
     # 获取分页数据
     data_q = (
         f"{match_clause} WHERE {where} "
-        "RETURN m.mid AS mid, m.title AS title, m.rating AS rating, m.year AS year, m.cover AS cover "
-        "ORDER BY m.rating DESC SKIP $skip LIMIT $limit"
+        "RETURN m.mid AS mid, m.title AS title, m.rating AS rating, "
+        "m.votes AS votes, m.year AS year, m.cover AS cover "
+        f"{order_clause} SKIP $skip LIMIT $limit"
     )
     items = [dict(r) for r in session.run(data_q, **params)]
 

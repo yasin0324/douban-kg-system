@@ -9,8 +9,10 @@ const router = useRouter();
 
 // 筛选条件
 const selectedGenre = ref(route.query.genre || "");
+const contentType = ref("");
 const yearRange = ref([1950, 2026]);
 const ratingMin = ref(0);
+const sortBy = ref("weighted");
 const genres = ref([]);
 
 // 结果
@@ -38,8 +40,10 @@ const fetchMovies = async () => {
         const params = {
             page: page.value,
             size: pageSize,
+            sort_by: sortBy.value,
         };
         if (selectedGenre.value) params.genre = selectedGenre.value;
+        if (contentType.value) params.content_type = contentType.value;
         if (yearRange.value[0] > 1950) params.year_from = yearRange.value[0];
         if (yearRange.value[1] < 2026) params.year_to = yearRange.value[1];
         if (ratingMin.value > 0) params.rating_min = ratingMin.value;
@@ -76,8 +80,10 @@ const selectGenre = (genre) => {
 // 重置筛选
 const resetFilters = () => {
     selectedGenre.value = "";
+    contentType.value = "";
     yearRange.value = [1950, 2026];
     ratingMin.value = 0;
+    sortBy.value = "weighted";
     handleFilter();
 };
 </script>
@@ -104,6 +110,22 @@ const resetFilters = () => {
                         {{ genre }}
                     </el-tag>
                 </div>
+            </div>
+
+            <!-- 形式筛选 -->
+            <div class="filter-group">
+                <label class="filter-label">形式</label>
+                <el-radio-group
+                    v-model="contentType"
+                    size="small"
+                    @change="handleFilter"
+                >
+                    <el-radio-button label="">全部</el-radio-button>
+                    <el-radio-button label="movie"
+                        >电影 (Movie)</el-radio-button
+                    >
+                    <el-radio-button label="tv">剧集 (TV)</el-radio-button>
+                </el-radio-group>
             </div>
 
             <!-- 年代范围 -->
@@ -138,6 +160,19 @@ const resetFilters = () => {
             </div>
 
             <div class="filter-actions">
+                <div class="sort-wrap">
+                    <label class="filter-label sort-label">排序</label>
+                    <el-select
+                        v-model="sortBy"
+                        size="small"
+                        style="width: 130px"
+                        @change="handleFilter"
+                    >
+                        <el-option label="🏆 加权推荐" value="weighted" />
+                        <el-option label="⭐ 评分最高" value="rating" />
+                        <el-option label="💬 最多人评" value="votes" />
+                    </el-select>
+                </div>
                 <el-button @click="resetFilters" size="small"
                     >重置筛选</el-button
                 >
@@ -202,6 +237,19 @@ const resetFilters = () => {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.sort-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.sort-label {
+    margin-bottom: 0;
+    white-space: nowrap;
 }
 
 .result-count {
