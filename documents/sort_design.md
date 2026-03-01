@@ -52,3 +52,10 @@ ORDER BY score DESC
     2. ⭐ 评分最高 (`rating`)
     3. 💬 最多人评 (`votes`)
 - 绑定了 API 调用动态切换，提升了用户体验，让用户可以在探索“绝对经典”和“小众高分”中自由切换。
+
+## 🎬 扩展：内容形式 (content_type) 筛选
+
+针对系统中不仅有电影，还有电视剧、综艺、纪录片等情况，我们在电影库中加入了按**内容形式**筛选的功能。
+
+- **后端改动**：在 `movie_service.py` 和 `routers/movies.py` 的 `/filter` 接口新增 `content_type` 参数，并在 Cypher 语句中拼接 `m.content_type = $content_type` 条件。
+- **前端改动**：在 `MovieFilterView.vue` 加入 `el-radio-group`，提供 `全部`、`电影 (Movie)`、`剧集 (TV)` 三个单选框。用户点击即可筛选出纯电影榜单或纯电视剧榜单。
