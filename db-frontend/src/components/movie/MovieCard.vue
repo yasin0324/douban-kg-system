@@ -32,6 +32,9 @@ const defaultCover =
                 <span class="star">★</span>
                 <span>{{ movie.rating.toFixed(1) }}</span>
             </div>
+            <div class="card-rating no-rating" v-else>
+                <span>暂无评分</span>
+            </div>
         </div>
         <div class="card-info">
             <h3 class="card-title" :title="movie.title">{{ movie.title }}</h3>
@@ -101,6 +104,13 @@ const defaultCover =
 
     .star {
         font-size: 0.7rem;
+    }
+
+    &.no-rating {
+        color: var(--text-muted);
+        background: rgba(0, 0, 0, 0.6);
+        font-weight: normal;
+        font-size: 0.75rem;
     }
 }
 

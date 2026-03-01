@@ -163,6 +163,9 @@ watch(() => route.params.mid, fetchMovie);
                             :colors="['#ffc107', '#ffc107', '#ffc107']"
                         />
                     </div>
+                    <div class="rating-section" v-else>
+                        <span class="rating-score no-score">暂无评分</span>
+                    </div>
 
                     <!-- 剧情简介 -->
                     <div class="storyline" v-if="movie.storyline">
@@ -318,6 +321,12 @@ watch(() => route.params.mid, fetchMovie);
     font-weight: 800;
     color: var(--color-rating);
     line-height: 1;
+
+    &.no-score {
+        font-size: 1.5rem;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
 }
 
 .storyline {

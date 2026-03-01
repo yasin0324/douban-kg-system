@@ -152,7 +152,7 @@ def filter_movies(
     sort_by: str = "weighted",
 ) -> dict:
     """多条件筛选电影（支持贝叶斯加权排序）"""
-    conditions = ["m.rating IS NOT NULL"]
+    conditions = []
     params: dict = {"skip": (page - 1) * size, "limit": size}
 
     match_clause = "MATCH (m:Movie)"
@@ -172,23 +172,23 @@ def filter_movies(
         conditions.append("m.rating >= $rating_min")
         params["rating_min"] = rating_min
 
-    where = " AND ".join(conditions)
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     # 排序子句
     if sort_by == "votes":
-        order_clause = "ORDER BY m.votes DESC"
+        order_clause = "ORDER BY coalesce(m.votes, 0) DESC"
     elif sort_by == "rating":
-        order_clause = "ORDER BY m.rating DESC"
+        order_clause = "ORDER BY coalesce(m.rating, 0) DESC"
     else:  # weighted（贝叶斯加权，默认）
-        order_clause = "ORDER BY (50000 * 7.0 + coalesce(m.votes, 0) * m.rating) / (50000 + coalesce(m.votes, 0)) DESC"
+        order_clause = "ORDER BY (50000 * 7.0 + coalesce(m.votes, 0) * coalesce(m.rating, 0)) / (50000 + coalesce(m.votes, 0)) DESC"
 
     # 获取总数
-    count_q = f"{match_clause} WHERE {where} RETURN count(m) AS total"
+    count_q = f"{match_clause} {where_clause} RETURN count(m) AS total"
     total = session.run(count_q, **params).single()["total"]
 
     # 获取分页数据
     data_q = (
-        f"{match_clause} WHERE {where} "
+        f"{match_clause} {where_clause} "
         "RETURN m.mid AS mid, m.title AS title, m.rating AS rating, "
         "m.votes AS votes, m.year AS year, m.cover AS cover "
         f"{order_clause} SKIP $skip LIMIT $limit"
