@@ -7,15 +7,20 @@ ALLOWED_REL_TYPES = {"DIRECTED", "ACTED_IN", "HAS_GENRE"}
 
 
 def _safe_run(session, query: str, timeout_ms: int | None = None, **params):
-    """优先使用事务超时，驱动不支持时回退到普通查询。"""
-    if timeout_ms:
-        timeout_seconds = max(timeout_ms, 100) / 1000
-        try:
-            with session.begin_transaction(timeout=timeout_seconds) as tx:
-                return list(tx.run(query, **params))
-        except TypeError:
-            pass
-    return list(session.run(query, **params))
+    """优先使用事务超时，驱动不支持时回退到普通查询。捕获超时等异常返回空列表。"""
+    try:
+        if timeout_ms:
+            timeout_seconds = max(timeout_ms, 100) / 1000
+            try:
+                with session.begin_transaction(timeout=timeout_seconds) as tx:
+                    return list(tx.run(query, **params))
+            except TypeError:
+                pass
+        return list(session.run(query, **params))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"图谱查询异常: {e}")
+        return []
 
 
 def _to_node_payload(node):
@@ -119,17 +124,33 @@ def get_movie_graph(
     depth = min(max(depth, 1), 2)
     node_limit = min(max(node_limit, 1), 500)
     edge_limit = min(max(edge_limit, 1), 1000)
-    timeout_ms = min(max(timeout_ms, 100), 3000)
+    timeout_ms = min(max(timeout_ms, 100), 10000)
+    if depth == 2 and timeout_ms < 5000:
+        timeout_ms = 5000
 
     start_time = time.time()
+
+    # 使用分步查询避免路径爆炸
     query = f"""
     MATCH (m:Movie {{mid: $mid}})
-    OPTIONAL MATCH path = (m)-[*1..{depth}]-(n)
-    WHERE (n:Movie OR n:Person OR n:Genre)
-      AND ALL(rel IN relationships(path) WHERE type(rel) IN ['DIRECTED', 'ACTED_IN', 'HAS_GENRE'])
-    WITH m, [p IN collect(DISTINCT path) WHERE p IS NOT NULL] AS paths
-    RETURN m, paths
-    """
+    OPTIONAL MATCH (m)-[r1]-(n1)
+    WHERE (n1:Movie OR n1:Person OR n1:Genre)
+      AND type(r1) IN ['DIRECTED', 'ACTED_IN', 'HAS_GENRE']
+    WITH m, collect(DISTINCT {{node: n1, rel: r1}})[..{node_limit}] AS hop1
+    UNWIND hop1 AS h1
+    WITH m, h1.node AS n1, h1.rel AS r1, hop1
+    """ + (f"""
+    OPTIONAL MATCH (n1)-[r2]-(n2)
+    WHERE (n2:Movie OR n2:Person OR n2:Genre)
+      AND type(r2) IN ['DIRECTED', 'ACTED_IN', 'HAS_GENRE']
+      AND n2 <> m
+    WITH m, n1, r1, collect(DISTINCT {{node: n2, rel: r2}})[..10] AS hop2
+    RETURN m, collect(DISTINCT {{node: n1, rel: r1}}) AS edges1,
+           reduce(acc = [], h2 IN collect(hop2) | acc + h2) AS edges2
+    """ if depth == 2 else """
+    RETURN m, collect(DISTINCT {node: n1, rel: r1}) AS edges1, [] AS edges2
+    """)
+
     records = _safe_run(session, query, timeout_ms=timeout_ms, mid=mid)
     if not records:
         return _empty_graph(depth, start_time)
@@ -146,8 +167,48 @@ def get_movie_graph(
         center_id, center_node = center_payload
         nodes_map[center_id] = center_node
 
-    for path in record.get("paths", []):
-        _add_path_to_graph(path, nodes_map, edges_set)
+    # 处理 1 跳
+    for item in record.get("edges1", []):
+        node = item.get("node") if item else None
+        rel = item.get("rel") if item else None
+        if node is None or rel is None:
+            continue
+        node_payload = _to_node_payload(node)
+        if not node_payload:
+            continue
+        nid, npayload = node_payload
+        nodes_map[nid] = npayload
+        # 提取关系
+        rel_type = getattr(rel, "type", None)
+        if rel_type and rel_type in ALLOWED_REL_TYPES:
+            start_node = getattr(rel, "start_node", None)
+            end_node = getattr(rel, "end_node", None)
+            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
+            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            if sp and ep:
+                edges_set.add((sp[0], ep[0], rel_type))
+            elif center_payload:
+                edges_set.add((center_payload[0], nid, rel_type))
+
+    # 处理 2 跳
+    for item in record.get("edges2", []):
+        node = item.get("node") if item else None
+        rel = item.get("rel") if item else None
+        if node is None or rel is None:
+            continue
+        node_payload = _to_node_payload(node)
+        if not node_payload:
+            continue
+        nid, npayload = node_payload
+        nodes_map[nid] = npayload
+        rel_type = getattr(rel, "type", None)
+        if rel_type and rel_type in ALLOWED_REL_TYPES:
+            start_node = getattr(rel, "start_node", None)
+            end_node = getattr(rel, "end_node", None)
+            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
+            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            if sp and ep:
+                edges_set.add((sp[0], ep[0], rel_type))
 
     return _finalize_graph(nodes_map, edges_set, depth, start_time, node_limit, edge_limit)
 
@@ -164,17 +225,32 @@ def get_person_graph(
     depth = min(max(depth, 1), 2)
     node_limit = min(max(node_limit, 1), 500)
     edge_limit = min(max(edge_limit, 1), 1000)
-    timeout_ms = min(max(timeout_ms, 100), 3000)
+    timeout_ms = min(max(timeout_ms, 100), 10000)
+    if depth == 2 and timeout_ms < 5000:
+        timeout_ms = 5000
 
     start_time = time.time()
+
     query = f"""
     MATCH (p:Person {{pid: $pid}})
-    OPTIONAL MATCH path = (p)-[*1..{depth}]-(n)
-    WHERE (n:Movie OR n:Person OR n:Genre)
-      AND ALL(rel IN relationships(path) WHERE type(rel) IN ['DIRECTED', 'ACTED_IN', 'HAS_GENRE'])
-    WITH p, [p0 IN collect(DISTINCT path) WHERE p0 IS NOT NULL] AS paths
-    RETURN p, paths
-    """
+    OPTIONAL MATCH (p)-[r1]-(n1)
+    WHERE (n1:Movie OR n1:Person OR n1:Genre)
+      AND type(r1) IN ['DIRECTED', 'ACTED_IN', 'HAS_GENRE']
+    WITH p, collect(DISTINCT {{node: n1, rel: r1}})[..{node_limit}] AS hop1
+    UNWIND hop1 AS h1
+    WITH p, h1.node AS n1, h1.rel AS r1, hop1
+    """ + (f"""
+    OPTIONAL MATCH (n1)-[r2]-(n2)
+    WHERE (n2:Movie OR n2:Person OR n2:Genre)
+      AND type(r2) IN ['DIRECTED', 'ACTED_IN', 'HAS_GENRE']
+      AND n2 <> p
+    WITH p, n1, r1, collect(DISTINCT {{node: n2, rel: r2}})[..10] AS hop2
+    RETURN p, collect(DISTINCT {{node: n1, rel: r1}}) AS edges1,
+           reduce(acc = [], h2 IN collect(hop2) | acc + h2) AS edges2
+    """ if depth == 2 else """
+    RETURN p, collect(DISTINCT {node: n1, rel: r1}) AS edges1, [] AS edges2
+    """)
+
     records = _safe_run(session, query, timeout_ms=timeout_ms, pid=pid)
     if not records:
         return _empty_graph(depth, start_time)
@@ -191,8 +267,47 @@ def get_person_graph(
         center_id, center_node = center_payload
         nodes_map[center_id] = center_node
 
-    for path in record.get("paths", []):
-        _add_path_to_graph(path, nodes_map, edges_set)
+    # 处理 1 跳
+    for item in record.get("edges1", []):
+        node = item.get("node") if item else None
+        rel = item.get("rel") if item else None
+        if node is None or rel is None:
+            continue
+        node_payload = _to_node_payload(node)
+        if not node_payload:
+            continue
+        nid, npayload = node_payload
+        nodes_map[nid] = npayload
+        rel_type = getattr(rel, "type", None)
+        if rel_type and rel_type in ALLOWED_REL_TYPES:
+            start_node = getattr(rel, "start_node", None)
+            end_node = getattr(rel, "end_node", None)
+            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
+            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            if sp and ep:
+                edges_set.add((sp[0], ep[0], rel_type))
+            elif center_payload:
+                edges_set.add((center_payload[0], nid, rel_type))
+
+    # 处理 2 跳
+    for item in record.get("edges2", []):
+        node = item.get("node") if item else None
+        rel = item.get("rel") if item else None
+        if node is None or rel is None:
+            continue
+        node_payload = _to_node_payload(node)
+        if not node_payload:
+            continue
+        nid, npayload = node_payload
+        nodes_map[nid] = npayload
+        rel_type = getattr(rel, "type", None)
+        if rel_type and rel_type in ALLOWED_REL_TYPES:
+            start_node = getattr(rel, "start_node", None)
+            end_node = getattr(rel, "end_node", None)
+            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
+            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            if sp and ep:
+                edges_set.add((sp[0], ep[0], rel_type))
 
     return _finalize_graph(nodes_map, edges_set, depth, start_time, node_limit, edge_limit)
 

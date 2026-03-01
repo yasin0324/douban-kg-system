@@ -15,7 +15,7 @@ def movie_graph(
     depth: int = Query(1, ge=1, le=2),
     node_limit: int = Query(150, ge=1, le=500),
     edge_limit: int = Query(300, ge=1, le=1000),
-    timeout_ms: int = Query(1200, ge=100, le=3000),
+    timeout_ms: int = Query(1200, ge=100, le=10000),
     session=Depends(get_neo4j_session),
 ):
     return graph_service.get_movie_graph(session, mid, depth, node_limit, edge_limit, timeout_ms)
@@ -27,7 +27,7 @@ def person_graph(
     depth: int = Query(1, ge=1, le=2),
     node_limit: int = Query(150, ge=1, le=500),
     edge_limit: int = Query(300, ge=1, le=1000),
-    timeout_ms: int = Query(1200, ge=100, le=3000),
+    timeout_ms: int = Query(1200, ge=100, le=10000),
     session=Depends(get_neo4j_session),
 ):
     return graph_service.get_person_graph(session, pid, depth, node_limit, edge_limit, timeout_ms)
