@@ -266,6 +266,10 @@ watch(() => route.params.mid, fetchMovie);
 </template>
 
 <style scoped lang="scss">
+.movie-detail {
+    padding-top: var(--space-xl);
+}
+
 .detail-header {
     display: flex;
     gap: var(--space-xl);

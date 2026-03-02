@@ -388,6 +388,10 @@ const pathLength = computed(() => meta.value?.depth || 0);
 </template>
 
 <style scoped lang="scss">
+.path-view {
+    padding-top: var(--space-xl);
+}
+
 .page-desc {
     color: var(--text-secondary);
     margin-bottom: var(--space-lg);

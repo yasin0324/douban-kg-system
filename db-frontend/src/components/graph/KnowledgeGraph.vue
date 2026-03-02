@@ -1,6 +1,9 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, computed } from "vue";
 import * as echarts from "echarts";
+import { useThemeStore } from "@/stores/theme";
+
+const themeStore = useThemeStore();
 
 const props = defineProps({
     nodes: { type: Array, default: () => [] },
@@ -88,7 +91,13 @@ const buildOption = () => {
             category: n.type,
             itemStyle: {
                 color: color,
-                borderColor: isCenter ? "#fff" : "rgba(255,255,255,0.2)",
+                borderColor: isCenter
+                    ? themeStore.isDark
+                        ? "#fff"
+                        : "#333"
+                    : themeStore.isDark
+                      ? "rgba(255,255,255,0.2)"
+                      : "rgba(0,0,0,0.15)",
                 borderWidth: isCenter ? 3 : 1,
                 shadowBlur: isCenter ? 20 : 0,
                 shadowColor: isCenter ? color : "transparent",
@@ -96,7 +105,7 @@ const buildOption = () => {
             label: {
                 show: isCenter || size > 25,
                 fontSize: isCenter ? 14 : 11,
-                color: "#e8e8e8",
+                color: themeStore.isDark ? "#e8e8e8" : "#1d1d1f",
                 fontWeight: isCenter ? "bold" : "normal",
             },
             // 附加数据用于 tooltip 和 click
@@ -128,7 +137,9 @@ const buildOption = () => {
         source: e.source,
         target: e.target,
         lineStyle: {
-            color: "rgba(255,255,255,0.12)",
+            color: themeStore.isDark
+                ? "rgba(255,255,255,0.12)"
+                : "rgba(0,0,0,0.15)",
             width: 1.5,
             curveness: 0.1,
         },
@@ -136,7 +147,9 @@ const buildOption = () => {
             show: edgeMap.size <= 40,
             formatter: e._labels.join("/"),
             fontSize: 10,
-            color: "rgba(255,255,255,0.4)",
+            color: themeStore.isDark
+                ? "rgba(255,255,255,0.4)"
+                : "rgba(0,0,0,0.45)",
         },
         _relType: e._relType,
     }));
@@ -159,9 +172,16 @@ const buildOption = () => {
         backgroundColor: "transparent",
         tooltip: {
             trigger: "item",
-            backgroundColor: "rgba(22,33,62,0.95)",
-            borderColor: "rgba(255,255,255,0.15)",
-            textStyle: { color: "#e8e8e8", fontSize: 13 },
+            backgroundColor: themeStore.isDark
+                ? "rgba(22,33,62,0.95)"
+                : "rgba(255,255,255,0.95)",
+            borderColor: themeStore.isDark
+                ? "rgba(255,255,255,0.15)"
+                : "rgba(0,0,0,0.12)",
+            textStyle: {
+                color: themeStore.isDark ? "#e8e8e8" : "#1d1d1f",
+                fontSize: 13,
+            },
             formatter: (params) => {
                 if (params.dataType === "node") {
                     const raw = params.data._raw;
@@ -172,7 +192,8 @@ const buildOption = () => {
                             : raw.type === "Person"
                               ? "🧑 影人"
                               : "🏷️ 类型";
-                    html += `<br/><span style="color:#a0a0b0">${typeLabel}</span>`;
+                    const subColor = themeStore.isDark ? "#a0a0b0" : "#6e6e73";
+                    html += `<br/><span style="color:${subColor}">${typeLabel}</span>`;
                     if (raw.properties?.rating) {
                         html += `<br/>⭐ 评分: ${raw.properties.rating}`;
                     }
@@ -225,7 +246,9 @@ const buildOption = () => {
                     },
                     lineStyle: {
                         width: 3,
-                        color: "rgba(255,255,255,0.5)",
+                        color: themeStore.isDark
+                            ? "rgba(255,255,255,0.5)"
+                            : "rgba(0,0,0,0.4)",
                     },
                 },
                 label: {
@@ -290,7 +313,13 @@ const updateChart = () => {
 
 // -- Watch --
 watch(
-    () => [props.nodes, props.edges, props.hiddenTypes, props.highlightId],
+    () => [
+        props.nodes,
+        props.edges,
+        props.hiddenTypes,
+        props.highlightId,
+        themeStore.isDark,
+    ],
     updateChart,
     { deep: true },
 );
@@ -320,7 +349,11 @@ onBeforeUnmount(() => {
             class="knowledge-graph-canvas"
             v-loading="loading"
             element-loading-text="加载图谱中..."
-            element-loading-background="rgba(15,15,26,0.8)"
+            :element-loading-background="
+                themeStore.isDark
+                    ? 'rgba(15,15,26,0.8)'
+                    : 'rgba(255,255,255,0.8)'
+            "
         ></div>
 
         <!-- 空状态 -->

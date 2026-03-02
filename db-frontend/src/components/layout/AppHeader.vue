@@ -2,10 +2,12 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useThemeStore } from "@/stores/theme";
 import { Search } from "@element-plus/icons-vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const themeStore = useThemeStore();
 const searchQuery = ref("");
 
 const handleSearch = () => {
@@ -50,6 +52,20 @@ const handleLogout = async () => {
                 />
             </div>
 
+            <!-- Theme Toggle -->
+            <button
+                class="theme-toggle"
+                @click="themeStore.toggle()"
+                :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'"
+            >
+                <transition name="theme-icon" mode="out-in">
+                    <span v-if="themeStore.isDark" key="dark" class="theme-icon"
+                        >🌙</span
+                    >
+                    <span v-else key="light" class="theme-icon">☀️</span>
+                </transition>
+            </button>
+
             <!-- User Area -->
             <div class="user-area">
                 <template v-if="authStore.isLoggedIn">
@@ -92,7 +108,7 @@ const handleLogout = async () => {
     top: 0;
     z-index: 1000;
     height: var(--header-height);
-    background: rgba(15, 15, 26, 0.85);
+    background: var(--header-bg);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border-color);
 }
@@ -149,6 +165,46 @@ const handleLogout = async () => {
 .search-box {
     flex: 1;
     max-width: 360px;
+}
+
+.theme-toggle {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: var(--bg-card);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+        border-color: var(--color-accent);
+        background: var(--color-accent-bg);
+        transform: rotate(15deg);
+    }
+}
+
+.theme-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.theme-icon-enter-active,
+.theme-icon-leave-active {
+    transition: all 0.2s ease;
+}
+
+.theme-icon-enter-from {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.5);
+}
+
+.theme-icon-leave-to {
+    opacity: 0;
+    transform: rotate(90deg) scale(0.5);
 }
 
 .user-area {

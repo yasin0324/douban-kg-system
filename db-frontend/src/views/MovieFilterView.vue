@@ -197,6 +197,10 @@ const resetFilters = () => {
 </template>
 
 <style scoped lang="scss">
+.filter-view {
+    padding-top: var(--space-xl);
+}
+
 .filter-panel {
     padding: var(--space-lg);
     margin-bottom: var(--space-xl);

@@ -186,6 +186,10 @@ watch(() => route.params.pid, fetchData);
 </template>
 
 <style scoped lang="scss">
+.person-detail {
+    padding-top: var(--space-xl);
+}
+
 .person-header {
     display: flex;
     gap: var(--space-xl);

@@ -3,32 +3,37 @@
 // ============================================
 
 // --- 色彩系统 ---
+
+// 浅色模式（默认）
 :root {
-    // 主色调（深色主题）
-    --bg-primary: #0f0f1a;
-    --bg-secondary: #1a1a2e;
-    --bg-card: #16213e;
-    --bg-card-hover: #1a2744;
-    --bg-input: #0d1b2a;
+    // 背景色
+    --bg-primary: #f5f5f7;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f0f0f5;
+    --bg-input: #f8f8fa;
 
     // 强调色
     --color-accent: #00b51d; // 豆瓣绿
     --color-accent-light: #33c93f;
     --color-accent-dark: #009316;
-    --color-accent-bg: rgba(0, 181, 29, 0.1);
+    --color-accent-bg: rgba(0, 181, 29, 0.08);
 
     // 文字色
-    --text-primary: #e8e8e8;
-    --text-secondary: #a0a0b0;
-    --text-muted: #6c6c80;
-    --text-link: #64b5f6;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-muted: #aeaeb2;
+    --text-link: #2563eb;
 
     // 评分色
-    --color-rating: #ffc107;
+    --color-rating: #e6a800;
 
     // 边框
-    --border-color: rgba(255, 255, 255, 0.08);
-    --border-color-light: rgba(255, 255, 255, 0.15);
+    --border-color: rgba(0, 0, 0, 0.08);
+    --border-color-light: rgba(0, 0, 0, 0.15);
+
+    // Header
+    --header-bg: rgba(255, 255, 255, 0.85);
 
     // 圆角
     --radius-sm: 6px;
@@ -44,9 +49,9 @@
     --space-2xl: 48px;
 
     // 阴影
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
 
     // 过渡
     --transition-fast: 0.2s ease;
@@ -55,6 +60,33 @@
     // 布局
     --max-width: 1200px;
     --header-height: 64px;
+}
+
+// 深色模式
+html.dark {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-card-hover: #1a2744;
+    --bg-input: #0d1b2a;
+
+    --color-accent-bg: rgba(0, 181, 29, 0.1);
+
+    --text-primary: #e8e8e8;
+    --text-secondary: #a0a0b0;
+    --text-muted: #6c6c80;
+    --text-link: #64b5f6;
+
+    --color-rating: #ffc107;
+
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-color-light: rgba(255, 255, 255, 0.15);
+
+    --header-bg: rgba(15, 15, 26, 0.85);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 // --- 全局重置 ---
@@ -69,6 +101,15 @@
 html {
     font-size: 16px;
     scroll-behavior: smooth;
+    // 主题切换时的平滑过渡
+    &,
+    & * {
+        transition:
+            background-color 0.3s ease,
+            color 0.3s ease,
+            border-color 0.3s ease,
+            box-shadow 0.3s ease;
+    }
 }
 
 body {
@@ -150,7 +191,7 @@ img {
     margin-bottom: var(--space-md);
 }
 
-// --- Element Plus 深色主题覆盖 ---
+// --- Element Plus 主题覆盖 ---
 .el-button--primary {
     --el-button-bg-color: var(--color-accent);
     --el-button-border-color: var(--color-accent);
@@ -160,13 +201,16 @@ img {
     --el-button-active-border-color: var(--color-accent-dark);
 }
 
-.el-input__wrapper {
-    background-color: var(--bg-input) !important;
-    box-shadow: 0 0 0 1px var(--border-color) inset !important;
-}
+// 深色模式下覆盖 Element Plus 输入框
+html.dark {
+    .el-input__wrapper {
+        background-color: var(--bg-input) !important;
+        box-shadow: 0 0 0 1px var(--border-color) inset !important;
+    }
 
-.el-input__inner {
-    color: var(--text-primary) !important;
+    .el-input__inner {
+        color: var(--text-primary) !important;
+    }
 }
 
 .el-pagination {

@@ -9,6 +9,10 @@
 </template>
 
 <style scoped lang="scss">
+.profile-view {
+    padding-top: var(--space-xl);
+}
+
 .page-placeholder {
     text-align: center;
     padding: var(--space-2xl) 0;

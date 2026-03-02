@@ -271,6 +271,7 @@ watch(() => [props.type, props.id], fetchGraph);
 
 <style scoped lang="scss">
 .graph-view {
+    padding-top: var(--space-xl);
     min-height: calc(100vh - var(--header-height) - 100px);
     display: flex;
     flex-direction: column;

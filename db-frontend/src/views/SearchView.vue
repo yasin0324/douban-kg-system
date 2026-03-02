@@ -184,6 +184,10 @@ const handlePersonPage = (page) => {
 </template>
 
 <style scoped lang="scss">
+.search-view {
+    padding-top: var(--space-xl);
+}
+
 .search-keyword {
     color: var(--color-accent);
 }
