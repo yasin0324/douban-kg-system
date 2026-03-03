@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import MovieList from "@/components/movie/MovieList.vue";
 import { moviesApi } from "@/api/movies";
@@ -14,16 +14,32 @@ const genres = ref([]);
 const loading = ref(true);
 const searchQuery = ref("");
 
+// 无限滚动
+const page = ref(1);
+const pageSize = 24;
+const loadingMore = ref(false);
+const noMore = ref(false);
+
+// 回到顶部
+const showBackTop = ref(false);
+
 // 加载数据
 onMounted(async () => {
     loading.value = true;
     try {
         const [moviesRes, overviewRes, genresRes] = await Promise.all([
-            moviesApi.getTop(12),
+            moviesApi.filter({
+                page: 1,
+                size: pageSize,
+                sort_by: "weighted",
+            }),
             statsApi.getOverview(),
             moviesApi.getGenres(),
         ]);
-        topMovies.value = moviesRes.data;
+        topMovies.value = moviesRes.data.items;
+        if (moviesRes.data.items.length < pageSize) {
+            noMore.value = true;
+        }
         overview.value = overviewRes.data;
         genres.value = genresRes.data;
     } catch (err) {
@@ -31,7 +47,56 @@ onMounted(async () => {
     } finally {
         loading.value = false;
     }
+
+    // 监听滚动
+    window.addEventListener("scroll", handleScroll);
 });
+
+onUnmounted(() => {
+    window.removeEventListener("scroll", handleScroll);
+});
+
+// 滚动处理：无限加载 + 回到顶部按钮
+const handleScroll = () => {
+    // 回到顶部按钮：滚动超过 600px 时显示
+    showBackTop.value = window.scrollY > 600;
+
+    // 无限加载：距离底部 300px 时触发
+    const scrollBottom =
+        document.documentElement.scrollHeight -
+        window.scrollY -
+        window.innerHeight;
+    if (scrollBottom < 300 && !loadingMore.value && !noMore.value) {
+        loadMore();
+    }
+};
+
+// 加载更多
+const loadMore = async () => {
+    loadingMore.value = true;
+    page.value++;
+    try {
+        const { data } = await moviesApi.filter({
+            page: page.value,
+            size: pageSize,
+            sort_by: "weighted",
+        });
+        topMovies.value.push(...data.items);
+        if (data.items.length < pageSize) {
+            noMore.value = true;
+        }
+    } catch (err) {
+        console.error("加载更多失败:", err);
+        page.value--;
+    } finally {
+        loadingMore.value = false;
+    }
+};
+
+// 回到顶部
+const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 // 搜索
 const handleSearch = () => {
@@ -141,8 +206,34 @@ const formatNum = (num) => {
                     </el-button>
                 </div>
                 <MovieList :movies="topMovies" :loading="loading" />
+
+                <!-- 加载更多状态 -->
+                <div class="load-more-area">
+                    <div v-if="loadingMore" class="loading-indicator">
+                        <el-icon class="is-loading"><span>⏳</span></el-icon>
+                        <span>加载中...</span>
+                    </div>
+                    <div
+                        v-else-if="noMore && topMovies.length > 0"
+                        class="no-more"
+                    >
+                        — 已经到底了 —
+                    </div>
+                </div>
             </section>
         </div>
+
+        <!-- 回到顶部按钮 -->
+        <transition name="fade-btn">
+            <button
+                v-show="showBackTop"
+                class="back-top-btn"
+                @click="scrollToTop"
+                title="回到顶部"
+            >
+                ↑
+            </button>
+        </transition>
     </div>
 </template>
 
@@ -242,6 +333,66 @@ const formatNum = (num) => {
     margin-bottom: var(--space-md);
 }
 
+/* 加载更多 */
+.load-more-area {
+    text-align: center;
+    padding: var(--space-xl) 0;
+}
+
+.loading-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    color: var(--color-accent);
+    font-size: 0.9rem;
+}
+
+.no-more {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* 回到顶部按钮 */
+.back-top-btn {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    z-index: 999;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+        background: var(--color-accent);
+        color: #fff;
+        border-color: var(--color-accent);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-lg);
+    }
+}
+
+.fade-btn-enter-active,
+.fade-btn-leave-active {
+    transition: all 0.3s ease;
+}
+
+.fade-btn-enter-from,
+.fade-btn-leave-to {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
 @media (max-width: 768px) {
     .hero-title {
         font-size: 1.8rem;
@@ -253,6 +404,11 @@ const formatNum = (num) => {
 
     .stat-number {
         font-size: 1.5rem;
+    }
+
+    .back-top-btn {
+        bottom: 24px;
+        right: 24px;
     }
 }
 </style>
