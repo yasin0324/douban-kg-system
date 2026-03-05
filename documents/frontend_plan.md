@@ -357,9 +357,9 @@ db-frontend/
 - ✅ 导航栏添加"推荐"入口（电影库与路径查询之间）
 - ✅ `/recommend` 路由 + `RecommendView.vue` 占位页（功能预告卡片）
 - 对接推荐 API（待后端推荐算法完成后实现）：
-    - `GET /api/recommendations/collaborative` — 协同过滤推荐
-    - `GET /api/recommendations/content-based` — 基于内容推荐
-    - `GET /api/recommendations/graph-based` — 基于知识图谱推荐
+    - `GET /api/recommend/personal?algorithm=hybrid` — 混合个性化推荐（综合 PPR+Content+CF）
+    - `GET /api/recommend/movie/{mid}?algorithm=ppr` — 基于电影的相似推荐
+    - `GET /api/recommend/person/{pid}` — 基于影人的相关推荐
 - 首页推荐区域替换为真实推荐电影卡片
 - 推荐页完整 UI（推荐类型切换、推荐理由展示、刷新推荐）
 
@@ -404,9 +404,12 @@ db-frontend/
 | 统计 | GET    | `/api/stats/top-actors`              | 统计页            |
 | 统计 | GET    | `/api/stats/top-directors`           | 统计页            |
 | 统计 | GET    | `/api/stats/rating-distribution`     | 统计页            |
+| 推荐 | GET    | `/api/recommend/movie/{mid}`         | 电影详情/推荐页   |
+| 推荐 | GET    | `/api/recommend/personal`            | 首页/推荐页       |
+| 推荐 | GET    | `/api/recommend/person/{pid}`        | 影人详情/推荐页   |
 | 代理 | GET    | `/api/proxy/image?url={url}`         | 全局（图片代理）  |
 
-共计 **34 个 API** 对接（含 1 个图片代理接口）。
+共计 **37 个 API** 对接（含 1 个图片代理接口）。
 
 ---
 
