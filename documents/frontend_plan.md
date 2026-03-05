@@ -294,10 +294,10 @@ db-frontend/
 │   │   ├── PersonDetailView.vue # ✅ 影人详情（信息+作品+合作者）
 │   │   ├── GraphView.vue        # 占位（Phase 3）
 │   │   ├── PathView.vue         # 占位（Phase 3）
-│   │   ├── StatsView.vue        # 占位（Phase 4）
-│   │   ├── LoginView.vue        # 占位（Phase 4）
-│   │   ├── RegisterView.vue     # 占位（Phase 4）
-│   │   ├── ProfileView.vue      # 占位（Phase 4）
+│   │   ├── StatsView.vue        # ✅ 统计看板（5 ECharts 图表）
+│   │   ├── LoginView.vue        # ✅ 登录页（表单验证+redirect）
+│   │   ├── RegisterView.vue     # ✅ 注册页（5 字段+密码验证）
+│   │   ├── ProfileView.vue      # ✅ 个人中心（三 Tab+偏好/评分管理）
 │   │   └── RecommendView.vue    # ✅ 占位（Phase 5）
 │   ├── App.vue                  # 根组件（Header+router-view 过渡动画+Footer）
 │   └── main.js                  # 入口（Vue+Pinia+Router+ElementPlus+暗色主题）
@@ -342,13 +342,14 @@ db-frontend/
 - ✅ **补充优化**：后端 2 跳图谱查询性能优化（Cypher 分步查询防路径爆炸，超时容错）
 - ✅ **补充优化**：图谱 UI 细节重构（解决 ECharts 塌陷、等距 padding/gap 弹性布局、标题左对齐约束）
 
-### Phase 4：用户系统 + 收尾（0.5-1 天）
+### Phase 4：用户系统 + 收尾（0.5-1 天）✅ 已完成 (2026-03-05)
 
-- 登录 / 注册页
-- 个人中心（偏好/评分管理）
-- 统计看板（6 个 ECharts 图表）
-- 全局 loading / 错误处理 / 响应式适配
-- 联调测试
+- ✅ 登录页（Element Plus 表单验证 + redirect 支持 + 毛玻璃卡片居中布局）
+- ✅ 注册页（5 字段表单 + 密码一致性验证 + 与登录页风格统一）
+- ✅ 个人中心（用户信息卡片 + 喜欢/想看/评分三 Tab + 电影封面批量加载 + 取消/删除操作 + 分页）
+- ✅ 统计看板（4 概览卡片 + 5 个 ECharts 图表：类型饼图、年代折线图、评分柱状图、Top 演员/导演横向柱状图）
+- ✅ 全局 loading / 错误处理（Axios 拦截器 401 自动刷新 + ElMessage 全局提示）
+- ✅ 响应式适配（移动端单列布局）
 
 ### Phase 5：智能推荐（待定）
 

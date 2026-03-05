@@ -94,12 +94,13 @@ api.interceptors.response.use(
             }
         }
 
-        // 全局错误提示
+        // 全局错误提示（排除 401 Token 刷新、404 资源不存在）
+        const status = error.response?.status;
         const message =
             error.response?.data?.detail ||
             error.response?.data?.message ||
             "请求失败，请稍后重试";
-        if (error.response?.status !== 401) {
+        if (status !== 401 && status !== 404) {
             ElMessage.error(message);
         }
 

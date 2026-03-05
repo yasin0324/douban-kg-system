@@ -49,15 +49,17 @@ const fetchMovie = async () => {
 
 const fetchUserData = async () => {
     try {
-        const [prefRes, ratingRes] = await Promise.allSettled([
-            usersApi.checkPreference(mid()),
-            usersApi.getRating(mid()),
-        ]);
-        if (prefRes.status === "fulfilled") {
-            prefStatus.value = prefRes.value.data;
+        const prefRes = await usersApi.checkPreference(mid()).catch(() => null);
+        if (prefRes) {
+            prefStatus.value = prefRes.data;
         }
-        if (ratingRes.status === "fulfilled") {
-            userRating.value = ratingRes.value.data?.rating ?? null;
+        // getRating 404 表示未评分，不需要全局提示
+        const ratingRes = await usersApi.getRating(mid()).catch((err) => {
+            if (err.response?.status === 404) return null;
+            return null;
+        });
+        if (ratingRes) {
+            userRating.value = ratingRes.data?.rating ?? null;
         }
     } catch {
         // 忽略
@@ -71,26 +73,38 @@ const togglePref = async (type) => {
         return;
     }
     try {
-        const isActive = prefStatus.value?.[type];
+        // 后端返回: { is_liked, is_want_to_watch }
+        const isLiked = prefStatus.value?.is_liked;
+        const isWant = prefStatus.value?.is_want_to_watch;
+        const isActive = type === "like" ? isLiked : isWant;
+
         if (isActive) {
             await usersApi.removePreference(mid());
-            if (prefStatus.value) prefStatus.value[type] = false;
+            // 取消后将两个状态都清除（后端只能有一个）
+            prefStatus.value = { is_liked: false, is_want_to_watch: false };
             ElMessage.success("已取消");
         } else {
             await usersApi.addPreference({ mid: mid(), pref_type: type });
-            if (!prefStatus.value) prefStatus.value = {};
-            prefStatus.value[type] = true;
-            ElMessage.success(type === "like" ? "已喜欢" : "已标记");
+            // 设置新状态（互斥）
+            prefStatus.value = {
+                is_liked: type === "like",
+                is_want_to_watch: type === "want_to_watch",
+            };
+            ElMessage.success(type === "like" ? "已喜欢" : "已标记想看");
         }
     } catch (err) {
         console.error("操作失败:", err);
     }
 };
 
-// 提交评分
+// 提交评分（后端范围 0.5-5.0，对应半星）
 const submitRating = async () => {
     if (!authStore.isLoggedIn) {
         router.push({ name: "login", query: { redirect: route.fullPath } });
+        return;
+    }
+    if (!ratingInput.value) {
+        ElMessage.warning("请选择评分星级");
         return;
     }
     try {
@@ -104,7 +118,7 @@ const submitRating = async () => {
 };
 
 const openRatingDialog = () => {
-    ratingInput.value = userRating.value || 7;
+    ratingInput.value = userRating.value || 0;
     ratingDialog.value = true;
 };
 
@@ -176,25 +190,29 @@ watch(() => route.params.mid, fetchMovie);
                     <!-- 操作栏 -->
                     <div class="action-bar">
                         <el-button
-                            :type="prefStatus?.like ? 'danger' : 'default'"
+                            :type="prefStatus?.is_liked ? 'danger' : 'default'"
                             @click="togglePref('like')"
                         >
-                            ❤️ {{ prefStatus?.like ? "已喜欢" : "喜欢" }}
+                            ❤️ {{ prefStatus?.is_liked ? "已喜欢" : "喜欢" }}
                         </el-button>
                         <el-button
                             :type="
-                                prefStatus?.want_to_watch
+                                prefStatus?.is_want_to_watch
                                     ? 'warning'
                                     : 'default'
                             "
                             @click="togglePref('want_to_watch')"
                         >
                             📌
-                            {{ prefStatus?.want_to_watch ? "已想看" : "想看" }}
+                            {{
+                                prefStatus?.is_want_to_watch ? "已想看" : "想看"
+                            }}
                         </el-button>
                         <el-button @click="openRatingDialog">
                             ⭐
-                            {{ userRating ? `我的评分 ${userRating}` : "评分" }}
+                            {{
+                                userRating ? `我的评分 ${userRating}★` : "评分"
+                            }}
                         </el-button>
                         <el-button
                             type="primary"
@@ -243,19 +261,22 @@ watch(() => route.params.mid, fetchMovie);
         <!-- 评分弹窗 -->
         <el-dialog
             v-model="ratingDialog"
-            title="评分"
-            width="360px"
+            title="为这部电影评分"
+            width="340px"
             align-center
         >
             <div class="rating-dialog-body">
-                <el-slider
+                <el-rate
                     v-model="ratingInput"
-                    :min="1"
-                    :max="10"
-                    :step="0.5"
-                    show-input
-                    :show-input-controls="false"
+                    :max="5"
+                    allow-half
+                    :colors="['#ffc107', '#ffc107', '#ffc107']"
+                    size="large"
                 />
+                <p class="rating-hint" v-if="ratingInput">
+                    {{ ratingInput }} / 5 星
+                </p>
+                <p class="rating-hint muted" v-else>请选择星级</p>
             </div>
             <template #footer>
                 <el-button @click="ratingDialog = false">取消</el-button>
@@ -367,7 +388,24 @@ watch(() => route.params.mid, fetchMovie);
 }
 
 .rating-dialog-body {
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-lg) var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.rating-hint {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-rating);
+    text-align: center;
+
+    &.muted {
+        font-weight: 400;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+    }
 }
 
 @media (max-width: 768px) {
