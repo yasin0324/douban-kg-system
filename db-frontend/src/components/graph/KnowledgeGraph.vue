@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
 
         <!-- 空状态 -->
         <div v-if="!loading && nodes.length === 0" class="graph-empty">
-            <div class="empty-icon">🕸️</div>
+            <div class="empty-icon">🌐</div>
             <p>暂无图谱数据</p>
         </div>
     </div>

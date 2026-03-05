@@ -166,15 +166,22 @@ watch(() => route.params.pid, fetchData);
                         <span class="stat-badge" v-if="person.directed_count">
                             执导 {{ person.directed_count }} 部
                         </span>
+                        <el-button
+                            type="primary"
+                            size="small"
+                            @click="router.push(`/graph/person/${person.pid}`)"
+                        >
+                            🌐 查看知识图谱
+                        </el-button>
+                        <el-button
+                            size="small"
+                            tag="a"
+                            :href="`https://www.douban.com/personage/${person.pid}/`"
+                            target="_blank"
+                        >
+                            🔗 豆瓣主页
+                        </el-button>
                     </div>
-                    <el-button
-                        type="primary"
-                        size="small"
-                        @click="router.push(`/graph/person/${person.pid}`)"
-                        style="margin-top: 12px"
-                    >
-                        🕸️ 查看知识图谱
-                    </el-button>
                 </div>
             </div>
 
@@ -401,6 +408,11 @@ watch(() => route.params.pid, fetchData);
 .person-stats {
     display: flex;
     gap: var(--space-sm);
+    align-items: center;
+
+    :deep(.el-button + .el-button) {
+        margin-left: 0;
+    }
 }
 
 .stat-badge {

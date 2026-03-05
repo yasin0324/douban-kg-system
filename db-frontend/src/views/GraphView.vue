@@ -135,7 +135,7 @@ watch(() => [props.type, props.id], fetchGraph);
                         ← 返回{{ type === "movie" ? "电影" : "影人" }}详情
                     </el-button>
                     <h1 class="graph-title">
-                        <span class="title-icon">🕸️</span>
+                        <span class="title-icon">🌐</span>
                         {{ pageTitle }}
                     </h1>
                 </div>

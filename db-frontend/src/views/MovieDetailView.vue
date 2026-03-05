@@ -200,7 +200,7 @@ watch(() => route.params.mid, fetchMovie);
                             type="primary"
                             @click="router.push(`/graph/movie/${movie.mid}`)"
                         >
-                            🕸️ 知识图谱
+                            🌐 知识图谱
                         </el-button>
                         <el-button
                             v-if="movie.url"
