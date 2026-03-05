@@ -33,9 +33,9 @@ from crawl_movie import (
     mark_crawl_failed,
     save_new_seeds, 
     save_to_database, 
-    save_to_database, 
     get_random_ua,
     fetch_open_tasks,
+    fetch_incomplete_movies,
     try_claim_task, 
     release_task,
     reset_stale_tasks,
@@ -43,6 +43,12 @@ from crawl_movie import (
 )
 
 # ================= CONFIGURATION =================
+# MODE FLAGS (set via CLI)
+DIRECT_MODE = False    # True = direct connection (no proxy)
+UPDATE_MODE = False    # True = update existing records
+RECRAWL_MODE = False   # True = re-crawl incomplete movies (missing cover/storyline)
+MIN_VOTES = 50         # Min votes threshold for recrawl mode
+
 # DEVICE CONFIGURATION
 IPS_PER_BATCH = 30     
 WORKERS_PER_IP = 10    
@@ -61,12 +67,21 @@ RAMP_UP_INTERVAL = 60  # Seconds between adding new IPs
 
 # WORKER RAMP-UP PER IP
 INITIAL_WORKERS_PER_IP = 2  # Start with fewer workers per IP
-WORKER_RAMP_UP_INTERVAL = 25  # Seconds between adding workers per IP
-WORKER_RAMP_UP_COUNT = 2  # How many workers to add each time
+WORKER_RAMP_UP_INTERVAL = 15  # Seconds between adding workers per IP
+WORKER_RAMP_UP_COUNT = 1  # How many workers to add each time
+
+# DIRECT MODE CONFIGURATION (conservative to avoid bans)
+DIRECT_DELAY_MIN = 3.0   # Per-worker jitter after throttle (small, for naturalness)
+DIRECT_DELAY_MAX = 6.0
+DIRECT_WORKERS = 2       # Max concurrent workers in direct mode
+DIRECT_INITIAL_WORKERS = 1  # Start with 1 worker, ramp up gradually
+DIRECT_THROTTLE_INTERVAL = 2.0  # Global: min seconds between ANY two requests
 
 # GLOBAL RESOURCES
-PROXY_MANAGER = ProxyManager()
+PROXY_MANAGER = None  # Lazy init, only when not in direct mode
 STOP_EVENT = asyncio.Event()
+GLOBAL_THROTTLE_LOCK = asyncio.Lock()  # Ensures requests are staggered
+LAST_REQUEST_TIME = 0  # Timestamp of the last request sent
 
 def generate_bid():
     """Generate random BID for Douban"""
@@ -267,7 +282,10 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
     Terminates if IP expires or hits error limit.
     Workers are ramped up gradually to avoid 429.
     """
-    print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
+    if proxy_config:
+        print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
+    else:
+        print(f"[{ip_id}] 🔥 Powering up with DIRECT connection (no proxy)")
     
     tasks = []
     consecutive_errors = 0
@@ -289,8 +307,8 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
         while group_state['active'] and not STOP_EVENT.is_set():
             async with global_sem:
                 try:
-                    # Check life
-                    if time.time() - start_time > MAX_IP_LIFE_SECONDS:
+                    # Check life (skip for direct mode - no IP expiration)
+                    if not DIRECT_MODE and time.time() - start_time > MAX_IP_LIFE_SECONDS:
                         print(f"[{ip_id}] ⏰ Expired.")
                         break
                         
@@ -300,22 +318,22 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         break # Queue empty
 
                     # === JIT LOCKING START ===
-                    # Try to lock the task atomically
-                    loop = asyncio.get_event_loop()
-                    locked = await loop.run_in_executor(None, try_claim_task, movie_id)
-                    if not locked:
-                         # Task already taken by another worker/instance or completed
-                        #  print(f"[{w_id}] 🔒 Failed to lock {movie_id}, skipping...")
-                         q.task_done()
-                         continue
+                    if not RECRAWL_MODE:
+                        # Try to lock the task atomically (skip for recrawl, already completed)
+                        loop = asyncio.get_event_loop()
+                        locked = await loop.run_in_executor(None, try_claim_task, movie_id)
+                        if not locked:
+                             q.task_done()
+                             continue
+                    else:
+                        loop = asyncio.get_event_loop()
                     # === JIT LOCKING END ===
                     
                     context = None
                     try:
                         # NEW: Inject BID with realistic headers
                         ua = get_random_ua()
-                        context = await GLOBAL_BROWSER.new_context(
-                            proxy=proxy_config,
+                        context_kwargs = dict(
                             user_agent=ua,
                             viewport={'width': 1920, 'height': 1080},
                             locale='zh-CN',
@@ -323,6 +341,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                             extra_http_headers=get_browser_headers(ua),
                             ignore_https_errors=True,
                         )
+                        if proxy_config:
+                            context_kwargs['proxy'] = proxy_config
+                        context = await GLOBAL_BROWSER.new_context(**context_kwargs)
                         
                         bid = generate_bid()
                         await context.add_cookies([{
@@ -339,6 +360,17 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         
                         # Small delay to allow proxy to stabilize
                         await asyncio.sleep(random.uniform(0.5, 1.5))
+                        
+                        # === GLOBAL THROTTLE: stagger requests across all workers ===
+                        if DIRECT_MODE:
+                            global LAST_REQUEST_TIME
+                            async with GLOBAL_THROTTLE_LOCK:
+                                now = time.time()
+                                elapsed = now - LAST_REQUEST_TIME
+                                if elapsed < DIRECT_THROTTLE_INTERVAL:
+                                    wait = DIRECT_THROTTLE_INTERVAL - elapsed + random.uniform(0, 1.0)
+                                    await asyncio.sleep(wait)
+                                LAST_REQUEST_TIME = time.time()
                         
                         url = f'https://movie.douban.com/subject/{movie_id}/'
                         
@@ -378,13 +410,15 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         
                         if data:
                             loop = asyncio.get_event_loop()
-                            res = await loop.run_in_executor(None, save_to_database, data)
+                            res = await loop.run_in_executor(
+                                None, save_to_database, data, UPDATE_MODE
+                            )
                             
                             if res == "inserted":
                                 print(f"[{w_id}] ✅ Saved {movie_id}: {data['name']}")
                                 with stats_lock: stats['inserted'] += 1
                             elif res == "updated":
-                                 print(f"[{w_id}] ↻ Updated {movie_id}")
+                                 print(f"[{w_id}] ↻ Updated {movie_id}: {data['name']}")
                                  with stats_lock: stats['updated'] += 1
                             else:
                                  with stats_lock: stats['skipped'] += 1
@@ -414,7 +448,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                 except Exception as e:
                     pass
                 
-            await asyncio.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
+            delay_min = DIRECT_DELAY_MIN if DIRECT_MODE else REQUEST_DELAY_MIN
+            delay_max = DIRECT_DELAY_MAX if DIRECT_MODE else REQUEST_DELAY_MAX
+            await asyncio.sleep(random.uniform(delay_min, delay_max))
 
     # Worker ramp-up manager
     async def worker_ramp_up_manager():
@@ -471,10 +507,20 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
     group_finished_callback(ip_id)
 
 async def main():
-    global GLOBAL_BROWSER
+    global GLOBAL_BROWSER, PROXY_MANAGER
     
-    print(f"🚀 Starting Dynamic Async Proxy Crawler")
-    print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
+    mode_label = "Recrawl" if RECRAWL_MODE else ("Direct" if DIRECT_MODE else "Proxy")
+    update_label = " (UPDATE mode)" if UPDATE_MODE else ""
+    print(f"🚀 Starting Dynamic Async {mode_label} Crawler{update_label}")
+    
+    if RECRAWL_MODE:
+        print(f"🔄 Recrawl mode: fixing incomplete movies (min_votes={MIN_VOTES})")
+    
+    if DIRECT_MODE:
+        print(f"⚙️ Direct mode: {DIRECT_WORKERS} workers, delay {DIRECT_DELAY_MIN}-{DIRECT_DELAY_MAX}s")
+    else:
+        print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
+        PROXY_MANAGER = ProxyManager()
     
     # Prerequisite: Reset any stale locks from previous crashes
     print("🧹 Resetting stale locks...")
@@ -486,19 +532,24 @@ async def main():
             args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
         )
         
-        # Use INITIAL_IPS for semaphore, will expand
-        global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
-        
         # Queue Management
         q = asyncio.Queue()
         
         async def fill_queue():
-            # Keep queue filled
+            """Keep queue filled with movie IDs to crawl"""
+            seen_ids = set()  # Track IDs already queued (for recrawl dedup)
             while True:
                 if q.qsize() < 200:
                     loop = asyncio.get_event_loop()
-                    # Use fetch_open_tasks instead of get_uncrawled_movies (no locking)
-                    new_ids = await loop.run_in_executor(None, fetch_open_tasks, 500)
+                    if RECRAWL_MODE:
+                        new_ids = await loop.run_in_executor(
+                            None, fetch_incomplete_movies, 500, MIN_VOTES
+                        )
+                        # Dedup: skip IDs already queued or processed
+                        new_ids = [mid for mid in new_ids if mid not in seen_ids]
+                        seen_ids.update(new_ids)
+                    else:
+                        new_ids = await loop.run_in_executor(None, fetch_open_tasks, 500)
                     if not new_ids and q.qsize() == 0:
                         print("🏁 Database exhausted.")
                         STOP_EVENT.set()
@@ -511,73 +562,146 @@ async def main():
         asyncio.create_task(fill_queue())
         
         # Group Management
-        active_groups = set() # Store IP IDs
+        active_groups = set()
         group_tasks = []
         
         def on_group_finish(gid):
             if gid in active_groups:
                 active_groups.remove(gid)
-                
-        ip_counter = 0
-        last_ramp_up = time.time()
-        current_max_ips = INITIAL_IPS
         
-        while not STOP_EVENT.is_set():
-            # Gradually ramp up IP count to avoid detection
-            now = time.time()
-            if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
-                current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
-                print(f"📈 Ramping up: max IPs now = {current_max_ips}")
-                last_ramp_up = now
+        if DIRECT_MODE:
+            # ===== DIRECT MODE: single IP group, no proxy =====
+            sem_size = DIRECT_WORKERS
+            global_sem = asyncio.Semaphore(sem_size)
             
-            # Maintain pool size
-            needed = current_max_ips - len(active_groups)
+            gid = "DIRECT"
+            active_groups.add(gid)
+            t = asyncio.create_task(
+                run_ip_group(gid, None, q, global_sem, on_group_finish)
+            )
+            group_tasks.append(t)
             
-            if needed > 0:
-                print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
-                loop = asyncio.get_event_loop()
-                proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
+            while not STOP_EVENT.is_set():
+                sys.stdout.write(
+                    f"\r⚡ Direct | Queue: {q.qsize()} | "
+                    f"Ins: {stats['inserted']} | Upd: {stats['updated']} | "
+                    f"Fail: {stats['failed']}"
+                )
+                sys.stdout.flush()
+                await asyncio.sleep(2)
                 
-                if proxies:
-                    for proxy in proxies:
-                        ip_counter += 1
-                        gid = f"IP{ip_counter}"
-                        active_groups.add(gid)
-                        t = asyncio.create_task(
-                            run_ip_group(gid, proxy, q, global_sem, on_group_finish)
-                        )
-                        group_tasks.append(t)
-                else:
-                    print("⚠️ Fetch failed. Retrying in 10s...")
-                    await asyncio.sleep(10)
+                # Clean up finished tasks
+                group_tasks = [t for t in group_tasks if not t.done()]
+                
+                if len(active_groups) == 0:
+                    # Direct IP group finished (queue empty or errors)
+                    break
+        else:
+            # ===== PROXY MODE: dynamic IP pool =====
+            global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
             
-            # Print status
-            sys.stdout.write(f"\r⚡ Active IPs: {len(active_groups)} | Queue: {q.qsize()} | Ins: {stats['inserted']}")
-            sys.stdout.flush()
+            ip_counter = 0
+            last_ramp_up = time.time()
+            current_max_ips = INITIAL_IPS
             
-            await asyncio.sleep(2)
-            
-            # Clean up finished tasks
-            group_tasks = [t for t in group_tasks if not t.done()]
-            
-            if STOP_EVENT.is_set() and len(active_groups) == 0:
-                break
+            while not STOP_EVENT.is_set():
+                # Gradually ramp up IP count to avoid detection
+                now = time.time()
+                if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
+                    current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
+                    print(f"📈 Ramping up: max IPs now = {current_max_ips}")
+                    last_ramp_up = now
+                
+                # Maintain pool size
+                needed = current_max_ips - len(active_groups)
+                
+                if needed > 0:
+                    print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
+                    loop = asyncio.get_event_loop()
+                    proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
+                    
+                    if proxies:
+                        for proxy in proxies:
+                            ip_counter += 1
+                            gid = f"IP{ip_counter}"
+                            active_groups.add(gid)
+                            t = asyncio.create_task(
+                                run_ip_group(gid, proxy, q, global_sem, on_group_finish)
+                            )
+                            group_tasks.append(t)
+                    else:
+                        print("⚠️ Fetch failed. Retrying in 10s...")
+                        await asyncio.sleep(10)
+                
+                # Print status
+                sys.stdout.write(
+                    f"\r⚡ Active IPs: {len(active_groups)} | Queue: {q.qsize()} | "
+                    f"Ins: {stats['inserted']} | Upd: {stats['updated']}"
+                )
+                sys.stdout.flush()
+                
+                await asyncio.sleep(2)
+                
+                # Clean up finished tasks
+                group_tasks = [t for t in group_tasks if not t.done()]
+                
+                if STOP_EVENT.is_set() and len(active_groups) == 0:
+                    break
                 
         await GLOBAL_BROWSER.close()
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH)
-    parser.add_argument('--workers', type=int, default=WORKERS_PER_IP)
-    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS)
-    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP)
+    parser = argparse.ArgumentParser(description='Douban Movie Crawler')
+    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH,
+                        help='Max concurrent proxy IPs (proxy mode)')
+    parser.add_argument('--workers', type=int, default=WORKERS_PER_IP,
+                        help='Workers per IP (proxy mode)')
+    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS,
+                        help='Initial IPs to start with (proxy mode)')
+    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP,
+                        help='Initial workers per IP (proxy mode)')
+    parser.add_argument('--direct', action='store_true',
+                        help='Use direct connection (no proxy pool)')
+    parser.add_argument('--update', action='store_true',
+                        help='Update existing movie records instead of skipping')
+    parser.add_argument('--recrawl', action='store_true',
+                        help='Re-crawl movies with missing cover/storyline (implies --direct --update)')
+    parser.add_argument('--min-votes', type=int, default=50,
+                        help='Min votes threshold for --recrawl mode (default: 50)')
+    parser.add_argument('--direct-workers', type=int, default=None,
+                        help='Max workers in direct mode (default: 10, ramps up from 1)')
+    parser.add_argument('--direct-delay-min', type=float, default=None,
+                        help='Min delay between requests in direct mode (default: 5.0s)')
+    parser.add_argument('--direct-delay-max', type=float, default=None,
+                        help='Max delay between requests in direct mode (default: 10.0s)')
     args = parser.parse_args()
     
     IPS_PER_BATCH = args.ips
     WORKERS_PER_IP = args.workers
     INITIAL_IPS = args.initial_ips
     INITIAL_WORKERS_PER_IP = args.initial_workers
+    DIRECT_MODE = args.direct
+    UPDATE_MODE = args.update
+    RECRAWL_MODE = args.recrawl
+    MIN_VOTES = args.min_votes
+    
+    # --recrawl implies --direct and --update
+    if RECRAWL_MODE:
+        DIRECT_MODE = True
+        UPDATE_MODE = True
+    
+    if args.direct_workers is not None:
+        DIRECT_WORKERS = args.direct_workers
+    if args.direct_delay_min is not None:
+        DIRECT_DELAY_MIN = args.direct_delay_min
+    if args.direct_delay_max is not None:
+        DIRECT_DELAY_MAX = args.direct_delay_max
+    
+    # In direct mode, override worker settings
+    if DIRECT_MODE:
+        WORKERS_PER_IP = DIRECT_WORKERS
+        INITIAL_WORKERS_PER_IP = DIRECT_INITIAL_WORKERS
     
     try:
         asyncio.run(main())
