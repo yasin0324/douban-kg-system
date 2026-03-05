@@ -323,8 +323,7 @@ def find_shortest_path(session, from_id: str, to_id: str, max_hops: int = 6, exc
         MATCH (start), (end)
         WHERE (start.mid = $from_id OR start.pid = $from_id OR start.name = $from_id)
           AND (end.mid = $to_id OR end.pid = $to_id OR end.name = $to_id)
-        MATCH path = shortestPath((start)-[r*..{max_hops}]-(end))
-        WHERE NONE(rel IN relationships(path) WHERE type(rel) = 'HAS_GENRE')
+        MATCH path = shortestPath((start)-[:DIRECTED|ACTED_IN*..{max_hops}]-(end))
         RETURN path
         LIMIT 1
         """
