@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed } from "vue";
-import { useRouter } from "vue-router";
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import KnowledgeGraph from "@/components/graph/KnowledgeGraph.vue";
 import { graphApi } from "@/api/graph";
 import { moviesApi } from "@/api/movies";
 import { personsApi } from "@/api/persons";
 
+const route = useRoute();
 const router = useRouter();
 
 // --- 搜索状态 ---
@@ -192,6 +193,49 @@ const swapNodes = () => {
 
 // 路径长度
 const pathLength = computed(() => meta.value?.depth || 0);
+
+// --- 从 URL 参数预填 ---
+onMounted(async () => {
+    const fromId = route.query.from;
+    const toId = route.query.to;
+    if (!fromId || !toId) return;
+
+    try {
+        const [fromRes, toRes] = await Promise.all([
+            personsApi.getDetail(fromId),
+            personsApi.getDetail(toId),
+        ]);
+
+        if (fromRes.data) {
+            const f = fromRes.data;
+            fromNode.value = {
+                id: `person_${f.pid}`,
+                rawId: f.pid,
+                label: f.name,
+                type: "Person",
+            };
+            fromQuery.value = f.name;
+        }
+
+        if (toRes.data) {
+            const t = toRes.data;
+            toNode.value = {
+                id: `person_${t.pid}`,
+                rawId: t.pid,
+                label: t.name,
+                type: "Person",
+            };
+            toQuery.value = t.name;
+        }
+
+        // 预填完成后自动查询
+        if (fromNode.value && toNode.value) {
+            searchPath();
+        }
+    } catch (err) {
+        console.error("预填路径参数失败:", err);
+    }
+});
 </script>
 
 <template>

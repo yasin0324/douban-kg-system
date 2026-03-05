@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import PersonCard from "@/components/person/PersonCard.vue";
 import { personsApi } from "@/api/persons";
+import { graphApi } from "@/api/graph";
 
 const route = useRoute();
 const router = useRouter();
@@ -93,6 +94,43 @@ onMounted(() => {
 onUnmounted(() => {
     window.removeEventListener("scroll", handleScroll);
 });
+
+// 合作者弹窗
+const collabDialogVisible = ref(false);
+const selectedCollab = ref(null);
+const commonMovies = ref([]);
+const commonLoading = ref(false);
+
+const handleCollabClick = async (collab) => {
+    selectedCollab.value = collab;
+    collabDialogVisible.value = true;
+    commonMovies.value = [];
+    commonLoading.value = true;
+    try {
+        const res = await graphApi.getCommon(pid(), collab.pid);
+        commonMovies.value = res.data.movies || [];
+    } catch (err) {
+        console.error("获取共同作品失败:", err);
+    } finally {
+        commonLoading.value = false;
+    }
+};
+
+const goCollabDetail = () => {
+    collabDialogVisible.value = false;
+    router.push(`/persons/${selectedCollab.value.pid}`);
+};
+
+const goCollabPath = () => {
+    collabDialogVisible.value = false;
+    router.push({
+        path: "/graph/path",
+        query: {
+            from: pid(),
+            to: selectedCollab.value.pid,
+        },
+    });
+};
 
 watch(() => route.params.pid, fetchData);
 </script>
@@ -234,9 +272,67 @@ watch(() => route.params.pid, fetchData);
                         v-for="collab in collaborators"
                         :key="collab.pid"
                         :person="collab"
+                        :clickable="false"
+                        @click="handleCollabClick(collab)"
+                        class="collab-clickable"
                     />
                 </div>
             </section>
+
+            <!-- 合作者共同作品弹窗 -->
+            <el-dialog
+                v-model="collabDialogVisible"
+                :title="`🎬 ${person?.name} × ${selectedCollab?.name} 共同作品`"
+                width="600px"
+                top="8vh"
+            >
+                <div v-loading="commonLoading" class="common-dialog-body">
+                    <template v-if="!commonLoading">
+                        <div
+                            v-if="commonMovies.length"
+                            class="common-dialog-list"
+                        >
+                            <div
+                                v-for="m in commonMovies"
+                                :key="m.mid"
+                                class="common-dialog-item"
+                                @click="
+                                    router.push(`/movies/${m.mid}`);
+                                    collabDialogVisible = false;
+                                "
+                            >
+                                <span class="common-dialog-title">{{
+                                    m.title
+                                }}</span>
+                                <div class="common-dialog-meta">
+                                    <span
+                                        v-if="m.year"
+                                        class="common-dialog-year"
+                                        >{{ m.year }}</span
+                                    >
+                                    <span
+                                        v-if="m.rating"
+                                        class="common-dialog-rating"
+                                        >⭐ {{ m.rating }}</span
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                        <el-empty v-else description="未找到共同作品" />
+                    </template>
+                </div>
+
+                <template #footer>
+                    <div class="dialog-footer">
+                        <el-button @click="goCollabDetail">
+                            🧑 查看 {{ selectedCollab?.name }} 详情
+                        </el-button>
+                        <el-button type="primary" @click="goCollabPath">
+                            🔗 查看关联路径
+                        </el-button>
+                    </div>
+                </template>
+            </el-dialog>
         </template>
 
         <!-- 回到顶部按钮 -->
@@ -392,6 +488,66 @@ watch(() => route.params.pid, fetchData);
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: var(--space-xs);
+}
+
+.collab-clickable {
+    cursor: pointer;
+}
+
+/* 共同作品弹窗 */
+.common-dialog-body {
+    min-height: 120px;
+}
+
+.common-dialog-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.common-dialog-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+
+    &:hover {
+        background: var(--bg-card-hover, #f5f5f5);
+    }
+}
+
+.common-dialog-title {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.common-dialog-meta {
+    display: flex;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+}
+
+.common-dialog-year {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.common-dialog-rating {
+    font-size: 0.82rem;
+    color: var(--color-rating);
+    font-weight: 600;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-sm);
 }
 
 /* 展开/收起 */
