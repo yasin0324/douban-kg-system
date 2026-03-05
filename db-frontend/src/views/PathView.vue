@@ -600,6 +600,11 @@ const pathLength = computed(() => meta.value?.depth || 0);
     font-weight: 500;
     color: var(--text-primary);
     font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
 }
 
 .common-meta {
