@@ -24,9 +24,14 @@ export const graphApi = {
     },
 
     /** 最短路径查询 */
-    getPath(from, to, maxHops = 6) {
+    getPath(from, to, maxHops = 6, excludeGenre = false) {
         return api.get("/graph/path", {
-            params: { from, to, max_hops: maxHops },
+            params: {
+                from,
+                to,
+                max_hops: maxHops,
+                exclude_genre: excludeGenre,
+            },
         });
     },
 

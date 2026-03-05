@@ -23,6 +23,7 @@ const meta = ref(null);
 const loading = ref(false);
 const searched = ref(false);
 const errorMsg = ref("");
+const excludeGenre = ref(false);
 
 // --- 共同电影 ---
 const commonMovies = ref([]);
@@ -121,6 +122,8 @@ const searchPath = async () => {
         const res = await graphApi.getPath(
             fromNode.value.rawId,
             toNode.value.rawId,
+            6,
+            excludeGenre.value,
         );
         nodes.value = res.data.nodes || [];
         edges.value = res.data.edges || [];
@@ -286,6 +289,18 @@ const pathLength = computed(() => meta.value?.depth || 0);
                 </div>
             </div>
 
+            <div class="search-options">
+                <el-switch
+                    v-model="excludeGenre"
+                    active-text="排除类型节点"
+                    inactive-text=""
+                    class="genre-switch"
+                />
+                <span class="option-hint"
+                    >开启后路径将不经过类型节点（如：动作、喜剧），仅通过演职关系查找</span
+                >
+            </div>
+
             <div class="search-actions">
                 <el-button
                     type="primary"
@@ -439,6 +454,19 @@ const pathLength = computed(() => meta.value?.depth || 0);
     font-size: 1.1rem;
 }
 
+.search-options {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    padding: var(--space-sm) 0;
+}
+
+.option-hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
 .search-actions {
     text-align: center;
 }
@@ -470,14 +498,13 @@ const pathLength = computed(() => meta.value?.depth || 0);
 
 /* 路径结果 */
 .path-result {
-    margin-bottom: var(--space-xl);
+    padding-bottom: var(--space-xl);
 }
 
 .result-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-md);
 }
 
 .result-meta {
@@ -494,6 +521,7 @@ const pathLength = computed(() => meta.value?.depth || 0);
 .path-graph {
     height: 350px;
     margin-bottom: var(--space-md);
+    overflow: hidden;
 }
 
 /* 路径步骤 */
@@ -506,6 +534,7 @@ const pathLength = computed(() => meta.value?.depth || 0);
     background: var(--bg-card);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
+    overflow-x: auto;
 }
 
 .path-step {

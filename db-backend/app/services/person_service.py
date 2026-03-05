@@ -5,19 +5,25 @@ from typing import Optional
 
 
 def search_persons(conn, q: str, page: int = 1, size: int = 20) -> dict:
-    """关键词搜索影人（MySQL LIKE）"""
+    """关键词搜索影人（MySQL LIKE，支持忽略分隔符·）"""
     offset = (page - 1) * size
     like_q = f"%{q}%"
+    # 去掉常见的分隔符用于模糊匹配
+    clean_q = q.replace("·", "").replace("・", "").replace(".", "").replace(" ", "")
+    like_clean = f"%{clean_q}%"
     with conn.cursor() as cursor:
         cursor.execute(
-            "SELECT COUNT(*) as total FROM person WHERE name LIKE %s",
-            (like_q,),
+            "SELECT COUNT(*) as total FROM person WHERE name LIKE %s "
+            "OR REPLACE(REPLACE(REPLACE(REPLACE(name, '·', ''), '・', ''), '.', ''), ' ', '') LIKE %s",
+            (like_q, like_clean),
         )
         total = cursor.fetchone()["total"]
         cursor.execute(
             "SELECT person_id as pid, name, profession FROM person "
-            "WHERE name LIKE %s ORDER BY person_id LIMIT %s OFFSET %s",
-            (like_q, size, offset),
+            "WHERE name LIKE %s "
+            "OR REPLACE(REPLACE(REPLACE(REPLACE(name, '·', ''), '・', ''), '.', ''), ' ', '') LIKE %s "
+            "ORDER BY person_id LIMIT %s OFFSET %s",
+            (like_q, like_clean, size, offset),
         )
         items = cursor.fetchall()
     return {"items": items, "total": total, "page": page, "size": size}

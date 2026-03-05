@@ -38,9 +38,10 @@ def shortest_path(
     from_id: str = Query(..., alias="from"),
     to_id: str = Query(..., alias="to"),
     max_hops: int = Query(6, ge=1, le=6),
+    exclude_genre: bool = Query(False, description="是否排除类型节点"),
     session=Depends(get_neo4j_session),
 ):
-    return graph_service.find_shortest_path(session, from_id, to_id, max_hops)
+    return graph_service.find_shortest_path(session, from_id, to_id, max_hops, exclude_genre)
 
 
 @router.get("/common", summary="共同电影")

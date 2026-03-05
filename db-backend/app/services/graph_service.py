@@ -312,20 +312,34 @@ def get_person_graph(
     return _finalize_graph(nodes_map, edges_set, depth, start_time, node_limit, edge_limit)
 
 
-def find_shortest_path(session, from_id: str, to_id: str, max_hops: int = 6) -> dict:
+def find_shortest_path(session, from_id: str, to_id: str, max_hops: int = 6, exclude_genre: bool = False) -> dict:
     """查找两个实体之间的最短路径"""
     max_hops = min(max(max_hops, 1), 6)
     start_time = time.time()
 
-    result = session.run(
-        f"""
+    if exclude_genre:
+        # 排除 HAS_GENRE 关系，只通过演职人员关系查找路径
+        cypher = f"""
+        MATCH (start), (end)
+        WHERE (start.mid = $from_id OR start.pid = $from_id OR start.name = $from_id)
+          AND (end.mid = $to_id OR end.pid = $to_id OR end.name = $to_id)
+        MATCH path = shortestPath((start)-[r*..{max_hops}]-(end))
+        WHERE NONE(rel IN relationships(path) WHERE type(rel) = 'HAS_GENRE')
+        RETURN path
+        LIMIT 1
+        """
+    else:
+        cypher = f"""
         MATCH (start), (end)
         WHERE (start.mid = $from_id OR start.pid = $from_id OR start.name = $from_id)
           AND (end.mid = $to_id OR end.pid = $to_id OR end.name = $to_id)
         MATCH path = shortestPath((start)-[*..{max_hops}]-(end))
         RETURN path
         LIMIT 1
-        """,
+        """
+
+    result = session.run(
+        cypher,
         from_id=from_id,
         to_id=to_id,
     )
