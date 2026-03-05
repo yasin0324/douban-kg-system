@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, onUnmounted, watch, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import PersonCard from "@/components/person/PersonCard.vue";
 import { personsApi } from "@/api/persons";
@@ -13,11 +13,19 @@ const collaborators = ref([]);
 const loading = ref(true);
 const activeTab = ref("all");
 
+// 作品列表折叠
+const showAllMovies = ref(false);
+const defaultShowCount = 20;
+
+// 回到顶部
+const showBackTop = ref(false);
+
 const pid = () => route.params.pid;
 
 // 加载数据
 const fetchData = async () => {
     loading.value = true;
+    showAllMovies.value = false;
     try {
         const [detailRes, moviesRes, collabRes] = await Promise.all([
             personsApi.getDetail(pid()),
@@ -52,7 +60,40 @@ const sortedMovies = computed(() => {
     );
 });
 
-onMounted(fetchData);
+// 截断显示
+const displayedMovies = computed(() => {
+    if (showAllMovies.value) return sortedMovies.value;
+    return sortedMovies.value.slice(0, defaultShowCount);
+});
+
+const hasMore = computed(() => sortedMovies.value.length > defaultShowCount);
+const hiddenCount = computed(
+    () => sortedMovies.value.length - defaultShowCount,
+);
+
+// 切换 Tab 时重置折叠
+watch(activeTab, () => {
+    showAllMovies.value = false;
+});
+
+// 滚动监听
+const handleScroll = () => {
+    showBackTop.value = window.scrollY > 600;
+};
+
+const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+onMounted(() => {
+    fetchData();
+    window.addEventListener("scroll", handleScroll);
+});
+
+onUnmounted(() => {
+    window.removeEventListener("scroll", handleScroll);
+});
+
 watch(() => route.params.pid, fetchData);
 </script>
 
@@ -140,7 +181,7 @@ watch(() => route.params.pid, fetchData);
 
                 <div class="film-list">
                     <div
-                        v-for="movie in sortedMovies"
+                        v-for="movie in displayedMovies"
                         :key="movie.mid"
                         class="film-item card"
                         @click="router.push(`/movies/${movie.mid}`)"
@@ -168,6 +209,21 @@ watch(() => route.params.pid, fetchData);
                         </span>
                     </div>
                 </div>
+
+                <!-- 展开/收起按钮 -->
+                <div class="expand-area" v-if="hasMore">
+                    <el-button
+                        text
+                        type="primary"
+                        @click="showAllMovies = !showAllMovies"
+                    >
+                        {{
+                            showAllMovies
+                                ? "收起 ↑"
+                                : `展开全部 ${hiddenCount} 部作品 ↓`
+                        }}
+                    </el-button>
+                </div>
             </section>
 
             <!-- 合作者 -->
@@ -182,6 +238,18 @@ watch(() => route.params.pid, fetchData);
                 </div>
             </section>
         </template>
+
+        <!-- 回到顶部按钮 -->
+        <transition name="fade-btn">
+            <button
+                v-show="showBackTop"
+                class="back-top-btn"
+                @click="scrollToTop"
+                title="回到顶部"
+            >
+                ↑
+            </button>
+        </transition>
     </div>
 </template>
 
@@ -326,6 +394,53 @@ watch(() => route.params.pid, fetchData);
     gap: var(--space-xs);
 }
 
+/* 展开/收起 */
+.expand-area {
+    text-align: center;
+    padding: var(--space-md) 0;
+}
+
+/* 回到顶部按钮 */
+.back-top-btn {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    z-index: 999;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+        background: var(--color-accent);
+        color: #fff;
+        border-color: var(--color-accent);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-lg);
+    }
+}
+
+.fade-btn-enter-active,
+.fade-btn-leave-active {
+    transition: all 0.3s ease;
+}
+
+.fade-btn-enter-from,
+.fade-btn-leave-to {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
 @media (max-width: 768px) {
     .person-header {
         flex-direction: column;
@@ -339,6 +454,11 @@ watch(() => route.params.pid, fetchData);
 
     .person-stats {
         justify-content: center;
+    }
+
+    .back-top-btn {
+        bottom: 24px;
+        right: 24px;
     }
 }
 </style>
