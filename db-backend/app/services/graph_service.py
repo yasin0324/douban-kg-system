@@ -373,7 +373,7 @@ def find_common_movies(session, pid1: str, pid2: str, limit: int = 50) -> dict:
     result = session.run(
         """
         MATCH (p1:Person {pid: $pid1})-[:DIRECTED|ACTED_IN]->(m:Movie)<-[:DIRECTED|ACTED_IN]-(p2:Person {pid: $pid2})
-        RETURN m.mid AS mid, m.title AS title, m.rating AS rating, m.year AS year
+        RETURN DISTINCT m.mid AS mid, m.title AS title, m.rating AS rating, m.year AS year
         ORDER BY m.year DESC
         LIMIT $limit
         """,
