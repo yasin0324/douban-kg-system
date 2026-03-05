@@ -1,7 +1,6 @@
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import MovieCard from "@/components/movie/MovieCard.vue";
 import PersonCard from "@/components/person/PersonCard.vue";
 import { moviesApi } from "@/api/movies";
 import { personsApi } from "@/api/persons";
@@ -11,7 +10,8 @@ const route = useRoute();
 const router = useRouter();
 
 const activeTab = ref("movies");
-const loading = ref(false);
+const movieLoading = ref(false);
+const personLoading = ref(false);
 
 // 电影结果
 const movieResults = ref([]);
@@ -29,7 +29,7 @@ const pageSize = 20;
 const searchMovies = async () => {
     const q = route.query.q;
     if (!q) return;
-    loading.value = true;
+    movieLoading.value = true;
     try {
         const { data } = await moviesApi.search({
             q,
@@ -41,7 +41,7 @@ const searchMovies = async () => {
     } catch (err) {
         console.error("电影搜索失败:", err);
     } finally {
-        loading.value = false;
+        movieLoading.value = false;
     }
 };
 
@@ -49,7 +49,7 @@ const searchMovies = async () => {
 const searchPersons = async () => {
     const q = route.query.q;
     if (!q) return;
-    loading.value = true;
+    personLoading.value = true;
     try {
         const { data } = await personsApi.search({
             q,
@@ -61,7 +61,7 @@ const searchPersons = async () => {
     } catch (err) {
         console.error("影人搜索失败:", err);
     } finally {
-        loading.value = false;
+        personLoading.value = false;
     }
 };
 
@@ -98,7 +98,14 @@ const handlePersonPage = (page) => {
         <el-tabs v-model="activeTab" class="search-tabs">
             <!-- 电影结果 -->
             <el-tab-pane :label="`电影 (${movieTotal})`" name="movies">
-                <div v-loading="loading && activeTab === 'movies'">
+                <!-- Loading 提示 -->
+                <div v-if="movieLoading" class="loading-hint">
+                    <span class="loading-spinner"></span>
+                    <span>正在搜索电影，请稍候...</span>
+                </div>
+
+                <!-- 搜索结果 -->
+                <template v-else>
                     <div v-if="movieResults.length" class="movie-results">
                         <div
                             v-for="movie in movieResults"
@@ -137,7 +144,7 @@ const handlePersonPage = (page) => {
                         </div>
                     </div>
                     <el-empty
-                        v-else-if="!loading"
+                        v-if="!movieLoading && movieResults.length === 0"
                         description="未找到相关电影"
                     />
 
@@ -150,12 +157,19 @@ const handlePersonPage = (page) => {
                             @current-change="handleMoviePage"
                         />
                     </div>
-                </div>
+                </template>
             </el-tab-pane>
 
             <!-- 影人结果 -->
             <el-tab-pane :label="`影人 (${personTotal})`" name="persons">
-                <div v-loading="loading && activeTab === 'persons'">
+                <!-- Loading 提示 -->
+                <div v-if="personLoading" class="loading-hint">
+                    <span class="loading-spinner"></span>
+                    <span>正在搜索影人，请稍候...</span>
+                </div>
+
+                <!-- 搜索结果 -->
+                <template v-else>
                     <div v-if="personResults.length" class="person-results">
                         <PersonCard
                             v-for="person in personResults"
@@ -164,7 +178,7 @@ const handlePersonPage = (page) => {
                         />
                     </div>
                     <el-empty
-                        v-else-if="!loading"
+                        v-if="!personLoading && personResults.length === 0"
                         description="未找到相关影人"
                     />
 
@@ -177,7 +191,7 @@ const handlePersonPage = (page) => {
                             @current-change="handlePersonPage"
                         />
                     </div>
-                </div>
+                </template>
             </el-tab-pane>
         </el-tabs>
     </div>
@@ -206,6 +220,35 @@ const handlePersonPage = (page) => {
         background-color: var(--color-accent);
     }
 }
+
+/* ========== Loading 提示 ========== */
+
+.loading-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: var(--space-2xl) 0;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid var(--border-color);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========== 搜索结果样式 ========== */
 
 .movie-results {
     display: flex;

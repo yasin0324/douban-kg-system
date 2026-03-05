@@ -128,7 +128,6 @@ const formatNum = (num) => {
                     <span class="hero-icon">🎬</span>
                     豆瓣电影知识图谱
                 </h1>
-                <p class="hero-subtitle">探索电影与影人之间的关联世界</p>
 
                 <!-- 搜索框 -->
                 <div class="hero-search">
@@ -259,12 +258,6 @@ const formatNum = (num) => {
     .hero-icon {
         font-size: 2.2rem;
     }
-}
-
-.hero-subtitle {
-    color: var(--text-secondary);
-    font-size: 1.1rem;
-    margin-bottom: var(--space-xl);
 }
 
 .hero-search {
