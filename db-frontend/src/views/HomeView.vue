@@ -192,6 +192,26 @@ const formatNum = (num) => {
                 </div>
             </section>
 
+            <!-- 推荐 (Phase 5 占位) -->
+            <section class="recommend-section">
+                <div class="section-header">
+                    <h2 class="section-title">🎯 为你推荐</h2>
+                    <el-button
+                        text
+                        type="primary"
+                        @click="router.push('/recommend')"
+                    >
+                        查看更多 →
+                    </el-button>
+                </div>
+                <div class="recommend-placeholder">
+                    <div class="recommend-placeholder-inner">
+                        <span class="recommend-placeholder-icon">🚧</span>
+                        <p>个性化推荐功能开发中，敬请期待...</p>
+                    </div>
+                </div>
+            </section>
+
             <!-- 高分电影 -->
             <section class="top-section">
                 <div class="section-header">
@@ -313,6 +333,35 @@ const formatNum = (num) => {
         color: var(--color-accent) !important;
         background: var(--color-accent-bg) !important;
     }
+}
+
+.recommend-section {
+    margin-bottom: var(--space-xl);
+}
+
+.recommend-placeholder {
+    border: 2px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2xl) var(--space-xl);
+    background: var(--bg-card);
+    transition: border-color var(--transition-fast);
+
+    &:hover {
+        border-color: var(--color-accent);
+    }
+}
+
+.recommend-placeholder-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.recommend-placeholder-icon {
+    font-size: 2.5rem;
 }
 
 .top-section {

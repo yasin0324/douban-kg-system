@@ -19,6 +19,11 @@ const router = createRouter({
             component: () => import("@/views/MovieFilterView.vue"),
         },
         {
+            path: "/recommend",
+            name: "recommend",
+            component: () => import("@/views/RecommendView.vue"),
+        },
+        {
             path: "/movies/:mid",
             name: "movie-detail",
             component: () => import("@/views/MovieDetailView.vue"),

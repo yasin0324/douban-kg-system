@@ -40,6 +40,7 @@
 /search?q=xxx             → 搜索结果页
 /movies/filter            → 电影筛选页（类型/年代/评分）
 /movies/:mid              → 电影详情页
+/recommend                → 推荐页（Phase 5）
 /persons/:pid             → 影人详情页
 /graph/movie/:mid         → 电影关联图谱
 /graph/person/:pid        → 影人关联图谱
@@ -280,7 +281,7 @@ db-frontend/
 │   │   └── graph/
 │   │       └── GraphView.vue    # ECharts 图谱（待实现）
 │   ├── router/
-│   │   └── index.js             # 路由配置（11 条路由 + 懒加载 + 登录守卫）
+│   │   └── index.js             # 路由配置（12 条路由 + 懒加载 + 登录守卫）
 │   ├── stores/
 │   │   └── auth.js              # 认证状态管理（token/refreshToken/user + localStorage 持久化）
 │   ├── utils/
@@ -296,7 +297,8 @@ db-frontend/
 │   │   ├── StatsView.vue        # 占位（Phase 4）
 │   │   ├── LoginView.vue        # 占位（Phase 4）
 │   │   ├── RegisterView.vue     # 占位（Phase 4）
-│   │   └── ProfileView.vue      # 占位（Phase 4）
+│   │   ├── ProfileView.vue      # 占位（Phase 4）
+│   │   └── RecommendView.vue    # ✅ 占位（Phase 5）
 │   ├── App.vue                  # 根组件（Header+router-view 过渡动画+Footer）
 │   └── main.js                  # 入口（Vue+Pinia+Router+ElementPlus+暗色主题）
 ├── .env                         # VITE_API_BASE=http://localhost:8000
@@ -347,6 +349,18 @@ db-frontend/
 - 统计看板（6 个 ECharts 图表）
 - 全局 loading / 错误处理 / 响应式适配
 - 联调测试
+
+### Phase 5：智能推荐（待定）
+
+- ✅ 首页"为你推荐"占位区域（类型探索与高分电影之间，虚线边框 + 敬请期待提示）
+- ✅ 导航栏添加"推荐"入口（电影库与路径查询之间）
+- ✅ `/recommend` 路由 + `RecommendView.vue` 占位页（功能预告卡片）
+- 对接推荐 API（待后端推荐算法完成后实现）：
+    - `GET /api/recommendations/collaborative` — 协同过滤推荐
+    - `GET /api/recommendations/content-based` — 基于内容推荐
+    - `GET /api/recommendations/graph-based` — 基于知识图谱推荐
+- 首页推荐区域替换为真实推荐电影卡片
+- 推荐页完整 UI（推荐类型切换、推荐理由展示、刷新推荐）
 
 ---
 
