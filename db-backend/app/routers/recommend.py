@@ -39,6 +39,8 @@ async def get_personal_recommendations(
             raise HTTPException(status_code=400, detail="不支持的算法类型")
             
         return {"items": results, "algorithm": algorithm}
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
