@@ -7,22 +7,61 @@ from typing import Optional, List
 # ---------- MySQL 搜索 ----------
 
 def search_movies(conn, q: str, page: int = 1, size: int = 20) -> dict:
-    """关键词搜索电影（MySQL LIKE）"""
+    """多关键词与精准回退搜索电影（MySQL LIKE）"""
+    import re
+    import jieba
     offset = (page - 1) * size
-    like_q = f"%{q}%"
+    
     with conn.cursor() as cursor:
+        # 第一步：尝试精准 LIKE 匹配 (应对用户刚好少打一个冒号的情况，或者完整片名)
+        like_q = f"%{q}%"
         cursor.execute(
             "SELECT COUNT(*) as total FROM movies WHERE name LIKE %s OR alias LIKE %s",
             (like_q, like_q),
         )
         total = cursor.fetchone()["total"]
-        cursor.execute(
-            "SELECT douban_id as mid, name as title, douban_score as rating, year, cover, genres "
-            "FROM movies WHERE name LIKE %s OR alias LIKE %s "
-            "ORDER BY douban_score DESC LIMIT %s OFFSET %s",
-            (like_q, like_q, size, offset),
-        )
-        items = cursor.fetchall()
+        
+        if total > 0:
+            cursor.execute(
+                "SELECT douban_id as mid, name as title, douban_score as rating, year, cover, genres "
+                "FROM movies WHERE name LIKE %s OR alias LIKE %s "
+                "ORDER BY douban_score DESC LIMIT %s OFFSET %s",
+                (like_q, like_q, size, offset),
+            )
+            items = cursor.fetchall()
+        else:
+            # 第二步：精准匹配失败，启动 NLP 分词模糊匹配
+            # 把用户输入中的大部分特殊符号替换为空格
+            clean_q = re.sub(r'[^\w\u4e00-\u9fa5]+', ' ', q).strip()
+            # 使用 jieba 搜索引擎模式分词，提取细粒度词汇
+            keywords = list(jieba.cut_for_search(clean_q))
+            # 去除空字符串和单字（如果不需要全分单字的话），或者直接不过滤单字
+            keywords = [k for k in keywords if len(k) > 1] or [clean_q]
+            
+            name_conds = []
+            alias_conds = []
+            params = []
+            for k in keywords:
+                name_conds.append("name LIKE %s")
+                alias_conds.append("alias LIKE %s")
+                params.append(f"%{k}%")
+                
+            where_name = " AND ".join(name_conds)
+            where_alias = " AND ".join(alias_conds)
+            final_params = tuple(params + params)
+            
+            cursor.execute(
+                f"SELECT COUNT(*) as total FROM movies WHERE ({where_name}) OR ({where_alias})",
+                final_params,
+            )
+            total = cursor.fetchone()["total"]
+            cursor.execute(
+                f"SELECT douban_id as mid, name as title, douban_score as rating, year, cover, genres "
+                f"FROM movies WHERE ({where_name}) OR ({where_alias}) "
+                f"ORDER BY douban_score DESC LIMIT %s OFFSET %s",
+                final_params + (size, offset),
+            )
+            items = cursor.fetchall()
     # 将 genres 字段从 "剧情/犯罪" 转换为列表
     for item in items:
         if item.get("genres"):

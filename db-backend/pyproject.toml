@@ -19,6 +19,7 @@ dependencies = [
     "cachetools>=5.3.0",
     "httpx>=0.28.1",
     "requests>=2.32.5",
+    "jieba>=0.42.1",
 ]
 
 [dependency-groups]
