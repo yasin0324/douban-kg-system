@@ -30,4 +30,44 @@ export const statsApi = {
     getRatingDistribution() {
         return api.get("/stats/rating-distribution");
     },
+
+    /** 黄金搭档网络图 */
+    getCollaborations() {
+        return api.get("/stats/collaborations");
+    },
+
+    /** 类型关联和弦图 */
+    getGenreCoOccurrence() {
+        return api.get("/stats/genre-co-occurrence");
+    },
+
+    /** 主要流派年代演变 */
+    getGenreYearTrends() {
+        return api.get("/stats/genre-year-trends");
+    },
+
+    /** 评分年代变化 */
+    getRatingYearTrends() {
+        return api.get("/stats/rating-year-trends");
+    },
+
+    /** 参演高分电影最多的演员 */
+    getTopRatedActors(limit = 20) {
+        return api.get("/stats/top-rated-actors", { params: { limit } });
+    },
+
+    /** 执导高分电影最多的导演 */
+    getTopRatedDirectors(limit = 20) {
+        return api.get("/stats/top-rated-directors", { params: { limit } });
+    },
+
+    /** Top演员参演质量分布 */
+    getActorRatingDistribution() {
+        return api.get("/stats/actor-rating-distribution");
+    },
+
+    /** 评分与评论人数散点图 */
+    getRatingVoteScatter() {
+        return api.get("/stats/rating-vote-scatter");
+    },
 };

@@ -11,12 +11,11 @@ const themeStore = useThemeStore();
 const loading = ref(true);
 const overview = ref(null);
 
-// ECharts 实例 refs
 const genreChartRef = ref(null);
 const yearChartRef = ref(null);
 const ratingChartRef = ref(null);
-const actorChartRef = ref(null);
-const directorChartRef = ref(null);
+const genreYearChartRef = ref(null);
+const ratingYearChartRef = ref(null);
 
 let chartInstances = [];
 // 保存原始数据用于主题切换后重绘
@@ -56,15 +55,15 @@ onMounted(async () => {
             genreRes,
             yearRes,
             ratingRes,
-            actorRes,
-            directorRes,
+            genreYearRes,
+            ratingYearRes,
         ] = await Promise.all([
             statsApi.getOverview(),
             statsApi.getGenreDistribution(),
             statsApi.getYearDistribution(),
             statsApi.getRatingDistribution(),
-            statsApi.getTopActors(20),
-            statsApi.getTopDirectors(20),
+            statsApi.getGenreYearTrends(),
+            statsApi.getRatingYearTrends(),
         ]);
 
         overview.value = overviewRes.data;
@@ -73,8 +72,8 @@ onMounted(async () => {
             genre: genreRes.data,
             year: yearRes.data,
             rating: ratingRes.data,
-            actor: actorRes.data,
-            director: directorRes.data,
+            genreYear: genreYearRes.data,
+            ratingYear: ratingYearRes.data,
         };
 
         await nextTick();
@@ -82,8 +81,8 @@ onMounted(async () => {
         initGenreChart(cachedData.genre);
         initYearChart(cachedData.year);
         initRatingChart(cachedData.rating);
-        initActorChart(cachedData.actor);
-        initDirectorChart(cachedData.director);
+        initGenreYearChart(cachedData.genreYear);
+        initRatingYearChart(cachedData.ratingYear);
     } catch (err) {
         console.error("统计数据加载失败:", err);
     } finally {
@@ -111,8 +110,8 @@ watch(
         initGenreChart(cachedData.genre);
         initYearChart(cachedData.year);
         initRatingChart(cachedData.rating);
-        initActorChart(cachedData.actor);
-        initDirectorChart(cachedData.director);
+        initGenreYearChart(cachedData.genreYear);
+        initRatingYearChart(cachedData.ratingYear);
     },
 );
 
@@ -296,130 +295,97 @@ const initRatingChart = (data) => {
     });
 };
 
-// ========== 4. Top 演员横向柱状图 ==========
-const initActorChart = (data) => {
-    const chart = createChart(actorChartRef.value);
+// ========== 8. 流派年代演变 (堆叠面积图) ==========
+const initGenreYearChart = (data) => {
+    const chart = createChart(genreYearChartRef.value);
     if (!chart) return;
     const t = getChartTheme();
 
-    const reversed = [...data].reverse();
+    const genres = data.genres;
+    const trends = data.trends;
+
+    // Prepare years
+    const yearSet = new Set(trends.map((d) => d.year));
+    const years = Array.from(yearSet).sort();
+
+    const series = genres.map((genre) => {
+        const yearMap = new Map();
+        trends
+            .filter((d) => d.genre === genre)
+            .forEach((d) => yearMap.set(d.year, d.count));
+        return {
+            name: genre,
+            type: "line",
+            stack: "Total",
+            areaStyle: {},
+            emphasis: { focus: "series" },
+            data: years.map((y) => yearMap.get(y) || 0),
+        };
+    });
 
     chart.setOption({
         title: {
-            text: "🎭 参演最多演员 Top 20",
+            text: "📈 主要流派年代演变",
             left: "center",
             textStyle: { color: t.titleColor, fontSize: 16, fontWeight: 600 },
         },
-        tooltip: {
-            trigger: "axis",
-            axisPointer: { type: "shadow" },
-            formatter: (params) => `${params[0].name}: ${params[0].value} 部`,
+        tooltip: { trigger: "axis" },
+        legend: {
+            data: genres,
+            bottom: 0,
+            textStyle: { color: t.textColor },
         },
-        grid: { left: 100, right: 30, top: 50, bottom: 10 },
+        grid: { left: 50, right: 30, top: 50, bottom: 60 },
         xAxis: {
+            type: "category",
+            boundaryGap: false,
+            data: years,
+            axisLabel: { color: t.textColor },
+        },
+        yAxis: {
             type: "value",
-            name: "参演数",
-            nameTextStyle: { color: t.textColor },
             axisLabel: { color: t.textColor },
             splitLine: { lineStyle: { color: t.splitLineColor } },
         },
-        yAxis: {
-            type: "category",
-            data: reversed.map((d) => d.name),
-            axisLabel: {
-                color: t.textColor,
-                fontSize: 12,
-                width: 80,
-                overflow: "truncate",
-            },
-            axisLine: { lineStyle: { color: t.axisLineColor } },
-        },
-        series: [
-            {
-                type: "bar",
-                data: reversed.map((d) => ({
-                    value: d.movie_count,
-                    pid: d.pid,
-                })),
-                itemStyle: {
-                    borderRadius: [0, 4, 4, 0],
-                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                        { offset: 0, color: "#10b981" },
-                        { offset: 1, color: "#06b6d4" },
-                    ]),
-                },
-                barMaxWidth: 24,
-            },
-        ],
-    });
-
-    // 点击跳转影人详情
-    chart.on("click", (params) => {
-        const pid = reversed[params.dataIndex]?.pid;
-        if (pid) router.push(`/persons/${pid}`);
+        color: accentColors,
+        series: series,
     });
 };
 
-// ========== 5. Top 导演横向柱状图 ==========
-const initDirectorChart = (data) => {
-    const chart = createChart(directorChartRef.value);
+// ========== 9. 评分年代变化 ==========
+const initRatingYearChart = (data) => {
+    const chart = createChart(ratingYearChartRef.value);
     if (!chart) return;
     const t = getChartTheme();
 
-    const reversed = [...data].reverse();
-
     chart.setOption({
         title: {
-            text: "🎬 执导最多导演 Top 20",
+            text: "⭐ 评分年代演变趋势",
             left: "center",
             textStyle: { color: t.titleColor, fontSize: 16, fontWeight: 600 },
         },
-        tooltip: {
-            trigger: "axis",
-            axisPointer: { type: "shadow" },
-            formatter: (params) => `${params[0].name}: ${params[0].value} 部`,
-        },
-        grid: { left: 100, right: 30, top: 50, bottom: 10 },
+        tooltip: { trigger: "axis", formatter: "{b}年: 平均 {c} 分" },
+        grid: { left: 50, right: 30, top: 40, bottom: 40 },
         xAxis: {
+            type: "category",
+            data: data.map((d) => d.year),
+            axisLabel: { color: t.textColor },
+        },
+        yAxis: {
             type: "value",
-            name: "执导数",
-            nameTextStyle: { color: t.textColor },
+            min: "dataMin",
             axisLabel: { color: t.textColor },
             splitLine: { lineStyle: { color: t.splitLineColor } },
         },
-        yAxis: {
-            type: "category",
-            data: reversed.map((d) => d.name),
-            axisLabel: {
-                color: t.textColor,
-                fontSize: 12,
-                width: 80,
-                overflow: "truncate",
-            },
-            axisLine: { lineStyle: { color: t.axisLineColor } },
-        },
         series: [
             {
-                type: "bar",
-                data: reversed.map((d) => ({
-                    value: d.movie_count,
-                    pid: d.pid,
-                })),
-                itemStyle: {
-                    borderRadius: [0, 4, 4, 0],
-                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                        { offset: 0, color: "#8b5cf6" },
-                        { offset: 1, color: "#6366f1" },
-                    ]),
-                },
-                barMaxWidth: 24,
+                data: data.map((d) => d.avg_rating),
+                type: "line",
+                smooth: true,
+                lineStyle: { width: 3, color: "#f59e0b" },
+                itemStyle: { color: "#f59e0b" },
             },
         ],
-    });
-
-    chart.on("click", (params) => {
-        const pid = reversed[params.dataIndex]?.pid;
-        if (pid) router.push(`/persons/${pid}`);
     });
 };
 </script>
@@ -460,7 +426,6 @@ const initDirectorChart = (data) => {
             </div>
         </div>
 
-        <!-- 图表网格 -->
         <div class="chart-grid">
             <div class="chart-card">
                 <div ref="genreChartRef" class="chart-container"></div>
@@ -471,11 +436,11 @@ const initDirectorChart = (data) => {
             <div class="chart-card">
                 <div ref="ratingChartRef" class="chart-container"></div>
             </div>
-            <div class="chart-card chart-card-tall">
-                <div ref="actorChartRef" class="chart-container-tall"></div>
+            <div class="chart-card">
+                <div ref="ratingYearChartRef" class="chart-container"></div>
             </div>
-            <div class="chart-card chart-card-tall">
-                <div ref="directorChartRef" class="chart-container-tall"></div>
+            <div class="chart-card chart-card-tall full-width">
+                <div ref="genreYearChartRef" class="chart-container-tall"></div>
             </div>
         </div>
     </div>
@@ -485,6 +450,21 @@ const initDirectorChart = (data) => {
 .stats-view {
     padding-top: var(--space-xl);
     padding-bottom: var(--space-2xl);
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: var(--space-lg);
+    color: var(--text-color);
+}
+
+.mt-xl {
+    margin-top: var(--space-2xl);
+}
+
+.full-width {
+    grid-column: 1 / -1;
 }
 
 .overview-cards {
