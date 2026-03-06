@@ -20,17 +20,28 @@
 
 1. 接收前端传来的 1 个或多个目标 `movie_ids` 作为种子节点。
 2. 在后端通过 Python Driver 执行 Cypher 查询。
+
     ```cypher
-    CALL gds.pageRank.stream({
-      nodeProjection: ['Movie', 'Person', 'Genre'],
-      relationshipProjection: ['ACTED_IN', 'DIRECTED', 'HAS_GENRE'],
+    // 1. 投射独立网络图
+    CALL gds.graph.project(
+      'ppr_graph',
+      ['Movie', 'Person', 'Genre'],
+      ['ACTED_IN', 'DIRECTED', 'HAS_GENRE']
+    )
+
+    // 2. 游走计算
+    CALL gds.pageRank.stream('ppr_graph', {
       sourceNodes: $seed_nodes,
       dampingFactor: 0.85
     })
     YIELD nodeId, score
     RETURN gds.util.asNode(nodeId).name AS name, score
     ORDER BY score DESC LIMIT 50
+
+    // 3. 释放内存
+    CALL gds.graph.drop('ppr_graph', false)
     ```
+
 3. 过滤掉用户已经看过的电影，过滤掉非 Movie 节点。
 4. 返回归一化得分给 Hybrid 统筹中心。
 
