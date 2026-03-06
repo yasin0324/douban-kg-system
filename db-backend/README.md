@@ -49,15 +49,22 @@ mysql -u root -p -e "SELECT 1"
 **首次创建容器：**
 
 ```bash
+# 1. 下载 Neo4j 5.x 对应版本的 GDS 插件到本地 (例如 2.13.7)
+mkdir -p db-backend/neo4j_plugins
+curl -L -o db-backend/neo4j_plugins/neo4j-graph-data-science-2.13.7.jar https://graphdatascience.ninja/neo4j-graph-data-science-2.13.7.jar
+
+# 2. 启动容器并挂载插件
 docker run -d \
   --name neo4j \
   -p 7474:7474 \
   -p 7687:7687 \
   -v neo4j_data:/data \
   -v neo4j_logs:/logs \
+  -v $(pwd)/db-backend/neo4j_plugins:/plugins \
   -e NEO4J_AUTH=neo4j/douban2026 \
   -e NEO4J_server_memory_heap_initial__size=512m \
   -e NEO4J_server_memory_heap_max__size=1g \
+  -e NEO4J_dbms_security_procedures_unrestricted="gds.*" \
   neo4j:5
 ```
 
@@ -179,14 +186,19 @@ uv sync
 # 启动 MySQL
 brew services start mysql  # 或 sudo /usr/local/mysql/support-files/mysql.server start
 
-# 创建 Neo4j 容器
+# 创建 Neo4j 容器 (包括提前下载 GDS)
+mkdir -p db-backend/neo4j_plugins
+curl -L -o db-backend/neo4j_plugins/neo4j-graph-data-science-2.13.7.jar https://graphdatascience.ninja/neo4j-graph-data-science-2.13.7.jar
+
 docker run -d \
   --name neo4j \
   -p 7474:7474 -p 7687:7687 \
   -v neo4j_data:/data -v neo4j_logs:/logs \
+  -v $(pwd)/db-backend/neo4j_plugins:/plugins \
   -e NEO4J_AUTH=neo4j/douban2026 \
   -e NEO4J_server_memory_heap_initial__size=512m \
   -e NEO4J_server_memory_heap_max__size=1g \
+  -e NEO4J_dbms_security_procedures_unrestricted="gds.*" \
   neo4j:5
 ```
 
@@ -217,6 +229,9 @@ DB_POOL_SIZE=20
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASS=douban2026          # ← 与 docker run 中的密码一致
+
+# LLM Mock 数据生成引擎 (Kimi API)
+KIMI_API_KEY=your_kimi_api_key_here
 
 # JWT
 JWT_SECRET=your-secret-key     # ← 生产环境务必修改

@@ -72,7 +72,7 @@ async def health():
 
 # ---------- 注册路由 ----------
 
-from app.routers import auth, users, admin_auth, admin_users, movies, persons, graph, stats, proxy  # noqa: E402
+from app.routers import auth, users, admin_auth, admin_users, movies, persons, graph, stats, proxy, recommend  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -83,4 +83,5 @@ app.include_router(persons.router)
 app.include_router(graph.router)
 app.include_router(stats.router)
 app.include_router(proxy.router)
+app.include_router(recommend.router)
 

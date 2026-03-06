@@ -2,6 +2,7 @@
 用户行为服务 — 偏好（喜欢/想看）+ 评分 CRUD
 """
 from typing import List, Optional
+from app.db.neo4j import Neo4jConnection
 
 
 # ---------- 偏好 ----------
@@ -68,7 +69,36 @@ def check_preference(conn, user_id: int, mid: str) -> dict:
 
 # ---------- 评分 ----------
 
+def check_movie_released(conn, mid: str):
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT name, year, release_date FROM movies WHERE douban_id = %s", (mid,))
+        movie = cursor.fetchone()
+        
+    if not movie:
+        raise ValueError("电影不存在")
+        
+    year = movie.get('year')
+    release_date_str = movie.get('release_date')
+    if release_date_str:
+        release_date_str = release_date_str[:10]
+        
+    current_date = "2026-03-20" # based on user requirement
+    
+    is_unreleased = False
+    if year and year > 2026:
+        is_unreleased = True
+    elif year == 2026:
+        if not release_date_str:
+            # 2026年但未定档，视为未上映
+            is_unreleased = True
+        elif release_date_str > current_date:
+            is_unreleased = True
+            
+    if is_unreleased:
+        raise ValueError("按理来说未上映的电影或剧集不能进行评分")
+
 def add_rating(conn, user_id: int, mid: str, rating: float, comment_short: str = None) -> dict:
+    check_movie_released(conn, mid)
     with conn.cursor() as cursor:
         cursor.execute(
             "INSERT INTO user_movie_ratings (user_id, mid, rating, comment_short) VALUES (%s, %s, %s, %s) "
@@ -76,6 +106,23 @@ def add_rating(conn, user_id: int, mid: str, rating: float, comment_short: str =
             (user_id, mid, rating, comment_short),
         )
         conn.commit()
+        
+        # === Dual Write to Neo4j ===
+        try:
+            driver = Neo4jConnection.get_driver()
+            with driver.session() as session:
+                # 必须确保 user 节点存在
+                session.run(
+                    "MERGE (u:User {id: $uid}) "
+                    "WITH u MATCH (m:Movie {mid: $mid}) "
+                    "MERGE (u)-[rel:RATED]->(m) "
+                    "SET rel.rating = $rating, rel.timestamp = datetime()",
+                    uid=user_id, mid=mid, rating=rating
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"双写 Neo4j 评分失败: {e}")
+
         cursor.execute(
             "SELECT id, mid, rating, comment_short, rated_at FROM user_movie_ratings WHERE user_id = %s AND mid = %s",
             (user_id, mid),
@@ -114,3 +161,14 @@ def get_rating(conn, user_id: int, mid: str) -> Optional[dict]:
             (user_id, mid),
         )
         return cursor.fetchone()
+
+
+def get_high_rated_movie_ids(conn, user_id: int, limit: int = 5) -> List[str]:
+    """ 获取用户最近打高分的电影ID列表，作为推荐引擎的种子节点 """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT mid FROM user_movie_ratings WHERE user_id = %s AND rating >= 4.0 ORDER BY rated_at DESC LIMIT %s",
+            (user_id, limit)
+        )
+        rows = cursor.fetchall()
+        return [r["mid"] for r in rows]

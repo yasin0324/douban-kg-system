@@ -46,7 +46,10 @@ def check_preference(mid: str, user=Depends(get_current_user), conn=Depends(get_
 
 @router.post("/ratings", summary="创建/更新评分")
 def add_rating(body: UserRatingCreate, user=Depends(get_current_user), conn=Depends(get_mysql_conn)):
-    return user_service.add_rating(conn, user["id"], body.mid, body.rating, body.comment_short)
+    try:
+        return user_service.add_rating(conn, user["id"], body.mid, body.rating, body.comment_short)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/ratings/{mid}", summary="删除评分")

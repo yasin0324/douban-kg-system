@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
     APP_ENV: str = "dev"
+    KIMI_API_KEY: str = ""
 
     # JWT
     JWT_SECRET: str = "change-me-in-production"
