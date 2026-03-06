@@ -33,7 +33,11 @@ async def get_graph_ppr_recommendations(user_id: int, seed_movie_ids: List[str],
     CALL gds.graph.project(
       '{graph_name}',
       ['Movie', 'Person', 'Genre'],
-      ['ACTED_IN', 'DIRECTED', 'HAS_GENRE']
+      {{
+        ACTED_IN: {{type: 'ACTED_IN', orientation: 'UNDIRECTED'}},
+        DIRECTED: {{type: 'DIRECTED', orientation: 'UNDIRECTED'}},
+        HAS_GENRE: {{type: 'HAS_GENRE', orientation: 'UNDIRECTED'}}
+      }}
     )
     """
     

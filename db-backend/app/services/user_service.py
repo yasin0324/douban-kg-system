@@ -2,7 +2,10 @@
 用户行为服务 — 偏好（喜欢/想看）+ 评分 CRUD
 """
 from typing import List, Optional
+import logging
 from app.db.neo4j import Neo4jConnection
+
+logger = logging.getLogger(__name__)
 
 
 # ---------- 偏好 ----------
@@ -120,8 +123,7 @@ def add_rating(conn, user_id: int, mid: str, rating: float, comment_short: str =
                     uid=user_id, mid=mid, rating=rating
                 )
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"双写 Neo4j 评分失败: {e}")
+            logger.error("双写 Neo4j 评分失败: %s", e)
 
         cursor.execute(
             "SELECT id, mid, rating, comment_short, rated_at FROM user_movie_ratings WHERE user_id = %s AND mid = %s",
@@ -137,7 +139,21 @@ def remove_rating(conn, user_id: int, mid: str) -> bool:
             (user_id, mid),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+
+    if deleted:
+        # 删除评分时同步清理 Neo4j 关系，避免推荐系统持续把该电影当作“已看过”
+        try:
+            driver = Neo4jConnection.get_driver()
+            with driver.session() as session:
+                session.run(
+                    "MATCH (u:User {id: $uid})-[rel:RATED]->(m:Movie {mid: $mid}) DELETE rel",
+                    uid=user_id, mid=mid
+                )
+        except Exception as e:
+            logger.error("双写 Neo4j 删除评分失败: %s", e)
+
+    return deleted
 
 
 def list_ratings(conn, user_id: int, page: int = 1, size: int = 20) -> dict:
@@ -167,7 +183,8 @@ def get_high_rated_movie_ids(conn, user_id: int, limit: int = 5) -> List[str]:
     """ 获取用户最近打高分的电影ID列表，作为推荐引擎的种子节点 """
     with conn.cursor() as cursor:
         cursor.execute(
-            "SELECT mid FROM user_movie_ratings WHERE user_id = %s AND rating >= 4.0 ORDER BY rated_at DESC LIMIT %s",
+            "SELECT mid FROM user_movie_ratings WHERE user_id = %s AND rating >= 4.0 "
+            "ORDER BY updated_at DESC, rated_at DESC LIMIT %s",
             (user_id, limit)
         )
         rows = cursor.fetchall()

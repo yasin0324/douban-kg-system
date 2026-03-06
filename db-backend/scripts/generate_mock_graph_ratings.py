@@ -124,13 +124,17 @@ async def fetch_llm_ratings(persona: dict, num_users: int = 2) -> List[Dict]:
 
 def generate_dummy_ratings_local(persona: dict, num_users: int) -> List[Dict]:
     """ 降级方案：根据简单的规则在本地直接生成模拟数据以保证流程畅通 """
+    if not MOVIE_POOL:
+        return []
+
     users = []
     keyword = "科幻" if "科幻" in persona['name'] else "剧情" if "文艺" in persona['name'] else "动作" if "动作" in persona['name'] else "动画" if "二次元" in persona['name'] else "喜剧"
     
     for i in range(num_users):
         u_id = str(uuid.uuid4())[:8]
         user_data = {"username": f"{persona['name']}_{u_id}", "ratings": []}
-        selected = random.sample(MOVIE_POOL, 30)
+        sample_size = min(30, len(MOVIE_POOL))
+        selected = random.sample(MOVIE_POOL, sample_size)
         for m in selected:
             if keyword in m['genres']:
                 rating = random.choice([4.0, 5.0])
@@ -151,47 +155,50 @@ def save_to_mysql_and_neo4j(users_data: List[Dict]):
     neo4j_nodes_created = 0
     neo4j_edges_created = 0
     
-    with neo4j_driver.session() as session:
-        for u in users_data:
-            # 1. 写入 MySQL User
-            username = u.get('username', f"MockUser_{random.randint(1000,9999)}")
-            pwd_hash = "mock_hash"
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "INSERT INTO users (username, password_hash, nickname) VALUES (%s, %s, %s)",
-                        (username, pwd_hash, username)
-                    )
-                    user_id = cur.lastrowid
-                mysql_users_inserted += 1
-                
-                # 2. 写入 Neo4j User Node
-                session.run("MERGE (u:User {id: $uid}) SET u.username = $uname", uid=user_id, uname=username)
-                neo4j_nodes_created += 1
-                
-                # 3. 写入 Ratings 两端
-                for r in u.get('ratings', []):
-                    mid = str(r['mid'])
-                    rating = float(r['rating'])
-                    
-                    # MySQL
+    try:
+        with neo4j_driver.session() as session:
+            for u in users_data:
+                # 1. 写入 MySQL User
+                username = u.get('username', f"MockUser_{random.randint(1000,9999)}")
+                pwd_hash = "mock_hash"
+                try:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "INSERT INTO user_movie_ratings (user_id, mid, rating) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE rating=%s",
-                            (user_id, mid, rating, rating)
+                            "INSERT INTO users (username, password_hash, nickname) VALUES (%s, %s, %s)",
+                            (username, pwd_hash, username)
                         )
-                    mysql_ratings_inserted += 1
+                        user_id = cur.lastrowid
+                    mysql_users_inserted += 1
                     
-                    # Neo4j
-                    session.run("""
-                        MATCH (u:User {id: $uid}), (m:Movie {mid: $mid})
-                        MERGE (u)-[rel:RATED]->(m)
-                        SET rel.rating = $rating, rel.timestamp = datetime()
-                    """, uid=user_id, mid=mid, rating=rating)
-                    neo4j_edges_created += 1
+                    # 2. 写入 Neo4j User Node
+                    session.run("MERGE (u:User {id: $uid}) SET u.username = $uname", uid=user_id, uname=username)
+                    neo4j_nodes_created += 1
                     
-            except Exception as e:
-                print(f"⚠️ 保存用户 {username} 的数据时出错: {e}")
+                    # 3. 写入 Ratings 两端
+                    for r in u.get('ratings', []):
+                        mid = str(r['mid'])
+                        rating = float(r['rating'])
+                        
+                        # MySQL
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "INSERT INTO user_movie_ratings (user_id, mid, rating) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE rating=%s",
+                                (user_id, mid, rating, rating)
+                            )
+                        mysql_ratings_inserted += 1
+                        
+                        # Neo4j
+                        session.run("""
+                            MATCH (u:User {id: $uid}), (m:Movie {mid: $mid})
+                            MERGE (u)-[rel:RATED]->(m)
+                            SET rel.rating = $rating, rel.timestamp = datetime()
+                        """, uid=user_id, mid=mid, rating=rating)
+                        neo4j_edges_created += 1
+                        
+                except Exception as e:
+                    print(f"⚠️ 保存用户 {username} 的数据时出错: {e}")
+    finally:
+        conn.close()
                 
     print(f"✅ 落库完成: MySQL [{mysql_users_inserted} 用户, {mysql_ratings_inserted} 评分] | Neo4j [{neo4j_nodes_created} 节点, {neo4j_edges_created} 连边]")
 
