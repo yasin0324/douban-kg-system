@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import PersonCard from "@/components/person/PersonCard.vue";
 import { moviesApi } from "@/api/movies";
@@ -19,6 +19,21 @@ const prefStatus = ref(null); // { like: bool, want_to_watch: bool }
 const userRating = ref(null); // number or null
 const ratingDialog = ref(false);
 const ratingInput = ref(0);
+
+// 判断当前电影是否已上映
+const isUnreleased = computed(() => {
+    if (!movie.value) return false;
+    const year = movie.value.year;
+    const releaseDate = movie.value.release_date;
+    const currentStr = "2026-03-20";
+
+    if (year && year > 2026) return true;
+    if (year === 2026) {
+        if (!releaseDate) return true; // 2026未定档
+        if (releaseDate.substring(0, 10) > currentStr) return true;
+    }
+    return false;
+});
 
 const mid = () => route.params.mid;
 
@@ -164,21 +179,31 @@ watch(() => route.params.mid, fetchMovie);
                         }}</span>
                     </div>
 
-                    <!-- 评分 -->
-                    <div class="rating-section" v-if="movie.rating">
-                        <span class="rating-score">{{
-                            movie.rating.toFixed(1)
-                        }}</span>
-                        <el-rate
-                            :model-value="movie.rating / 2"
-                            disabled
-                            show-score
-                            score-template=""
-                            :colors="['#ffc107', '#ffc107', '#ffc107']"
-                        />
-                    </div>
+                    <template v-if="!isUnreleased">
+                        <!-- 评分 -->
+                        <div class="rating-section" v-if="movie.rating">
+                            <span class="rating-score">{{
+                                movie.rating.toFixed(1)
+                            }}</span>
+                            <el-rate
+                                :model-value="movie.rating / 2"
+                                disabled
+                                show-score
+                                score-template=""
+                                :colors="['#ffc107', '#ffc107', '#ffc107']"
+                            />
+                        </div>
+                        <div class="rating-section" v-else>
+                            <span class="rating-score no-score">暂无评分</span>
+                        </div>
+                    </template>
                     <div class="rating-section" v-else>
-                        <span class="rating-score no-score">暂无评分</span>
+                        <el-tag
+                            type="info"
+                            effect="plain"
+                            style="font-size: 1.2rem; padding: 12px 20px"
+                            >🎬 尚未上映</el-tag
+                        >
                     </div>
 
                     <!-- 剧情简介 -->
@@ -208,7 +233,10 @@ watch(() => route.params.mid, fetchMovie);
                                 prefStatus?.is_want_to_watch ? "已想看" : "想看"
                             }}
                         </el-button>
-                        <el-button @click="openRatingDialog">
+                        <el-button
+                            v-if="!isUnreleased"
+                            @click="openRatingDialog"
+                        >
                             ⭐
                             {{
                                 userRating ? `我的评分 ${userRating}★` : "评分"
