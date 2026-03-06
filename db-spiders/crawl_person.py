@@ -32,6 +32,9 @@ from db_spiders import validator
 from proxy_manager import ProxyManager
 
 # ================= CONFIGURATION =================
+# MODE FLAGS (set via CLI)
+DIRECT_MODE = False  # True = direct connection (no proxy)
+
 # DEVICE CONFIGURATION
 IPS_PER_BATCH = 50     
 WORKERS_PER_IP = 10    
@@ -53,9 +56,18 @@ INITIAL_WORKERS_PER_IP = 1  # Start with fewer workers per IP
 WORKER_RAMP_UP_INTERVAL = 15  # Seconds between adding workers per IP
 WORKER_RAMP_UP_COUNT = 1  # How many workers to add each time
 
+# DIRECT MODE CONFIGURATION (conservative to avoid bans)
+DIRECT_DELAY_MIN = 3.0
+DIRECT_DELAY_MAX = 6.0
+DIRECT_WORKERS = 2
+DIRECT_INITIAL_WORKERS = 1
+DIRECT_THROTTLE_INTERVAL = 2.0  # Global minimum seconds between any two requests
+
 # GLOBAL RESOURCES
-PROXY_MANAGER = ProxyManager()
+PROXY_MANAGER = None  # Lazy init, only in proxy mode
 STOP_EVENT = asyncio.Event()
+GLOBAL_THROTTLE_LOCK = asyncio.Lock()
+LAST_REQUEST_TIME = 0
 
 # Statistics
 stats = {
@@ -432,7 +444,10 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
     Terminates if IP expires or hits error limit.
     Workers are ramped up gradually to avoid 429.
     """
-    print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
+    if proxy_config:
+        print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
+    else:
+        print(f"[{ip_id}] 🔥 Powering up with DIRECT connection (no proxy)")
     
     tasks = []
     consecutive_errors = 0
@@ -454,8 +469,8 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
         while group_state['active'] and not STOP_EVENT.is_set():
             async with global_sem:
                 try:
-                    # Check life
-                    if time.time() - start_time > MAX_IP_LIFE_SECONDS:
+                    # Check life for proxy mode only
+                    if proxy_config and time.time() - start_time > MAX_IP_LIFE_SECONDS:
                         print(f"[{ip_id}] ⏰ Expired.")
                         break
                     
@@ -473,10 +488,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                     
                     context = None
                     try:
-                        # Create new context with proxy
+                        # Create new context (with optional proxy)
                         ua = get_random_ua()
-                        context = await GLOBAL_BROWSER.new_context(
-                            proxy=proxy_config,
+                        context_kwargs = dict(
                             user_agent=ua,
                             viewport={'width': 1920, 'height': 1080},
                             locale='zh-CN',
@@ -484,6 +498,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                             extra_http_headers=get_browser_headers(ua),
                             ignore_https_errors=True,
                         )
+                        if proxy_config:
+                            context_kwargs['proxy'] = proxy_config
+                        context = await GLOBAL_BROWSER.new_context(**context_kwargs)
                         
                         bid = generate_bid()
                         await context.add_cookies([{
@@ -499,7 +516,19 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         )
                         
                         # Small delay for proxy stabilization
-                        await asyncio.sleep(random.uniform(0.5, 1.5))
+                        if proxy_config:
+                            await asyncio.sleep(random.uniform(0.5, 1.5))
+                        
+                        # Global throttle in direct mode to reduce ban risk
+                        if DIRECT_MODE:
+                            global LAST_REQUEST_TIME
+                            async with GLOBAL_THROTTLE_LOCK:
+                                now = time.time()
+                                elapsed = now - LAST_REQUEST_TIME
+                                if elapsed < DIRECT_THROTTLE_INTERVAL:
+                                    wait = DIRECT_THROTTLE_INTERVAL - elapsed + random.uniform(0, 1.0)
+                                    await asyncio.sleep(wait)
+                                LAST_REQUEST_TIME = time.time()
                         
                         url = f'https://www.douban.com/personage/{person_id}/'
                         
@@ -577,7 +606,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                 except Exception as e:
                     pass
             
-            await asyncio.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
+            delay_min = DIRECT_DELAY_MIN if DIRECT_MODE else REQUEST_DELAY_MIN
+            delay_max = DIRECT_DELAY_MAX if DIRECT_MODE else REQUEST_DELAY_MAX
+            await asyncio.sleep(random.uniform(delay_min, delay_max))
     
     # Worker ramp-up manager
     async def worker_ramp_up_manager():
@@ -632,10 +663,14 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
 
 
 async def main():
-    global GLOBAL_BROWSER
+    global GLOBAL_BROWSER, PROXY_MANAGER
     
-    print(f"🚀 Starting Douban Person Crawler with Proxy Pool")
-    print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
+    mode_label = "Direct" if DIRECT_MODE else "Proxy"
+    print(f"🚀 Starting Douban Person Crawler ({mode_label} mode)")
+    if DIRECT_MODE:
+        print(f"⚙️ Direct mode: {DIRECT_WORKERS} workers, delay {DIRECT_DELAY_MIN}-{DIRECT_DELAY_MAX}s")
+    else:
+        print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
     print(f"📊 Pending persons in person_obj: checking...")
     
     # Check pending count
@@ -659,7 +694,6 @@ async def main():
             args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
         )
         
-        global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
         q = asyncio.Queue()
         
         async def fill_queue():
@@ -686,50 +720,81 @@ async def main():
             if gid in active_groups:
                 active_groups.remove(gid)
         
-        ip_counter = 0
-        last_ramp_up = time.time()
-        current_max_ips = INITIAL_IPS
-        
-        while not STOP_EVENT.is_set():
-            # Gradual IP ramp-up
-            now = time.time()
-            if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
-                current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
-                print(f"📈 Ramping up: max IPs now = {current_max_ips}")
-                last_ramp_up = now
+        if DIRECT_MODE:
+            # ===== DIRECT MODE: single group, no proxy =====
+            global_sem = asyncio.Semaphore(DIRECT_WORKERS)
+            gid = "DIRECT"
+            active_groups.add(gid)
+            t = asyncio.create_task(
+                run_ip_group(gid, None, q, global_sem, on_group_finish)
+            )
+            group_tasks.append(t)
             
-            # Maintain pool size
-            needed = current_max_ips - len(active_groups)
-            
-            if needed > 0:
-                print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
-                loop = asyncio.get_event_loop()
-                proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
+            while not STOP_EVENT.is_set():
+                sys.stdout.write(
+                    f"\r⚡ Direct | Queue: {q.qsize()} | Ins: {stats['inserted']} | "
+                    f"Upd: {stats['updated']} | Fail: {stats['failed']}"
+                )
+                sys.stdout.flush()
+                await asyncio.sleep(2)
                 
-                if proxies:
-                    for proxy in proxies:
-                        ip_counter += 1
-                        gid = f"IP{ip_counter}"
-                        active_groups.add(gid)
-                        t = asyncio.create_task(
-                            run_ip_group(gid, proxy, q, global_sem, on_group_finish)
-                        )
-                        group_tasks.append(t)
-                else:
-                    print("⚠️ Fetch failed. Retrying in 10s...")
-                    await asyncio.sleep(10)
+                # Clean up finished tasks
+                group_tasks = [t for t in group_tasks if not t.done()]
+                
+                if len(active_groups) == 0:
+                    break
+        else:
+            # ===== PROXY MODE: dynamic IP pool =====
+            PROXY_MANAGER = ProxyManager()
+            global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
             
-            # Print status
-            sys.stdout.write(f"\r⚡ Active IPs: {len(active_groups)} | Queue: {q.qsize()} | Ins: {stats['inserted']} | Fail: {stats['failed']}")
-            sys.stdout.flush()
+            ip_counter = 0
+            last_ramp_up = time.time()
+            current_max_ips = INITIAL_IPS
             
-            await asyncio.sleep(2)
-            
-            # Clean up finished tasks
-            group_tasks = [t for t in group_tasks if not t.done()]
-            
-            if STOP_EVENT.is_set() and len(active_groups) == 0:
-                break
+            while not STOP_EVENT.is_set():
+                # Gradual IP ramp-up
+                now = time.time()
+                if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
+                    current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
+                    print(f"📈 Ramping up: max IPs now = {current_max_ips}")
+                    last_ramp_up = now
+                
+                # Maintain pool size
+                needed = current_max_ips - len(active_groups)
+                
+                if needed > 0:
+                    print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
+                    loop = asyncio.get_event_loop()
+                    proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
+                    
+                    if proxies:
+                        for proxy in proxies:
+                            ip_counter += 1
+                            gid = f"IP{ip_counter}"
+                            active_groups.add(gid)
+                            t = asyncio.create_task(
+                                run_ip_group(gid, proxy, q, global_sem, on_group_finish)
+                            )
+                            group_tasks.append(t)
+                    else:
+                        print("⚠️ Fetch failed. Retrying in 10s...")
+                        await asyncio.sleep(10)
+                
+                # Print status
+                sys.stdout.write(
+                    f"\r⚡ Active IPs: {len(active_groups)} | Queue: {q.qsize()} | "
+                    f"Ins: {stats['inserted']} | Upd: {stats['updated']} | Fail: {stats['failed']}"
+                )
+                sys.stdout.flush()
+                
+                await asyncio.sleep(2)
+                
+                # Clean up finished tasks
+                group_tasks = [t for t in group_tasks if not t.done()]
+                
+                if STOP_EVENT.is_set() and len(active_groups) == 0:
+                    break
         
         await GLOBAL_BROWSER.close()
     
@@ -744,17 +809,42 @@ async def main():
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Douban Person Crawler with Proxy Pool')
-    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH, help='Number of IPs in pool')
-    parser.add_argument('--workers', type=int, default=WORKERS_PER_IP, help='Workers per IP')
-    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS, help='Initial IPs to start with')
-    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP, help='Initial workers per IP')
+    parser = argparse.ArgumentParser(description='Douban Person Crawler')
+    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH,
+                        help='Max concurrent proxy IPs (proxy mode)')
+    parser.add_argument('--workers', type=int, default=WORKERS_PER_IP,
+                        help='Workers per IP (proxy mode)')
+    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS,
+                        help='Initial IPs to start with (proxy mode)')
+    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP,
+                        help='Initial workers per IP (proxy mode)')
+    parser.add_argument('--direct', action='store_true',
+                        help='Use direct connection (no proxy pool)')
+    parser.add_argument('--direct-workers', type=int, default=None,
+                        help='Max workers in direct mode (default: 2, ramps up from 1)')
+    parser.add_argument('--direct-delay-min', type=float, default=None,
+                        help='Min delay between requests in direct mode (default: 3.0s)')
+    parser.add_argument('--direct-delay-max', type=float, default=None,
+                        help='Max delay between requests in direct mode (default: 6.0s)')
     args = parser.parse_args()
     
     IPS_PER_BATCH = args.ips
     WORKERS_PER_IP = args.workers
     INITIAL_IPS = args.initial_ips
     INITIAL_WORKERS_PER_IP = args.initial_workers
+    DIRECT_MODE = args.direct
+    
+    if args.direct_workers is not None:
+        DIRECT_WORKERS = args.direct_workers
+    if args.direct_delay_min is not None:
+        DIRECT_DELAY_MIN = args.direct_delay_min
+    if args.direct_delay_max is not None:
+        DIRECT_DELAY_MAX = args.direct_delay_max
+    
+    # In direct mode, override worker settings to direct profile
+    if DIRECT_MODE:
+        WORKERS_PER_IP = DIRECT_WORKERS
+        INITIAL_WORKERS_PER_IP = DIRECT_INITIAL_WORKERS
     
     try:
         asyncio.run(main())
