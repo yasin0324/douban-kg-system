@@ -115,6 +115,7 @@ build/
 dist/
 *.egg-info/
 .eggs/
+*.vite/
 
 .ipynb_checkpoints/
 
