@@ -32,8 +32,11 @@ from db_spiders import validator
 from proxy_manager import ProxyManager
 
 # ================= CONFIGURATION =================
+# MODE FLAGS (set via CLI)
+DIRECT_MODE = False  # True = direct connection (no proxy)
+
 # DEVICE CONFIGURATION
-IPS_PER_BATCH = 30     
+IPS_PER_BATCH = 50     
 WORKERS_PER_IP = 10    
 MAX_IP_LIFE_SECONDS = 4500  # 1 hour max (backup safeguard, errors auto-retire IP earlier)
 MAX_CONSECUTIVE_ERRORS = 6  # If IP fails 6 times in a row, retire it
@@ -53,9 +56,18 @@ INITIAL_WORKERS_PER_IP = 1  # Start with fewer workers per IP
 WORKER_RAMP_UP_INTERVAL = 15  # Seconds between adding workers per IP
 WORKER_RAMP_UP_COUNT = 1  # How many workers to add each time
 
+# DIRECT MODE CONFIGURATION (conservative to avoid bans)
+DIRECT_DELAY_MIN = 3.0
+DIRECT_DELAY_MAX = 6.0
+DIRECT_WORKERS = 2
+DIRECT_INITIAL_WORKERS = 1
+DIRECT_THROTTLE_INTERVAL = 2.0  # Global minimum seconds between any two requests
+
 # GLOBAL RESOURCES
-PROXY_MANAGER = ProxyManager()
+PROXY_MANAGER = None  # Lazy init, only in proxy mode
 STOP_EVENT = asyncio.Event()
+GLOBAL_THROTTLE_LOCK = asyncio.Lock()
+LAST_REQUEST_TIME = 0
 
 # Statistics
 stats = {
@@ -287,8 +299,9 @@ def save_person_to_database(data):
 
 async def async_extract_person_data(page, person_id):
     """
-    Extract person data from Douban celebrity page.
-    URL format: https://movie.douban.com/celebrity/{person_id}/
+    Extract person data from Douban personage page.
+    URL format: https://www.douban.com/personage/{person_id}/
+    Supports both old (#headline .info) and new (section) page layouts.
     """
     try:
         # Wait for content to load
@@ -319,53 +332,63 @@ async def async_extract_person_data(page, person_id):
         except:
             data['name'] = None
         
-        # Get all info items from the info block
-        info_text = await get_text('#headline .info')
+        # Get info text from multiple possible selectors (old and new layout)
+        info_text = None
+        for selector in ['#headline .info', 'section', '#content']:
+            info_text = await get_text(selector)
+            if info_text and ('\u6027\u522b' in info_text or '\u51fa\u751f' in info_text or '\u804c\u4e1a' in info_text):
+                break
+            info_text = None
         
         if info_text:
             lines = info_text.split('\n')
             for line in lines:
                 line = line.strip()
+                if not line:
+                    continue
                 
                 # Sex
-                if '性别:' in line or '性别：' in line:
-                    sex = line.replace('性别:', '').replace('性别：', '').strip()
-                    if '男' in sex:
-                        data['sex'] = '男'
-                    elif '女' in sex:
-                        data['sex'] = '女'
+                if '\u6027\u522b:' in line or '\u6027\u522b\uff1a' in line:
+                    sex = line.replace('\u6027\u522b:', '').replace('\u6027\u522b\uff1a', '').strip()
+                    if '\u7537' in sex:
+                        data['sex'] = '\u7537'
+                    elif '\u5973' in sex:
+                        data['sex'] = '\u5973'
                     else:
                         data['sex'] = None
                 
-                # English name
-                elif '外文名:' in line or '外文名：' in line or '英文名:' in line or '英文名：' in line:
-                    name_en = line.replace('外文名:', '').replace('外文名：', '')
-                    name_en = name_en.replace('英文名:', '').replace('英文名：', '').strip()
+                # English name / Foreign name (check 更多外文名 first to avoid substring match)
+                elif '\u66f4\u591a\u5916\u6587\u540d:' in line or '\u66f4\u591a\u5916\u6587\u540d\uff1a' in line:
+                    # "更多外文名" - store separately, don't overwrite name_en
+                    pass
+                elif '\u5916\u6587\u540d:' in line or '\u5916\u6587\u540d\uff1a' in line or '\u82f1\u6587\u540d:' in line or '\u82f1\u6587\u540d\uff1a' in line:
+                    name_en = line.replace('\u5916\u6587\u540d:', '').replace('\u5916\u6587\u540d\uff1a', '')
+                    name_en = name_en.replace('\u82f1\u6587\u540d:', '').replace('\u82f1\u6587\u540d\uff1a', '').strip()
                     data['name_en'] = name_en if name_en else None
                 
                 # More Chinese names
-                elif '更多中文名:' in line or '更多中文名：' in line:
-                    name_zh = line.replace('更多中文名:', '').replace('更多中文名：', '').strip()
+                elif '\u66f4\u591a\u4e2d\u6587\u540d:' in line or '\u66f4\u591a\u4e2d\u6587\u540d\uff1a' in line:
+                    name_zh = line.replace('\u66f4\u591a\u4e2d\u6587\u540d:', '').replace('\u66f4\u591a\u4e2d\u6587\u540d\uff1a', '').strip()
                     data['name_zh'] = name_zh if name_zh else None
                 
                 # Birth date
-                elif '出生日期:' in line or '出生日期：' in line:
-                    birth_str = line.replace('出生日期:', '').replace('出生日期：', '').strip()
+                elif '\u51fa\u751f\u65e5\u671f:' in line or '\u51fa\u751f\u65e5\u671f\uff1a' in line:
+                    birth_str = line.replace('\u51fa\u751f\u65e5\u671f:', '').replace('\u51fa\u751f\u65e5\u671f\uff1a', '').strip()
                     data['birth'] = validator.str_to_date(validator.match_date(birth_str))
                 
                 # Death date
-                elif '死亡日期:' in line or '死亡日期：' in line:
-                    death_str = line.replace('死亡日期:', '').replace('死亡日期：', '').strip()
+                elif '\u6b7b\u4ea1\u65e5\u671f:' in line or '\u6b7b\u4ea1\u65e5\u671f\uff1a' in line:
+                    death_str = line.replace('\u6b7b\u4ea1\u65e5\u671f:', '').replace('\u6b7b\u4ea1\u65e5\u671f\uff1a', '').strip()
                     data['death'] = validator.str_to_date(validator.match_date(death_str))
                 
                 # Birthplace
-                elif '出生地:' in line or '出生地：' in line:
-                    birthplace = line.replace('出生地:', '').replace('出生地：', '').strip()
+                elif '\u51fa\u751f\u5730:' in line or '\u51fa\u751f\u5730\uff1a' in line:
+                    birthplace = line.replace('\u51fa\u751f\u5730:', '').replace('\u51fa\u751f\u5730\uff1a', '').strip()
                     data['birthplace'] = birthplace if birthplace else None
                 
                 # Profession
-                elif '职业:' in line or '职业：' in line:
-                    profession = line.replace('职业:', '').replace('职业：', '').strip()
+                elif '\u804c\u4e1a:' in line or '\u804c\u4e1a\uff1a' in line:
+                    profession = line.replace('\u804c\u4e1a:', '').replace('\u804c\u4e1a\uff1a', '').strip()
                     data['profession'] = profession if profession else None
         
         # Set defaults for missing fields
@@ -373,20 +396,34 @@ async def async_extract_person_data(page, person_id):
             if field not in data:
                 data[field] = None
         
-        # Biography - try to get full version first, then short version
+        # Biography - try multiple selectors for both old and new layout
         try:
-            # Try to get the full biography (hidden by default)
-            bio = await get_text('div#intro .bd .all')
-            if not bio:
-                # Try short version
-                bio = await get_text('div#intro .bd span.short')
-                if not bio:
-                    # Try direct content
-                    bio = await get_text('div#intro .bd')
+            bio = None
+            for bio_selector in [
+                'div#intro .bd .all',          # old layout: full bio
+                'div#intro .bd span.short',    # old layout: short bio
+                'div#intro .bd',               # old layout: direct
+                'section:has-text("\u4eba\u7269\u7b80\u4ecb")',   # new layout
+            ]:
+                bio = await get_text(bio_selector)
+                if bio and len(bio) > 20:
+                    break
+                bio = None
             
             if bio:
-                # Clean up biography text
-                bio = bio.replace('(展开全部)', '').replace('展开全部', '').strip()
+                # Clean up: remove section headers and UI text
+                for noise in ['\u4eba\u7269\u7b80\u4ecb', '(\u5c55\u5f00\u5168\u90e8)', '\u5c55\u5f00\u5168\u90e8', '(\u5c55\u5f00)', '\u5c55\u5f00',
+                              '\u56fe\u7247', '\u83b7\u5956\u60c5\u51b5', '\u6700\u8fd1\u76845\u90e8\u4f5c\u54c1', '\u6536\u85cf\u4eba\u6570\u6700\u591a\u76845\u90e8\u4f5c\u54c1']:
+                    bio = bio.replace(noise, '')
+                # Remove dot separators like · · · · · · (varying counts and spacing)
+                bio = re.sub(r'[\u00b7\u2027\u30fb\xb7·\s]+$', '', bio)  # trailing dots
+                bio = re.sub(r'^[\u00b7\u2027\u30fb\xb7·\s]+', '', bio)  # leading dots
+                bio = bio.strip()
+                # Only keep the first paragraph (before other sections)
+                if '\u56fe\u7247' in bio:
+                    bio = bio.split('\u56fe\u7247')[0].strip()
+                if '\u83b7\u5956' in bio:
+                    bio = bio.split('\u83b7\u5956')[0].strip()
                 data['biography'] = bio if bio else None
             else:
                 data['biography'] = None
@@ -407,7 +444,10 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
     Terminates if IP expires or hits error limit.
     Workers are ramped up gradually to avoid 429.
     """
-    print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
+    if proxy_config:
+        print(f"[{ip_id}] 🔥 Powering up with IP: {proxy_config['server'].split('@')[-1]}")
+    else:
+        print(f"[{ip_id}] 🔥 Powering up with DIRECT connection (no proxy)")
     
     tasks = []
     consecutive_errors = 0
@@ -429,8 +469,8 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
         while group_state['active'] and not STOP_EVENT.is_set():
             async with global_sem:
                 try:
-                    # Check life
-                    if time.time() - start_time > MAX_IP_LIFE_SECONDS:
+                    # Check life for proxy mode only
+                    if proxy_config and time.time() - start_time > MAX_IP_LIFE_SECONDS:
                         print(f"[{ip_id}] ⏰ Expired.")
                         break
                     
@@ -448,10 +488,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                     
                     context = None
                     try:
-                        # Create new context with proxy
+                        # Create new context (with optional proxy)
                         ua = get_random_ua()
-                        context = await GLOBAL_BROWSER.new_context(
-                            proxy=proxy_config,
+                        context_kwargs = dict(
                             user_agent=ua,
                             viewport={'width': 1920, 'height': 1080},
                             locale='zh-CN',
@@ -459,6 +498,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                             extra_http_headers=get_browser_headers(ua),
                             ignore_https_errors=True,
                         )
+                        if proxy_config:
+                            context_kwargs['proxy'] = proxy_config
+                        context = await GLOBAL_BROWSER.new_context(**context_kwargs)
                         
                         bid = generate_bid()
                         await context.add_cookies([{
@@ -474,7 +516,19 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                         )
                         
                         # Small delay for proxy stabilization
-                        await asyncio.sleep(random.uniform(0.5, 1.5))
+                        if proxy_config:
+                            await asyncio.sleep(random.uniform(0.5, 1.5))
+                        
+                        # Global throttle in direct mode to reduce ban risk
+                        if DIRECT_MODE:
+                            global LAST_REQUEST_TIME
+                            async with GLOBAL_THROTTLE_LOCK:
+                                now = time.time()
+                                elapsed = now - LAST_REQUEST_TIME
+                                if elapsed < DIRECT_THROTTLE_INTERVAL:
+                                    wait = DIRECT_THROTTLE_INTERVAL - elapsed + random.uniform(0, 1.0)
+                                    await asyncio.sleep(wait)
+                                LAST_REQUEST_TIME = time.time()
                         
                         url = f'https://www.douban.com/personage/{person_id}/'
                         
@@ -485,6 +539,17 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                             await loop.run_in_executor(None, release_person_task, person_id)
                             q.put_nowait(person_id)
                             raise e
+                        
+                        # Handle sec.douban.com security redirect
+                        if 'sec.douban.com' in page.url:
+                            try:
+                                await page.wait_for_url('**/personage/**', timeout=15000)
+                            except:
+                                # Redirect didn't complete, retry this task
+                                consecutive_errors += 1
+                                await loop.run_in_executor(None, release_person_task, person_id)
+                                q.put_nowait(person_id)
+                                continue
                         
                         status = response.status
                         if status in [403, 429]:
@@ -541,7 +606,9 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
                 except Exception as e:
                     pass
             
-            await asyncio.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
+            delay_min = DIRECT_DELAY_MIN if DIRECT_MODE else REQUEST_DELAY_MIN
+            delay_max = DIRECT_DELAY_MAX if DIRECT_MODE else REQUEST_DELAY_MAX
+            await asyncio.sleep(random.uniform(delay_min, delay_max))
     
     # Worker ramp-up manager
     async def worker_ramp_up_manager():
@@ -596,10 +663,14 @@ async def run_ip_group(ip_id, proxy_config, q, global_sem, group_finished_callba
 
 
 async def main():
-    global GLOBAL_BROWSER
+    global GLOBAL_BROWSER, PROXY_MANAGER
     
-    print(f"🚀 Starting Douban Person Crawler with Proxy Pool")
-    print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
+    mode_label = "Direct" if DIRECT_MODE else "Proxy"
+    print(f"🚀 Starting Douban Person Crawler ({mode_label} mode)")
+    if DIRECT_MODE:
+        print(f"⚙️ Direct mode: {DIRECT_WORKERS} workers, delay {DIRECT_DELAY_MIN}-{DIRECT_DELAY_MAX}s")
+    else:
+        print(f"⚙️ Target Pool: {IPS_PER_BATCH} active IPs (starting with {INITIAL_IPS}, ramping up)")
     print(f"📊 Pending persons in person_obj: checking...")
     
     # Check pending count
@@ -623,7 +694,6 @@ async def main():
             args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
         )
         
-        global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
         q = asyncio.Queue()
         
         async def fill_queue():
@@ -650,50 +720,81 @@ async def main():
             if gid in active_groups:
                 active_groups.remove(gid)
         
-        ip_counter = 0
-        last_ramp_up = time.time()
-        current_max_ips = INITIAL_IPS
-        
-        while not STOP_EVENT.is_set():
-            # Gradual IP ramp-up
-            now = time.time()
-            if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
-                current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
-                print(f"📈 Ramping up: max IPs now = {current_max_ips}")
-                last_ramp_up = now
+        if DIRECT_MODE:
+            # ===== DIRECT MODE: single group, no proxy =====
+            global_sem = asyncio.Semaphore(DIRECT_WORKERS)
+            gid = "DIRECT"
+            active_groups.add(gid)
+            t = asyncio.create_task(
+                run_ip_group(gid, None, q, global_sem, on_group_finish)
+            )
+            group_tasks.append(t)
             
-            # Maintain pool size
-            needed = current_max_ips - len(active_groups)
-            
-            if needed > 0:
-                print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
-                loop = asyncio.get_event_loop()
-                proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
+            while not STOP_EVENT.is_set():
+                sys.stdout.write(
+                    f"\r⚡ Direct | Queue: {q.qsize()} | Ins: {stats['inserted']} | "
+                    f"Upd: {stats['updated']} | Fail: {stats['failed']}"
+                )
+                sys.stdout.flush()
+                await asyncio.sleep(2)
                 
-                if proxies:
-                    for proxy in proxies:
-                        ip_counter += 1
-                        gid = f"IP{ip_counter}"
-                        active_groups.add(gid)
-                        t = asyncio.create_task(
-                            run_ip_group(gid, proxy, q, global_sem, on_group_finish)
-                        )
-                        group_tasks.append(t)
-                else:
-                    print("⚠️ Fetch failed. Retrying in 10s...")
-                    await asyncio.sleep(10)
+                # Clean up finished tasks
+                group_tasks = [t for t in group_tasks if not t.done()]
+                
+                if len(active_groups) == 0:
+                    break
+        else:
+            # ===== PROXY MODE: dynamic IP pool =====
+            PROXY_MANAGER = ProxyManager()
+            global_sem = asyncio.Semaphore(INITIAL_IPS * WORKERS_PER_IP)
             
-            # Print status
-            sys.stdout.write(f"\r⚡ Active IPs: {len(active_groups)} | Queue: {q.qsize()} | Ins: {stats['inserted']} | Fail: {stats['failed']}")
-            sys.stdout.flush()
+            ip_counter = 0
+            last_ramp_up = time.time()
+            current_max_ips = INITIAL_IPS
             
-            await asyncio.sleep(2)
-            
-            # Clean up finished tasks
-            group_tasks = [t for t in group_tasks if not t.done()]
-            
-            if STOP_EVENT.is_set() and len(active_groups) == 0:
-                break
+            while not STOP_EVENT.is_set():
+                # Gradual IP ramp-up
+                now = time.time()
+                if now - last_ramp_up > RAMP_UP_INTERVAL and current_max_ips < IPS_PER_BATCH:
+                    current_max_ips = min(current_max_ips + 2, IPS_PER_BATCH)
+                    print(f"📈 Ramping up: max IPs now = {current_max_ips}")
+                    last_ramp_up = now
+                
+                # Maintain pool size
+                needed = current_max_ips - len(active_groups)
+                
+                if needed > 0:
+                    print(f"🔧 Pool Low ({len(active_groups)}/{current_max_ips}). Fetching {needed} IPs...")
+                    loop = asyncio.get_event_loop()
+                    proxies = await loop.run_in_executor(None, PROXY_MANAGER.fetch_proxies, needed)
+                    
+                    if proxies:
+                        for proxy in proxies:
+                            ip_counter += 1
+                            gid = f"IP{ip_counter}"
+                            active_groups.add(gid)
+                            t = asyncio.create_task(
+                                run_ip_group(gid, proxy, q, global_sem, on_group_finish)
+                            )
+                            group_tasks.append(t)
+                    else:
+                        print("⚠️ Fetch failed. Retrying in 10s...")
+                        await asyncio.sleep(10)
+                
+                # Print status
+                sys.stdout.write(
+                    f"\r⚡ Active IPs: {len(active_groups)} | Queue: {q.qsize()} | "
+                    f"Ins: {stats['inserted']} | Upd: {stats['updated']} | Fail: {stats['failed']}"
+                )
+                sys.stdout.flush()
+                
+                await asyncio.sleep(2)
+                
+                # Clean up finished tasks
+                group_tasks = [t for t in group_tasks if not t.done()]
+                
+                if STOP_EVENT.is_set() and len(active_groups) == 0:
+                    break
         
         await GLOBAL_BROWSER.close()
     
@@ -708,17 +809,42 @@ async def main():
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Douban Person Crawler with Proxy Pool')
-    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH, help='Number of IPs in pool')
-    parser.add_argument('--workers', type=int, default=WORKERS_PER_IP, help='Workers per IP')
-    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS, help='Initial IPs to start with')
-    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP, help='Initial workers per IP')
+    parser = argparse.ArgumentParser(description='Douban Person Crawler')
+    parser.add_argument('--ips', type=int, default=IPS_PER_BATCH,
+                        help='Max concurrent proxy IPs (proxy mode)')
+    parser.add_argument('--workers', type=int, default=WORKERS_PER_IP,
+                        help='Workers per IP (proxy mode)')
+    parser.add_argument('--initial-ips', type=int, default=INITIAL_IPS,
+                        help='Initial IPs to start with (proxy mode)')
+    parser.add_argument('--initial-workers', type=int, default=INITIAL_WORKERS_PER_IP,
+                        help='Initial workers per IP (proxy mode)')
+    parser.add_argument('--direct', action='store_true',
+                        help='Use direct connection (no proxy pool)')
+    parser.add_argument('--direct-workers', type=int, default=None,
+                        help='Max workers in direct mode (default: 2, ramps up from 1)')
+    parser.add_argument('--direct-delay-min', type=float, default=None,
+                        help='Min delay between requests in direct mode (default: 3.0s)')
+    parser.add_argument('--direct-delay-max', type=float, default=None,
+                        help='Max delay between requests in direct mode (default: 6.0s)')
     args = parser.parse_args()
     
     IPS_PER_BATCH = args.ips
     WORKERS_PER_IP = args.workers
     INITIAL_IPS = args.initial_ips
     INITIAL_WORKERS_PER_IP = args.initial_workers
+    DIRECT_MODE = args.direct
+    
+    if args.direct_workers is not None:
+        DIRECT_WORKERS = args.direct_workers
+    if args.direct_delay_min is not None:
+        DIRECT_DELAY_MIN = args.direct_delay_min
+    if args.direct_delay_max is not None:
+        DIRECT_DELAY_MAX = args.direct_delay_max
+    
+    # In direct mode, override worker settings to direct profile
+    if DIRECT_MODE:
+        WORKERS_PER_IP = DIRECT_WORKERS
+        INITIAL_WORKERS_PER_IP = DIRECT_INITIAL_WORKERS
     
     try:
         asyncio.run(main())

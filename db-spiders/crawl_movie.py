@@ -208,6 +208,26 @@ def fetch_open_tasks(limit=1000):
         cursor.execute(sql, (limit,))
         return [row['douban_id'] for row in cursor.fetchall()]
 
+def fetch_incomplete_movies(limit=500, min_votes=50):
+    """
+    Fetch movies that have ratings but are missing key fields (cover/storyline).
+    Used for re-crawling incomplete data without deleting existing records.
+    """
+    with db_lock:
+        cursor = connection.cursor()
+        sql = '''
+            SELECT m.douban_id
+            FROM movies m
+            WHERE m.douban_score IS NOT NULL
+            AND m.douban_votes >= %s
+            AND (m.cover IS NULL OR m.cover = '' 
+                 OR m.storyline IS NULL OR m.storyline = '')
+            ORDER BY m.douban_votes DESC
+            LIMIT %s
+        '''
+        cursor.execute(sql, (min_votes, limit))
+        return [row['douban_id'] for row in cursor.fetchall()]
+
 def try_claim_task(douban_id, worker_id=WORKER_ID):
     """
     Atomically try to lock a formatted task.
