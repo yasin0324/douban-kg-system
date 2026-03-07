@@ -76,9 +76,9 @@ def test_graph_content_formats_weighted_reasons(monkeypatch):
             "title": "Movie 200",
             "content_score": 4.2,
             "shared_reasons": [
-                {"rel_type": "DIRECTED", "name": "诺兰"},
-                {"rel_type": "HAS_GENRE", "name": "科幻"},
-                {"rel_type": "ACTED_IN", "name": "马特·达蒙"},
+                {"rel_type": "DIRECTED", "reason_names": ["诺兰"]},
+                {"rel_type": "HAS_GENRE", "reason_names": ["科幻"]},
+                {"rel_type": "ACTED_IN", "reason_names": ["马特·达蒙"]},
             ],
         }]
 

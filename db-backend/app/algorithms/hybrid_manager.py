@@ -20,9 +20,9 @@ class HybridRecommendationManager:
     
     def __init__(self, weights: Dict[str, float] | None = None, branch_timeouts_ms: Dict[str, int] | None = None):
         self.weights = weights or {
-            "graph_ppr": 0.1,
-            "graph_content": 0.2,
-            "graph_cf": 0.7,
+            "graph_ppr": 0.05,
+            "graph_content": 0.1,
+            "graph_cf": 0.85,
         }
         self.branch_timeouts_ms = branch_timeouts_ms or {
             "graph_ppr": 1200,
@@ -73,6 +73,13 @@ class HybridRecommendationManager:
         for name, weight in self.weights.items():
             if len(branch_results.get(name, [])) >= self.min_candidates[name]:
                 active_weights[name] = weight
+
+        if "graph_cf" in active_weights and len(branch_results.get("graph_cf", [])) >= 10:
+            active_weights["graph_cf"] *= 1.15
+            if "graph_content" in active_weights:
+                active_weights["graph_content"] *= 0.75
+            if "graph_ppr" in active_weights:
+                active_weights["graph_ppr"] *= 0.5
 
         total_weight = sum(active_weights.values())
         if total_weight <= 0:
@@ -136,12 +143,29 @@ class HybridRecommendationManager:
             for name, results in branch_results.items()
             if name in active_weights
         }
+        cf_candidate_ids = {
+            item["movie_id"]
+            for item in normalized_results.get("graph_cf", [])
+        }
+        cf_dominant = bool(cf_candidate_ids) and len(cf_candidate_ids) >= max(10, limit // 2)
 
         movie_dict: Dict[str, Dict[str, Any]] = {}
         
-        def _merge(norm_list: List[Dict[str, Any]], weight: float):
-            for item in norm_list:
+        def _merge(
+            norm_list: List[Dict[str, Any]],
+            weight: float,
+            restrict_to_ids: set[str] | None = None,
+            out_of_pool_scale: float = 1.0,
+            backbone_bonus: float = 0.0,
+        ):
+            total_items = max(len(norm_list), 1)
+            for index, item in enumerate(norm_list):
                 mid = item["movie_id"]
+                effective_weight = weight
+                if restrict_to_ids is not None and mid not in restrict_to_ids:
+                    effective_weight *= out_of_pool_scale
+                    if effective_weight <= 0:
+                        continue
                 if mid not in movie_dict:
                     movie_dict[mid] = {
                         "movie_id": mid,
@@ -149,12 +173,27 @@ class HybridRecommendationManager:
                         "final_score": 0.0,
                         "reasons": set()
                     }
-                movie_dict[mid]["final_score"] += item["score"] * weight
+                movie_dict[mid]["final_score"] += item["score"] * effective_weight
+                if backbone_bonus > 0:
+                    movie_dict[mid]["final_score"] += backbone_bonus * (1.0 - index / total_items)
                 for reason in item.get("reasons", []):
                     movie_dict[mid]["reasons"].add(reason)
                     
         for branch_name, weight in active_weights.items():
-            _merge(normalized_results[branch_name], weight)
+            if branch_name == "graph_cf":
+                _merge(
+                    normalized_results[branch_name],
+                    weight,
+                    backbone_bonus=0.3 if cf_dominant else 0.0,
+                )
+                continue
+
+            _merge(
+                normalized_results[branch_name],
+                weight,
+                restrict_to_ids=cf_candidate_ids if cf_dominant else None,
+                out_of_pool_scale=0.15 if cf_dominant else 1.0,
+            )
         
         hybrid_list = list(movie_dict.values())
         for m in hybrid_list:

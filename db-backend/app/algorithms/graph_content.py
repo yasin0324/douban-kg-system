@@ -23,40 +23,62 @@ WHERE source.mid IN $seed_ids
   AND NOT target.mid IN $seed_ids
   AND NOT target.mid IN $seen_movie_ids
   AND type(source_rel) = type(target_rel)
-WITH target, shared_node, type(source_rel) AS rel_type, count(DISTINCT source) AS shared_seed_count
-WITH target, rel_type, shared_node,
-     CASE rel_type
-       WHEN 'DIRECTED' THEN 3.0
-       WHEN 'ACTED_IN' THEN 1.5
-       ELSE 1.0
-     END * (1.0 + 0.15 * toFloat(shared_seed_count - 1)) AS weighted_score
-ORDER BY target.mid, weighted_score DESC
 WITH target,
-     sum(weighted_score) AS content_score,
-     collect(DISTINCT {
+     type(source_rel) AS rel_type,
+     count(DISTINCT shared_node) AS shared_node_count,
+     count(DISTINCT source) AS shared_seed_count,
+     collect(DISTINCT coalesce(shared_node.name, shared_node.title))[..3] AS reason_names
+WITH target,
+     rel_type,
+     shared_node_count,
+     shared_seed_count,
+     reason_names,
+     CASE rel_type
+       WHEN 'DIRECTED' THEN 3
+       WHEN 'ACTED_IN' THEN 2
+       ELSE 1
+     END AS reason_priority
+ORDER BY target.mid, reason_priority DESC, shared_seed_count DESC, shared_node_count DESC
+WITH target,
+     collect({
        rel_type: rel_type,
-       name: coalesce(shared_node.name, shared_node.title)
-     }) AS shared_reasons
+       reason_names: reason_names,
+       shared_node_count: shared_node_count,
+       shared_seed_count: shared_seed_count
+     }) AS relation_groups
+WITH target,
+     relation_groups,
+     reduce(score = 0.0, group IN relation_groups |
+       score +
+       CASE group.rel_type
+         WHEN 'DIRECTED' THEN 4.0 * CASE WHEN group.shared_node_count > 0 THEN 1.0 ELSE 0.0 END
+         WHEN 'ACTED_IN' THEN 1.4 * toFloat(CASE WHEN group.shared_node_count > 3 THEN 3 ELSE group.shared_node_count END)
+         ELSE 0.8 * toFloat(CASE WHEN group.shared_node_count > 2 THEN 2 ELSE group.shared_node_count END)
+       END +
+       0.7 * toFloat(CASE WHEN group.shared_seed_count > 1 THEN group.shared_seed_count - 1 ELSE 0 END)
+     ) AS base_score,
+     size(relation_groups) AS relation_diversity,
+     reduce(seed_cov = 0, group IN relation_groups | seed_cov + group.shared_seed_count) AS seed_overlap_total
 RETURN target.mid AS movie_id,
        target.title AS title,
-       content_score,
-       shared_reasons
+       base_score + 0.9 * toFloat(relation_diversity) + 0.12 * toFloat(seed_overlap_total) AS content_score,
+       relation_groups AS shared_reasons
 ORDER BY content_score DESC, movie_id ASC
 LIMIT $limit
 """
 
 
-def _format_content_reasons(reason_items: List[Dict[str, str]]) -> List[str]:
+def _format_content_reasons(reason_items: List[Dict[str, Any]]) -> List[str]:
     if not reason_items:
         return []
 
     fragments = []
     for item in reason_items[:3]:
         rel_type = item.get("rel_type", "")
-        name = item.get("name", "")
+        names = [name for name in item.get("reason_names", []) if name]
         label = RELATION_REASON_LABELS.get(rel_type, "共享特征")
-        if name:
-            fragments.append(f"{label} {name}")
+        if names:
+            fragments.append(f"{label} {' / '.join(names[:2])}")
 
     if not fragments:
         return []

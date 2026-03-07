@@ -97,8 +97,8 @@ def _get_graph_ppr_recommendations_sync(
                 graph_name=GRAPH_NAME,
                 seed_ids=seed_ids,
                 seen_movie_ids=seen_ids,
-                damping_factor=0.85,
-                max_iterations=20,
+                damping_factor=0.7,
+                max_iterations=25,
                 limit=limit,
             )
         except Exception as exc:
