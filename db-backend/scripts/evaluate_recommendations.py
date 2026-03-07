@@ -20,8 +20,8 @@ EVAL_LIMITS = (10, 20, 50)
 POSITIVE_RATING = 4.0
 EVAL_TIMEOUTS_MS = {
     "cf": 1500,
-    "content": 4000,
-    "ppr": 4000,
+    "content": 8000,
+    "ppr": 12000,
 }
 
 
@@ -46,9 +46,10 @@ def build_time_split_case(rows):
         return None
 
     history_rows = rows[:holdout_index]
-    seed_movie_ids = dedupe_movie_ids(
+    positive_seed_ids = dedupe_movie_ids(
         [row["mid"] for row in history_rows if float(row["rating"]) >= POSITIVE_RATING]
     )
+    seed_movie_ids = list(reversed(positive_seed_ids[-5:]))
     if not seed_movie_ids:
         return None
 

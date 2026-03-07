@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.algorithms import graph_cf, graph_content, hybrid_manager as hybrid_manager_module
+from app.algorithms import graph_cf, graph_content, graph_ppr, hybrid_manager as hybrid_manager_module
 from app.routers import recommend
 
 
@@ -83,6 +83,36 @@ def test_graph_content_formats_weighted_reasons(monkeypatch):
         }]
 
     monkeypatch.setattr(graph_content, "run_query", fake_run_query)
+    monkeypatch.setattr(
+        graph_content,
+        "fetch_movie_feature_map",
+        lambda driver, movie_ids, timeout_ms=None: {
+            "10": {
+                "regions": {"美国"},
+                "languages": {"英语"},
+                "year": 2010,
+                "rating": 8.5,
+                "content_type": "movie",
+                "votes": 10000,
+            },
+            "20": {
+                "regions": {"美国"},
+                "languages": {"英语"},
+                "year": 2014,
+                "rating": 8.1,
+                "content_type": "movie",
+                "votes": 8000,
+            },
+            "m200": {
+                "regions": {"美国"},
+                "languages": {"英语"},
+                "year": 2015,
+                "rating": 8.3,
+                "content_type": "movie",
+                "votes": 9000,
+            },
+        },
+    )
     monkeypatch.setattr(graph_content.Neo4jConnection, "get_driver", lambda: DummyDriver())
 
     items = graph_content._get_graph_content_recommendations_sync(
@@ -97,6 +127,53 @@ def test_graph_content_formats_weighted_reasons(monkeypatch):
     assert items[0]["movie_id"] == "m200"
     assert "共享导演 诺兰" in items[0]["reasons"][0]
     assert "共享类型 科幻" in items[0]["reasons"][0]
+
+
+def test_graph_ppr_reranks_candidates_with_metadata_bonus(monkeypatch):
+    monkeypatch.setattr(
+        graph_ppr,
+        "fetch_movie_feature_map",
+        lambda driver, movie_ids, timeout_ms=None: {
+            "seed": {
+                "regions": {"美国"},
+                "languages": {"英语"},
+                "year": 2014,
+                "rating": 8.5,
+                "content_type": "movie",
+                "votes": 40000,
+            },
+            "m1": {
+                "regions": {"法国"},
+                "languages": {"法语"},
+                "year": 1994,
+                "rating": 6.1,
+                "content_type": "movie",
+                "votes": 50,
+            },
+            "m2": {
+                "regions": {"美国"},
+                "languages": {"英语"},
+                "year": 2015,
+                "rating": 8.4,
+                "content_type": "movie",
+                "votes": 50000,
+            },
+        },
+    )
+
+    items = graph_ppr._rerank_ppr_records(
+        driver=None,
+        seed_ids=["seed"],
+        records=[
+            {"movie_id": "m1", "title": "Movie 1", "ppr_score": 0.50},
+            {"movie_id": "m2", "title": "Movie 2", "ppr_score": 0.45},
+        ],
+        timeout_ms=1000,
+        base_reason="通过图谱连接发现",
+    )
+
+    assert items[0]["movie_id"] == "m2"
+    assert "地区接近" in items[0]["reasons"][0]
 
 
 def test_hybrid_manager_reweights_when_branch_times_out(monkeypatch):
