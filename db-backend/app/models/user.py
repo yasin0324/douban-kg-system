@@ -77,6 +77,15 @@ class UserRatingResponse(BaseModel):
     rated_at: Optional[datetime] = None
 
 
+class UserRatingLookupResponse(BaseModel):
+    mid: str
+    has_rating: bool = False
+    id: Optional[int] = None
+    rating: Optional[float] = None
+    comment_short: Optional[str] = None
+    rated_at: Optional[datetime] = None
+
+
 # ---------- 通用分页 ----------
 
 class PaginatedResponse(BaseModel):

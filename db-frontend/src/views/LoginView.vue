@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive } from "vue";
+import { computed, reactive, ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { ElMessage } from "element-plus";
@@ -15,6 +15,14 @@ const loading = ref(false);
 const form = reactive({
     username: "",
     password: "",
+});
+
+const registerLink = computed(() => {
+    const redirect = route.query.redirect;
+    if (!redirect) {
+        return { path: "/register" };
+    }
+    return { path: "/register", query: { redirect } };
 });
 
 const rules = {
@@ -96,7 +104,7 @@ const handleLogin = async () => {
 
             <div class="auth-footer">
                 还没有账号？
-                <router-link to="/register" class="auth-link"
+                <router-link :to="registerLink" class="auth-link"
                     >立即注册</router-link
                 >
             </div>

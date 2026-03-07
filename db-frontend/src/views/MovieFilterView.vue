@@ -120,11 +120,11 @@ const resetFilters = () => {
                     size="small"
                     @change="handleFilter"
                 >
-                    <el-radio-button label="">全部</el-radio-button>
-                    <el-radio-button label="movie"
+                    <el-radio-button value="">全部</el-radio-button>
+                    <el-radio-button value="movie"
                         >电影 (Movie)</el-radio-button
                     >
-                    <el-radio-button label="tv">剧集 (TV)</el-radio-button>
+                    <el-radio-button value="tv">剧集 (TV)</el-radio-button>
                 </el-radio-group>
             </div>
 

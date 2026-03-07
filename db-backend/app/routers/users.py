@@ -4,7 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.dependencies import get_mysql_conn, get_current_user
-from app.models.user import UserPreferenceCreate, UserRatingCreate
+from app.models.user import UserPreferenceCreate, UserRatingCreate, UserRatingLookupResponse
 from app.services import user_service
 
 router = APIRouter(prefix="/api/users", tags=["用户行为"])
@@ -70,9 +70,16 @@ def list_ratings(
     return user_service.list_ratings(conn, user["id"], page, size)
 
 
-@router.get("/ratings/{mid}", summary="获取某电影评分")
+@router.get("/ratings/{mid}", response_model=UserRatingLookupResponse, summary="获取某电影评分")
 def get_rating(mid: str, user=Depends(get_current_user), conn=Depends(get_mysql_conn)):
     result = user_service.get_rating(conn, user["id"], mid)
     if not result:
-        raise HTTPException(status_code=404, detail="未评分")
-    return result
+        return {
+            "mid": mid,
+            "has_rating": False,
+            "id": None,
+            "rating": None,
+            "comment_short": None,
+            "rated_at": None,
+        }
+    return {"has_rating": True, **result}

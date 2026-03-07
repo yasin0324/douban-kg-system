@@ -1,11 +1,12 @@
 <script setup>
-import { ref, reactive } from "vue";
-import { useRouter } from "vue-router";
+import { computed, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { ElMessage } from "element-plus";
 import { User, Lock, Message, UserFilled } from "@element-plus/icons-vue";
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const formRef = ref(null);
@@ -17,6 +18,14 @@ const form = reactive({
     confirmPassword: "",
     nickname: "",
     email: "",
+});
+
+const loginLink = computed(() => {
+    const redirect = route.query.redirect;
+    if (!redirect) {
+        return { path: "/login" };
+    }
+    return { path: "/login", query: { redirect } };
 });
 
 const validateConfirmPassword = (rule, value, callback) => {
@@ -60,7 +69,7 @@ const handleRegister = async () => {
             email: form.email || undefined,
         });
         ElMessage.success("注册成功，请登录");
-        router.push("/login");
+        await router.push(loginLink.value);
     } catch (err) {
         console.error("注册失败:", err);
     } finally {
@@ -147,7 +156,7 @@ const handleRegister = async () => {
 
             <div class="auth-footer">
                 已有账号？
-                <router-link to="/login" class="auth-link"
+                <router-link :to="loginLink" class="auth-link"
                     >立即登录</router-link
                 >
             </div>

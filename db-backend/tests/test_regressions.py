@@ -1,7 +1,9 @@
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.testclient import TestClient
 
 from app import dependencies
+from app.routers import users
 from app.services import admin_service, person_service
 
 
@@ -81,3 +83,31 @@ def test_search_persons_uses_person_table():
     assert result["items"][0]["pid"] == "1001"
     assert any("FROM person" in sql for sql, _ in cursor.queries)
     assert not any("FROM persons" in sql for sql, _ in cursor.queries)
+
+
+def test_get_rating_returns_empty_payload_when_user_has_not_rated(monkeypatch):
+    app = FastAPI()
+    app.include_router(users.router)
+
+    def override_current_user():
+        return {"id": 7}
+
+    def override_conn():
+        yield object()
+
+    app.dependency_overrides[users.get_current_user] = override_current_user
+    app.dependency_overrides[users.get_mysql_conn] = override_conn
+    monkeypatch.setattr(users.user_service, "get_rating", lambda conn, user_id, mid: None)
+
+    with TestClient(app) as client:
+        response = client.get("/api/users/ratings/1297747")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "mid": "1297747",
+        "has_rating": False,
+        "id": None,
+        "rating": None,
+        "comment_short": None,
+        "rated_at": None,
+    }

@@ -68,14 +68,8 @@ const fetchUserData = async () => {
         if (prefRes) {
             prefStatus.value = prefRes.data;
         }
-        // getRating 404 表示未评分，不需要全局提示
-        const ratingRes = await usersApi.getRating(mid()).catch((err) => {
-            if (err.response?.status === 404) return null;
-            return null;
-        });
-        if (ratingRes) {
-            userRating.value = ratingRes.data?.rating ?? null;
-        }
+        const ratingRes = await usersApi.getRating(mid()).catch(() => null);
+        userRating.value = ratingRes?.data?.rating ?? null;
     } catch {
         // 忽略
     }

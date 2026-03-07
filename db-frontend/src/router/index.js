@@ -84,15 +84,17 @@ const router = createRouter({
 });
 
 // 路由守卫：需要登录的页面
-router.beforeEach((to, from, next) => {
-    if (to.meta.requiresAuth) {
-        const token = localStorage.getItem("access_token");
-        if (!token) {
-            next({ name: "login", query: { redirect: to.fullPath } });
-            return;
-        }
+router.beforeEach((to) => {
+    if (!to.meta.requiresAuth) {
+        return true;
     }
-    next();
+
+    const token = localStorage.getItem("access_token");
+    if (token) {
+        return true;
+    }
+
+    return { name: "login", query: { redirect: to.fullPath } };
 });
 
 export default router;
