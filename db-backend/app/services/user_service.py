@@ -189,3 +189,20 @@ def get_high_rated_movie_ids(conn, user_id: int, limit: int = 5) -> List[str]:
         )
         rows = cursor.fetchall()
         return [r["mid"] for r in rows]
+
+
+def get_seen_movie_ids(conn, user_id: int, limit: int | None = None) -> List[str]:
+    """获取用户历史评分过的电影，作为推荐过滤集合。"""
+    sql = (
+        "SELECT mid FROM user_movie_ratings WHERE user_id = %s "
+        "ORDER BY updated_at DESC, rated_at DESC"
+    )
+    params: list = [user_id]
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+
+    with conn.cursor() as cursor:
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        return [r["mid"] for r in rows]

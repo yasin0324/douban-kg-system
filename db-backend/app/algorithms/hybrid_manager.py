@@ -4,22 +4,35 @@
 Manager 主要职责为并行调度，将分数归一化，根据权重进行聚合并选出 Top-N。
 """
 import asyncio
+import logging
+import time
 from typing import List, Dict, Any
 
 from app.algorithms.graph_content import get_graph_content_recommendations
 from app.algorithms.graph_cf import get_graph_cf_recommendations
 from app.algorithms.graph_ppr import get_graph_ppr_recommendations
 
+logger = logging.getLogger(__name__)
+
 
 class HybridRecommendationManager:
     """混合推荐调度器单例"""
     
-    def __init__(self):
-        # 定义权重：PPR 30%, Content 30%, CF 40%
-        self.weights = {
-            "graph_ppr": 0.3,
-            "graph_content": 0.3,
-            "graph_cf": 0.4
+    def __init__(self, weights: Dict[str, float] | None = None, branch_timeouts_ms: Dict[str, int] | None = None):
+        self.weights = weights or {
+            "graph_ppr": 0.1,
+            "graph_content": 0.2,
+            "graph_cf": 0.7,
+        }
+        self.branch_timeouts_ms = branch_timeouts_ms or {
+            "graph_ppr": 1200,
+            "graph_content": 800,
+            "graph_cf": 800,
+        }
+        self.min_candidates = {
+            "graph_ppr": 3,
+            "graph_content": 3,
+            "graph_cf": 1,
         }
         
     def normalize_scores(self, raw_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -42,26 +55,91 @@ class HybridRecommendationManager:
             
         return normalized
 
-    async def get_hybrid_recommendations(self, user_id: int, seed_movie_ids: List[str], limit: int = 20) -> List[Dict[str, Any]]:
-        """主入口，提供混合推荐"""
-        
-        # 1. 并发请求三路图原生推荐
-        cf_task = get_graph_cf_recommendations(user_id=user_id, limit=limit*2)
-        content_task = get_graph_content_recommendations(user_id=user_id, seed_movie_ids=seed_movie_ids, limit=limit*2)
-        ppr_task = get_graph_ppr_recommendations(user_id=user_id, seed_movie_ids=seed_movie_ids, limit=limit*2)
-        
-        cf_raw, content_raw, ppr_raw = await asyncio.gather(cf_task, content_task, ppr_task)
-        
-        # 2. 分别归一化
-        cf_norm = self.normalize_scores(cf_raw)
-        content_norm = self.normalize_scores(content_raw)
-        ppr_norm = self.normalize_scores(ppr_raw)
-        
-        # 3. 结果合并聚合
+    async def _call_branch(self, name: str, coroutine):
+        start = time.perf_counter()
+        try:
+            results = await asyncio.wait_for(coroutine, timeout=self.branch_timeouts_ms[name] / 1000)
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            logger.info("推荐分支 %s 返回 %s 条候选 (%sms)", name, len(results), duration_ms)
+            return results
+        except asyncio.TimeoutError:
+            logger.warning("推荐分支 %s 超时，已自动降级", name)
+        except Exception as exc:
+            logger.warning("推荐分支 %s 异常，已自动降级: %s", name, exc)
+        return []
+
+    def resolve_branch_weights(self, branch_results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, float]:
+        active_weights = {}
+        for name, weight in self.weights.items():
+            if len(branch_results.get(name, [])) >= self.min_candidates[name]:
+                active_weights[name] = weight
+
+        total_weight = sum(active_weights.values())
+        if total_weight <= 0:
+            return {}
+
+        return {name: weight / total_weight for name, weight in active_weights.items()}
+
+    async def get_hybrid_recommendations(
+        self,
+        user_id: int,
+        seed_movie_ids: List[str],
+        seen_movie_ids: List[str] | None = None,
+        exclude_mock_users: bool = True,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """主入口，提供带超时降级与动态门控的混合推荐。"""
+        tasks = {
+            "graph_cf": asyncio.create_task(self._call_branch(
+                "graph_cf",
+                get_graph_cf_recommendations(
+                    user_id=user_id,
+                    seed_movie_ids=seed_movie_ids,
+                    seen_movie_ids=seen_movie_ids,
+                    exclude_mock_users=exclude_mock_users,
+                    limit=limit * 2,
+                    timeout_ms=self.branch_timeouts_ms["graph_cf"],
+                ),
+            )),
+            "graph_content": asyncio.create_task(self._call_branch(
+                "graph_content",
+                get_graph_content_recommendations(
+                    user_id=user_id,
+                    seed_movie_ids=seed_movie_ids,
+                    seen_movie_ids=seen_movie_ids,
+                    exclude_mock_users=exclude_mock_users,
+                    limit=limit * 2,
+                    timeout_ms=self.branch_timeouts_ms["graph_content"],
+                ),
+            )),
+            "graph_ppr": asyncio.create_task(self._call_branch(
+                "graph_ppr",
+                get_graph_ppr_recommendations(
+                    user_id=user_id,
+                    seed_movie_ids=seed_movie_ids,
+                    seen_movie_ids=seen_movie_ids,
+                    exclude_mock_users=exclude_mock_users,
+                    limit=limit * 2,
+                    timeout_ms=self.branch_timeouts_ms["graph_ppr"],
+                ),
+            )),
+        }
+        branch_values = await asyncio.gather(*tasks.values())
+        branch_results = dict(zip(tasks.keys(), branch_values))
+
+        active_weights = self.resolve_branch_weights(branch_results)
+        if not active_weights:
+            return []
+
+        normalized_results = {
+            name: self.normalize_scores(results)
+            for name, results in branch_results.items()
+            if name in active_weights
+        }
+
         movie_dict: Dict[str, Dict[str, Any]] = {}
         
-        # 内部处理函数
-        def _merge(norm_list: List[Dict], weight: float):
+        def _merge(norm_list: List[Dict[str, Any]], weight: float):
             for item in norm_list:
                 mid = item["movie_id"]
                 if mid not in movie_dict:
@@ -75,13 +153,10 @@ class HybridRecommendationManager:
                 for reason in item.get("reasons", []):
                     movie_dict[mid]["reasons"].add(reason)
                     
-        _merge(cf_norm, self.weights["graph_cf"])
-        _merge(content_norm, self.weights["graph_content"])
-        _merge(ppr_norm, self.weights["graph_ppr"])
+        for branch_name, weight in active_weights.items():
+            _merge(normalized_results[branch_name], weight)
         
-        # 4. 转换并排序
         hybrid_list = list(movie_dict.values())
-        # 将 set 原因转成 list
         for m in hybrid_list:
             m["reasons"] = list(m["reasons"])
             

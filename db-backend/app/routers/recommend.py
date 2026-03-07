@@ -21,6 +21,7 @@ async def get_personal_recommendations(
     
     # 动态获取当前用户最近打高分的电影作为种子节点
     seeds = user_service.get_high_rated_movie_ids(conn, user_id, limit=5)
+    seen_movie_ids = user_service.get_seen_movie_ids(conn, user_id)
     
     # 防止完全冷启动报错，如果没有最近高分历史，退化一下提供备用的种子电影
     if not seeds:
@@ -28,13 +29,33 @@ async def get_personal_recommendations(
         
     try:
         if algorithm == "ppr":
-            results = await get_graph_ppr_recommendations(user_id, seeds, limit)
+            results = await get_graph_ppr_recommendations(
+                user_id=user_id,
+                seed_movie_ids=seeds,
+                seen_movie_ids=seen_movie_ids,
+                limit=limit,
+            )
         elif algorithm == "content":
-            results = await get_graph_content_recommendations(user_id, seeds, limit)
+            results = await get_graph_content_recommendations(
+                user_id=user_id,
+                seed_movie_ids=seeds,
+                seen_movie_ids=seen_movie_ids,
+                limit=limit,
+            )
         elif algorithm == "cf":
-            results = await get_graph_cf_recommendations(user_id, limit)
+            results = await get_graph_cf_recommendations(
+                user_id=user_id,
+                seed_movie_ids=seeds,
+                seen_movie_ids=seen_movie_ids,
+                limit=limit,
+            )
         elif algorithm == "hybrid":
-            results = await hybrid_manager.get_hybrid_recommendations(user_id, seeds, limit)
+            results = await hybrid_manager.get_hybrid_recommendations(
+                user_id=user_id,
+                seed_movie_ids=seeds,
+                seen_movie_ids=seen_movie_ids,
+                limit=limit,
+            )
         else:
             raise HTTPException(status_code=400, detail="不支持的算法类型")
             

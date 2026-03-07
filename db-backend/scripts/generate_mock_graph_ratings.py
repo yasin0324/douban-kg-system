@@ -164,14 +164,19 @@ def save_to_mysql_and_neo4j(users_data: List[Dict]):
                 try:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "INSERT INTO users (username, password_hash, nickname) VALUES (%s, %s, %s)",
-                            (username, pwd_hash, username)
+                            "INSERT INTO users (username, password_hash, nickname, is_mock) VALUES (%s, %s, %s, %s)",
+                            (username, pwd_hash, username, 1)
                         )
                         user_id = cur.lastrowid
                     mysql_users_inserted += 1
                     
                     # 2. 写入 Neo4j User Node
-                    session.run("MERGE (u:User {id: $uid}) SET u.username = $uname", uid=user_id, uname=username)
+                    session.run(
+                        "MERGE (u:User {id: $uid}) "
+                        "SET u.username = $uname, u.is_mock = true",
+                        uid=user_id,
+                        uname=username,
+                    )
                     neo4j_nodes_created += 1
                     
                     # 3. 写入 Ratings 两端

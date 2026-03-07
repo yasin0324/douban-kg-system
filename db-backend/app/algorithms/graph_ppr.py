@@ -1,96 +1,139 @@
 """
 隐性关系挖掘 (Personalized PageRank)
 """
-from typing import List, Dict, Any
+import asyncio
 import logging
+from typing import Any, Dict, List
+
+from app.algorithms.common import dedupe_preserve_order, run_query
 from app.db.neo4j import Neo4jConnection
 
 logger = logging.getLogger(__name__)
 
-async def get_graph_ppr_recommendations(user_id: int, seed_movie_ids: List[str], limit: int = 50) -> List[Dict[str, Any]]:
-    """
-    基于 Neo4j 图库计算 Personalized PageRank (PPR)。
-    从用户偏好的节点(种子节点)出发，跳出直接关联，挖掘深层隐性相关节点。
-    
-    依赖: Neo4j GDS 插件。
-    若未安装 GDS，返回空列表供降级。
-    """
-    if not seed_movie_ids:
+DEFAULT_TIMEOUT_MS = 1200
+GRAPH_NAME = "recommendation_ppr_graph"
+
+GRAPH_EXISTS_QUERY = "RETURN gds.graph.exists($graph_name) AS exists"
+
+PROJECT_QUERY = """
+CALL gds.graph.project(
+  $graph_name,
+  ['Movie', 'Person', 'Genre'],
+  {
+    ACTED_IN: {type: 'ACTED_IN', orientation: 'UNDIRECTED'},
+    DIRECTED: {type: 'DIRECTED', orientation: 'UNDIRECTED'},
+    HAS_GENRE: {type: 'HAS_GENRE', orientation: 'UNDIRECTED'}
+  }
+)
+YIELD graphName
+RETURN graphName
+"""
+
+PPR_QUERY = """
+MATCH (m:Movie)
+WHERE m.mid IN $seed_ids
+WITH collect(m) AS source_nodes
+CALL gds.pageRank.stream($graph_name, {
+  sourceNodes: source_nodes,
+  dampingFactor: $damping_factor,
+  maxIterations: $max_iterations
+})
+YIELD nodeId, score
+WITH gds.util.asNode(nodeId) AS node, score
+WHERE 'Movie' IN labels(node)
+  AND NOT node.mid IN $seed_ids
+  AND NOT node.mid IN $seen_movie_ids
+RETURN node.mid AS movie_id,
+       node.title AS title,
+       score AS ppr_score
+ORDER BY ppr_score DESC, movie_id ASC
+LIMIT $limit
+"""
+
+
+def _ensure_projection(session, timeout_ms: int | None = None):
+    exists_records = run_query(
+        session,
+        GRAPH_EXISTS_QUERY,
+        timeout_ms=timeout_ms,
+        graph_name=GRAPH_NAME,
+    )
+    if exists_records and exists_records[0]["exists"]:
+        return
+
+    run_query(
+        session,
+        PROJECT_QUERY,
+        timeout_ms=max(timeout_ms or 0, 5000),
+        graph_name=GRAPH_NAME,
+    )
+
+
+def _get_graph_ppr_recommendations_sync(
+    user_id: int,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    del user_id, exclude_mock_users
+
+    seed_ids = dedupe_preserve_order(seed_movie_ids)
+    if not seed_ids:
         return []
 
+    seen_ids = dedupe_preserve_order(seen_movie_ids)
     driver = Neo4jConnection.get_driver()
-    
-    # 我们需要先根据 mid 查出内部节点 ID，传递给 GDS
-    get_node_ids_query = """
-    MATCH (m:Movie) WHERE m.mid IN $seed_ids
-    RETURN id(m) AS internal_id
-    """
-    
-    import uuid
-    graph_name = f"ppr_graph_{uuid.uuid4().hex[:8]}"
-    
-    project_query = f"""
-    CALL gds.graph.project(
-      '{graph_name}',
-      ['Movie', 'Person', 'Genre'],
-      {{
-        ACTED_IN: {{type: 'ACTED_IN', orientation: 'UNDIRECTED'}},
-        DIRECTED: {{type: 'DIRECTED', orientation: 'UNDIRECTED'}},
-        HAS_GENRE: {{type: 'HAS_GENRE', orientation: 'UNDIRECTED'}}
-      }}
-    )
-    """
-    
-    ppr_query = f"""
-    CALL gds.pageRank.stream('{graph_name}', {{
-      sourceNodes: $source_nodes,
-      dampingFactor: 0.85,
-      maxIterations: 20
-    }})
-    YIELD nodeId, score
-    WITH gds.util.asNode(nodeId) AS n, score
-    WHERE 'Movie' IN labels(n) AND NOT n.mid IN $seed_ids
-    OPTIONAL MATCH (u:User {{id: $user_id}})-[:RATED]->(n)
-    WITH n, score, u
-    WHERE u IS NULL // 排除看过的
-    RETURN n.mid AS movie_id, n.title AS title, score AS ppr_score
-    ORDER BY ppr_score DESC
-    LIMIT $limit
-    """
-    
-    drop_query = f"CALL gds.graph.drop('{graph_name}', false)"
-    
     results = []
-    
+
     with driver.session() as session:
         try:
-            # 1. 查找 source node 内部 ID
-            node_ids_res = session.run(get_node_ids_query, seed_ids=seed_movie_ids)
-            source_nodes = [record["internal_id"] for record in node_ids_res]
-            
-            if not source_nodes:
-                return []
-                
-            # 2. 投射独立图
-            session.run(project_query)
-            
-            # 3. 执行 PPR
-            records = session.run(ppr_query, source_nodes=source_nodes, seed_ids=seed_movie_ids, user_id=user_id, limit=limit)
-            for record in records:
-                results.append({
-                    "movie_id": record["movie_id"],
-                    "score": float(record["ppr_score"]),
-                    "reasons": ["通过深层图节点游走发掘的隐秘关联"],
-                    "source": "graph_ppr"
-                })
-        except Exception as e:
-            logger.warning(f"Neo4j GDS 算法执行失败，通常是因为未安装 GDS 插件：{e}")
+            _ensure_projection(session, timeout_ms=timeout_ms)
+            records = run_query(
+                session,
+                PPR_QUERY,
+                timeout_ms=timeout_ms,
+                graph_name=GRAPH_NAME,
+                seed_ids=seed_ids,
+                seen_movie_ids=seen_ids,
+                damping_factor=0.85,
+                max_iterations=20,
+                limit=limit,
+            )
+        except Exception as exc:
+            logger.warning("Neo4j GDS PPR 执行失败，已自动降级: %s", exc)
             return []
-        finally:
-            # 确保无论成功失败都会清理图内存
-            try:
-                session.run(drop_query)
-            except Exception:
-                pass
-            
+
+    for record in records:
+        results.append({
+            "movie_id": record["movie_id"],
+            "title": record.get("title", ""),
+            "score": float(record["ppr_score"]),
+            "reasons": ["通过图谱随机游走发现的隐性关联"],
+            "source": "graph_ppr",
+        })
+
     return results
+
+
+async def get_graph_ppr_recommendations(
+    user_id: int,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    """
+    基于 Neo4j GDS 的 Personalized PageRank，优先复用常驻投影图。
+    """
+    return await asyncio.to_thread(
+        _get_graph_ppr_recommendations_sync,
+        user_id,
+        seed_movie_ids,
+        seen_movie_ids,
+        exclude_mock_users,
+        limit,
+        timeout_ms,
+    )
