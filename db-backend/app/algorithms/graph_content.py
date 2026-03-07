@@ -2,10 +2,13 @@
 图原生内容推荐算法 (Graph-Content-Based)
 """
 import asyncio
+import logging
 from typing import Any, Dict, List
 
 from app.algorithms.common import dedupe_preserve_order, run_query
 from app.db.neo4j import Neo4jConnection
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 800
 RELATION_REASON_LABELS = {
@@ -20,18 +23,13 @@ WHERE source.mid IN $seed_ids
   AND NOT target.mid IN $seed_ids
   AND NOT target.mid IN $seen_movie_ids
   AND type(source_rel) = type(target_rel)
-WITH target, shared_node, type(source_rel) AS rel_type
-CALL {
-  WITH shared_node
-  MATCH (shared_node)--(linked_movie:Movie)
-  RETURN count(DISTINCT linked_movie) AS shared_frequency
-}
-WITH target, rel_type, shared_node, shared_frequency,
+WITH target, shared_node, type(source_rel) AS rel_type, count(DISTINCT source) AS shared_seed_count
+WITH target, rel_type, shared_node,
      CASE rel_type
        WHEN 'DIRECTED' THEN 3.0
        WHEN 'ACTED_IN' THEN 1.5
        ELSE 1.0
-     END / log10(toFloat(shared_frequency) + 10.0) AS weighted_score
+     END * (1.0 + 0.15 * toFloat(shared_seed_count - 1)) AS weighted_score
 ORDER BY target.mid, weighted_score DESC
 WITH target,
      sum(weighted_score) AS content_score,
@@ -87,14 +85,18 @@ def _get_graph_content_recommendations_sync(
     driver = Neo4jConnection.get_driver()
 
     with driver.session() as session:
-        records = run_query(
-            session,
-            CONTENT_QUERY,
-            timeout_ms=timeout_ms,
-            seed_ids=seed_ids,
-            seen_movie_ids=seen_ids,
-            limit=limit,
-        )
+        try:
+            records = run_query(
+                session,
+                CONTENT_QUERY,
+                timeout_ms=timeout_ms,
+                seed_ids=seed_ids,
+                seen_movie_ids=seen_ids,
+                limit=limit,
+            )
+        except Exception as exc:
+            logger.warning("图内容推荐执行失败，已自动降级: %s", exc)
+            return []
 
     results = []
     for record in records:

@@ -18,6 +18,11 @@ from app.db.neo4j import Neo4jConnection
 
 EVAL_LIMITS = (10, 20, 50)
 POSITIVE_RATING = 4.0
+EVAL_TIMEOUTS_MS = {
+    "cf": 1500,
+    "content": 4000,
+    "ppr": 4000,
+}
 
 
 def dedupe_movie_ids(movie_ids):
@@ -91,6 +96,7 @@ async def run_algorithm(name, manager, user_id, seed_movie_ids, seen_movie_ids, 
             seen_movie_ids=seen_movie_ids,
             exclude_mock_users=True,
             limit=limit,
+            timeout_ms=EVAL_TIMEOUTS_MS["cf"],
         )
     if name == "content":
         return await get_graph_content_recommendations(
@@ -99,6 +105,7 @@ async def run_algorithm(name, manager, user_id, seed_movie_ids, seen_movie_ids, 
             seen_movie_ids=seen_movie_ids,
             exclude_mock_users=True,
             limit=limit,
+            timeout_ms=EVAL_TIMEOUTS_MS["content"],
         )
     if name == "ppr":
         return await get_graph_ppr_recommendations(
@@ -107,6 +114,7 @@ async def run_algorithm(name, manager, user_id, seed_movie_ids, seen_movie_ids, 
             seen_movie_ids=seen_movie_ids,
             exclude_mock_users=True,
             limit=limit,
+            timeout_ms=EVAL_TIMEOUTS_MS["ppr"],
         )
     if name == "hybrid":
         return await manager.get_hybrid_recommendations(
@@ -135,7 +143,13 @@ def summarize_report(raw_report):
 
 
 async def evaluate_algorithms(user_limit: int = 100, recommendation_limit: int = 50):
-    manager = HybridRecommendationManager()
+    manager = HybridRecommendationManager(
+        branch_timeouts_ms={
+            "graph_cf": EVAL_TIMEOUTS_MS["cf"],
+            "graph_content": EVAL_TIMEOUTS_MS["content"],
+            "graph_ppr": EVAL_TIMEOUTS_MS["ppr"],
+        }
+    )
     raw_report = {
         name: {
             "cases": 0,
