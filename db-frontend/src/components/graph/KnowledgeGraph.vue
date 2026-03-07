@@ -14,6 +14,8 @@ const props = defineProps({
     hiddenTypes: { type: Array, default: () => [] },
     /** 布局模式：force(力引导) / linear(线性路径) */
     layout: { type: String, default: "force" },
+    /** 组件最小高度 */
+    minHeight: { type: Number, default: 400 },
 });
 
 const emit = defineEmits(["node-click", "node-hover"]);
@@ -27,7 +29,17 @@ const TYPE_COLORS = {
     Movie: "#409EFF",
     Person: "#67C23A",
     Genre: "#E6A23C",
+    Signal: "#00B894",
+    Preference: "#F56C6C",
     Unknown: "#909399",
+};
+const TYPE_LABELS = {
+    Movie: "电影",
+    Person: "影人",
+    Genre: "类型",
+    Signal: "推荐信号",
+    Preference: "偏好提示",
+    Unknown: "节点",
 };
 
 // -- 关系类型中文标签 --
@@ -35,6 +47,12 @@ const REL_LABELS = {
     DIRECTED: "导演",
     ACTED_IN: "出演",
     HAS_GENRE: "类型",
+    SEED_CONTEXT: "种子上下文",
+    CF_SIGNAL: "协同过滤信号",
+    CONTENT_SIGNAL: "内容信号",
+    PPR_SIGNAL: "游走信号",
+    HYBRID_SIGNAL: "混合信号",
+    PROFILE_HINT: "画像提示",
 };
 
 // -- 计算连接数 --
@@ -155,13 +173,20 @@ const buildOption = () => {
     }));
 
     // 类目（用于图例）
-    const categories = ["Movie", "Person", "Genre"].map((t) => ({
-        name: t === "Movie" ? "电影" : t === "Person" ? "影人" : "类型",
-        itemStyle: { color: TYPE_COLORS[t] },
+    const categoryTypes = Array.from(
+        new Set(visibleNodes.map((node) => node.type || "Unknown")),
+    );
+    const categories = categoryTypes.map((type) => ({
+        name: TYPE_LABELS[type] || type,
+        itemStyle: {
+            color: TYPE_COLORS[type] || TYPE_COLORS.Unknown,
+        },
     }));
 
     // 将 category 映射为索引
-    const categoryMap = { Movie: 0, Person: 1, Genre: 2 };
+    const categoryMap = Object.fromEntries(
+        categoryTypes.map((type, index) => [type, index]),
+    );
     echartsNodes.forEach((n) => {
         n.category = categoryMap[n._raw.type] ?? 0;
     });
@@ -191,7 +216,11 @@ const buildOption = () => {
                             ? "🎬 电影"
                             : raw.type === "Person"
                               ? "🧑 影人"
-                              : "🏷️ 类型";
+                              : raw.type === "Genre"
+                                ? "🏷️ 类型"
+                                : raw.type === "Signal"
+                                  ? "🧠 推荐信号"
+                                  : "📍 节点";
                     const subColor = themeStore.isDark ? "#a0a0b0" : "#6e6e73";
                     html += `<br/><span style="color:${subColor}">${typeLabel}</span>`;
                     if (raw.properties?.rating) {
@@ -343,10 +372,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="knowledge-graph-wrap">
+    <div
+        class="knowledge-graph-wrap"
+        :style="{ minHeight: `${minHeight}px` }"
+    >
         <div
             ref="chartRef"
             class="knowledge-graph-canvas"
+            :style="{ minHeight: `${minHeight}px` }"
             v-loading="loading"
             element-loading-text="加载图谱中..."
             :element-loading-background="
@@ -369,7 +402,6 @@ onBeforeUnmount(() => {
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 400px;
     background: var(--bg-secondary);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
@@ -379,7 +411,6 @@ onBeforeUnmount(() => {
 .knowledge-graph-canvas {
     width: 100%;
     height: 100%;
-    min-height: 400px;
 }
 
 .graph-empty {

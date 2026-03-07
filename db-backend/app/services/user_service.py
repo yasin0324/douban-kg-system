@@ -1,11 +1,24 @@
 """
 用户行为服务 — 偏好（喜欢/想看）+ 评分 CRUD
 """
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 from app.db.neo4j import Neo4jConnection
 
 logger = logging.getLogger(__name__)
+
+STRONG_POSITIVE_RATING_THRESHOLD = 4.0
+WEAK_POSITIVE_RATING_THRESHOLD = 3.5
+WEAK_NEGATIVE_RATING_THRESHOLD = 3.0
+STRONG_POSITIVE_RATING_BASE = 2.6
+STRONG_POSITIVE_RATING_STEP = 1.2
+WEAK_POSITIVE_RATING_WEIGHT = 1.15
+LIKE_WEIGHT = 1.9
+WANT_WEIGHT = 0.8
+WANT_EXPLORATION_WEIGHT = 0.35
+WEAK_NEGATIVE_BASE = 0.45
+WEAK_NEGATIVE_STEP = 0.28
+POSITIVE_CONTEXT_THRESHOLD = 0.15
 
 
 # ---------- 偏好 ----------
@@ -179,6 +192,167 @@ def get_rating(conn, user_id: int, mid: str) -> Optional[dict]:
         return cursor.fetchone()
 
 
+def _get_or_create_behavior(movie_behaviors: Dict[str, Dict[str, Any]], mid: str) -> Dict[str, Any]:
+    if mid not in movie_behaviors:
+        movie_behaviors[mid] = {
+            "mid": mid,
+            "rating": None,
+            "is_liked": False,
+            "is_want_to_watch": False,
+            "positive_weight": 0.0,
+            "negative_weight": 0.0,
+            "exploration_weight": 0.0,
+            "signals": [],
+        }
+    return movie_behaviors[mid]
+
+
+def _build_recommendation_movie_behaviors(conn, user_id: int) -> Dict[str, Dict[str, Any]]:
+    movie_behaviors: Dict[str, Dict[str, Any]] = {}
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT mid, rating FROM user_movie_ratings WHERE user_id = %s",
+            (user_id,),
+        )
+        rating_rows = cursor.fetchall()
+
+        cursor.execute(
+            "SELECT mid, pref_type FROM user_movie_prefs WHERE user_id = %s",
+            (user_id,),
+        )
+        pref_rows = cursor.fetchall()
+
+    for row in rating_rows:
+        mid = row["mid"]
+        rating = float(row["rating"])
+        behavior = _get_or_create_behavior(movie_behaviors, mid)
+        behavior["rating"] = rating
+        if rating >= STRONG_POSITIVE_RATING_THRESHOLD:
+            behavior["positive_weight"] += STRONG_POSITIVE_RATING_BASE + (
+                rating - STRONG_POSITIVE_RATING_THRESHOLD
+            ) * STRONG_POSITIVE_RATING_STEP
+            behavior["signals"].append("strong_positive_rating")
+        elif rating >= WEAK_POSITIVE_RATING_THRESHOLD:
+            behavior["positive_weight"] += WEAK_POSITIVE_RATING_WEIGHT
+            behavior["signals"].append("weak_positive_rating")
+        elif rating <= WEAK_NEGATIVE_RATING_THRESHOLD:
+            behavior["negative_weight"] += WEAK_NEGATIVE_BASE + max(
+                0.0,
+                WEAK_NEGATIVE_RATING_THRESHOLD - rating,
+            ) * WEAK_NEGATIVE_STEP
+            behavior["signals"].append("weak_negative_rating")
+
+    for row in pref_rows:
+        mid = row["mid"]
+        pref_type = row["pref_type"]
+        behavior = _get_or_create_behavior(movie_behaviors, mid)
+        if pref_type == "like":
+            behavior["is_liked"] = True
+            behavior["positive_weight"] += LIKE_WEIGHT
+            behavior["signals"].append("like")
+        elif pref_type == "want_to_watch":
+            behavior["is_want_to_watch"] = True
+            behavior["positive_weight"] += WANT_WEIGHT
+            behavior["exploration_weight"] += WANT_EXPLORATION_WEIGHT
+            behavior["signals"].append("want_to_watch")
+
+    for behavior in movie_behaviors.values():
+        behavior["positive_weight"] = round(float(behavior["positive_weight"]), 6)
+        behavior["negative_weight"] = round(float(behavior["negative_weight"]), 6)
+        behavior["exploration_weight"] = round(float(behavior["exploration_weight"]), 6)
+        behavior["context_weight"] = round(
+            behavior["positive_weight"] - behavior["negative_weight"],
+            6,
+        )
+
+    return movie_behaviors
+
+
+def build_user_recommendation_profile(conn, user_id: int) -> Dict[str, Any]:
+    movie_behaviors = _build_recommendation_movie_behaviors(conn, user_id)
+    ordered_behaviors = sorted(
+        movie_behaviors.values(),
+        key=lambda item: (
+            -item["context_weight"],
+            -item["positive_weight"],
+            item["mid"],
+        ),
+    )
+
+    positive_movie_ids = [
+        item["mid"]
+        for item in ordered_behaviors
+        if item["context_weight"] > POSITIVE_CONTEXT_THRESHOLD
+    ]
+    negative_movie_ids = [
+        item["mid"]
+        for item in ordered_behaviors
+        if item["negative_weight"] > 0
+    ]
+    representative_movie_ids = [
+        item["mid"]
+        for item in ordered_behaviors
+        if item["positive_weight"] > 0
+    ][:6]
+    context_movie_ids = positive_movie_ids[:24]
+    graph_context_movie_ids = positive_movie_ids[:18]
+    hard_exclude_movie_ids = [
+        item["mid"]
+        for item in ordered_behaviors
+        if item["rating"] is not None or item["is_liked"]
+    ]
+
+    summary = {
+        "rating_count": sum(1 for item in ordered_behaviors if item["rating"] is not None),
+        "strong_positive_ratings": sum(
+            1
+            for item in ordered_behaviors
+            if item["rating"] is not None and item["rating"] >= STRONG_POSITIVE_RATING_THRESHOLD
+        ),
+        "weak_positive_ratings": sum(
+            1
+            for item in ordered_behaviors
+            if item["rating"] is not None
+            and WEAK_POSITIVE_RATING_THRESHOLD <= item["rating"] < STRONG_POSITIVE_RATING_THRESHOLD
+        ),
+        "weak_negative_ratings": sum(
+            1
+            for item in ordered_behaviors
+            if item["rating"] is not None and item["rating"] <= WEAK_NEGATIVE_RATING_THRESHOLD
+        ),
+        "likes": sum(1 for item in ordered_behaviors if item["is_liked"]),
+        "wants": sum(1 for item in ordered_behaviors if item["is_want_to_watch"]),
+        "positive_movie_count": len(positive_movie_ids),
+        "behavior_movie_count": len(ordered_behaviors),
+    }
+    summary["cold_start"] = (
+        summary["strong_positive_ratings"]
+        + summary["weak_positive_ratings"]
+        + summary["likes"]
+        + summary["wants"]
+    ) < 4 or summary["positive_movie_count"] < 3
+
+    return {
+        "movie_feedback": {item["mid"]: item for item in ordered_behaviors},
+        "positive_movie_ids": positive_movie_ids,
+        "negative_movie_ids": negative_movie_ids,
+        "representative_movie_ids": representative_movie_ids,
+        "context_movie_ids": context_movie_ids,
+        "graph_context_movie_ids": graph_context_movie_ids,
+        "hard_exclude_movie_ids": hard_exclude_movie_ids,
+        "summary": summary,
+    }
+
+
+def get_recommendation_excluded_movie_ids(conn, user_id: int, limit: int | None = None) -> List[str]:
+    profile = build_user_recommendation_profile(conn, user_id)
+    movie_ids = profile["hard_exclude_movie_ids"]
+    if limit is None:
+        return movie_ids
+    return movie_ids[:limit]
+
+
 def get_high_rated_movie_ids(conn, user_id: int, limit: int = 5) -> List[str]:
     """ 获取用户最近打高分的电影ID列表，作为推荐引擎的种子节点 """
     with conn.cursor() as cursor:
@@ -191,13 +365,65 @@ def get_high_rated_movie_ids(conn, user_id: int, limit: int = 5) -> List[str]:
         return [r["mid"] for r in rows]
 
 
+def get_recommendation_seed_movie_ids(conn, user_id: int, limit: int = 5) -> List[str]:
+    """组合高分、喜欢和想看，生成推荐种子电影列表。"""
+    seed_ids: List[str] = []
+    seen = set()
+
+    def extend_from_rows(rows):
+        for row in rows:
+            mid = row["mid"]
+            if mid in seen:
+                continue
+            seen.add(mid)
+            seed_ids.append(mid)
+            if len(seed_ids) >= limit:
+                break
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT mid FROM user_movie_ratings WHERE user_id = %s AND rating >= 4.0 "
+            "ORDER BY updated_at DESC, rated_at DESC LIMIT %s",
+            (user_id, limit),
+        )
+        extend_from_rows(cursor.fetchall())
+
+        if len(seed_ids) < limit:
+            cursor.execute(
+                "SELECT mid FROM user_movie_prefs WHERE user_id = %s AND pref_type = 'like' "
+                "ORDER BY updated_at DESC, created_at DESC LIMIT %s",
+                (user_id, limit),
+            )
+            extend_from_rows(cursor.fetchall())
+
+        if len(seed_ids) < limit:
+            cursor.execute(
+                "SELECT mid FROM user_movie_prefs WHERE user_id = %s AND pref_type = 'want_to_watch' "
+                "ORDER BY updated_at DESC, created_at DESC LIMIT %s",
+                (user_id, limit),
+            )
+            extend_from_rows(cursor.fetchall())
+
+    return seed_ids[:limit]
+
+
 def get_seen_movie_ids(conn, user_id: int, limit: int | None = None) -> List[str]:
-    """获取用户历史评分过的电影，作为推荐过滤集合。"""
-    sql = (
-        "SELECT mid FROM user_movie_ratings WHERE user_id = %s "
-        "ORDER BY updated_at DESC, rated_at DESC"
-    )
-    params: list = [user_id]
+    """获取用户已交互过的电影，作为推荐过滤集合。"""
+    sql = """
+        SELECT mid
+        FROM (
+            SELECT mid, updated_at AS sort_time
+            FROM user_movie_ratings
+            WHERE user_id = %s
+            UNION ALL
+            SELECT mid, updated_at AS sort_time
+            FROM user_movie_prefs
+            WHERE user_id = %s
+        ) AS interacted
+        GROUP BY mid
+        ORDER BY MAX(sort_time) DESC
+    """
+    params: list = [user_id, user_id]
     if limit is not None:
         sql += " LIMIT %s"
         params.append(limit)

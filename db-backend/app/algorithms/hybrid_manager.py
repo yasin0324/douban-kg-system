@@ -90,7 +90,8 @@ class HybridRecommendationManager:
     async def get_hybrid_recommendations(
         self,
         user_id: int,
-        seed_movie_ids: List[str],
+        user_profile: Dict[str, Any] | None = None,
+        seed_movie_ids: List[str] | None = None,
         seen_movie_ids: List[str] | None = None,
         exclude_mock_users: bool = True,
         limit: int = 20,
@@ -101,6 +102,7 @@ class HybridRecommendationManager:
                 "graph_cf",
                 get_graph_cf_recommendations(
                     user_id=user_id,
+                    user_profile=user_profile,
                     seed_movie_ids=seed_movie_ids,
                     seen_movie_ids=seen_movie_ids,
                     exclude_mock_users=exclude_mock_users,
@@ -112,6 +114,7 @@ class HybridRecommendationManager:
                 "graph_content",
                 get_graph_content_recommendations(
                     user_id=user_id,
+                    user_profile=user_profile,
                     seed_movie_ids=seed_movie_ids,
                     seen_movie_ids=seen_movie_ids,
                     exclude_mock_users=exclude_mock_users,
@@ -123,6 +126,7 @@ class HybridRecommendationManager:
                 "graph_ppr",
                 get_graph_ppr_recommendations(
                     user_id=user_id,
+                    user_profile=user_profile,
                     seed_movie_ids=seed_movie_ids,
                     seen_movie_ids=seen_movie_ids,
                     exclude_mock_users=exclude_mock_users,
@@ -171,11 +175,21 @@ class HybridRecommendationManager:
                         "movie_id": mid,
                         "title": item.get("title", ""),
                         "final_score": 0.0,
-                        "reasons": set()
+                        "reasons": set(),
+                        "source_algorithms": set(),
+                        "score_breakdown": {},
                     }
-                movie_dict[mid]["final_score"] += item["score"] * effective_weight
+                contribution = item["score"] * effective_weight
+                movie_dict[mid]["final_score"] += contribution
+                movie_dict[mid]["source_algorithms"].add(branch_name)
+                movie_dict[mid]["score_breakdown"][branch_name] = (
+                    movie_dict[mid]["score_breakdown"].get(branch_name, 0.0)
+                    + contribution
+                )
                 if backbone_bonus > 0:
-                    movie_dict[mid]["final_score"] += backbone_bonus * (1.0 - index / total_items)
+                    bonus = backbone_bonus * (1.0 - index / total_items)
+                    movie_dict[mid]["final_score"] += bonus
+                    movie_dict[mid]["score_breakdown"][branch_name] += bonus
                 for reason in item.get("reasons", []):
                     movie_dict[mid]["reasons"].add(reason)
                     
@@ -198,6 +212,11 @@ class HybridRecommendationManager:
         hybrid_list = list(movie_dict.values())
         for m in hybrid_list:
             m["reasons"] = list(m["reasons"])
+            m["source_algorithms"] = sorted(m["source_algorithms"])
+            m["score_breakdown"] = {
+                source: round(score, 6)
+                for source, score in m["score_breakdown"].items()
+            }
             
         hybrid_list.sort(key=lambda x: x["final_score"], reverse=True)
         

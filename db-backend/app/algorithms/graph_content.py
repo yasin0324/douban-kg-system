@@ -6,103 +6,146 @@ import logging
 from typing import Any, Dict, List
 
 from app.algorithms.common import (
-    build_seed_profile,
     dedupe_preserve_order,
-    fetch_movie_feature_map,
+    fetch_movie_graph_profile_map,
+    top_weighted_items,
     run_query,
-    score_metadata_alignment,
+    score_movie_against_user_profile,
 )
 from app.db.neo4j import Neo4jConnection
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 800
-RELATION_REASON_LABELS = {
-    "DIRECTED": "共享导演",
-    "ACTED_IN": "共享演员",
-    "HAS_GENRE": "共享类型",
-}
 
 CONTENT_QUERY = """
-MATCH (source:Movie)-[source_rel:DIRECTED|ACTED_IN|HAS_GENRE]-(shared_node)-[target_rel:DIRECTED|ACTED_IN|HAS_GENRE]-(target:Movie)
-WHERE source.mid IN $seed_ids
-  AND NOT target.mid IN $seed_ids
-  AND NOT target.mid IN $seen_movie_ids
-  AND type(source_rel) = type(target_rel)
+MATCH (target:Movie)
+WHERE NOT target.mid IN $seen_movie_ids
+OPTIONAL MATCH (target)-[:HAS_GENRE]->(g:Genre)
+WHERE g.name IN $genre_names
+WITH target, collect(DISTINCT g.name) AS matched_genres
+OPTIONAL MATCH (target)<-[:DIRECTED]-(d:Person)
+WHERE d.pid IN $director_ids
 WITH target,
-     type(source_rel) AS rel_type,
-     count(DISTINCT shared_node) AS shared_node_count,
-     count(DISTINCT source) AS shared_seed_count,
-     collect(DISTINCT coalesce(shared_node.name_zh, shared_node.name, shared_node.title))[..3] AS reason_names
+     matched_genres,
+     collect(DISTINCT {
+       pid: d.pid,
+       name: coalesce(d.name_zh, d.name)
+     }) AS matched_directors
+OPTIONAL MATCH (target)<-[:ACTED_IN]-(a:Person)
+WHERE a.pid IN $actor_ids
 WITH target,
-     rel_type,
-     shared_node_count,
-     shared_seed_count,
-     reason_names,
-     CASE rel_type
-       WHEN 'DIRECTED' THEN 3
-       WHEN 'ACTED_IN' THEN 2
-       ELSE 1
-     END AS reason_priority
-ORDER BY target.mid, reason_priority DESC, shared_seed_count DESC, shared_node_count DESC
-WITH target,
-     collect({
-       rel_type: rel_type,
-       reason_names: reason_names,
-       shared_node_count: shared_node_count,
-       shared_seed_count: shared_seed_count
-     }) AS relation_groups
-WITH target,
-     relation_groups,
-     reduce(score = 0.0, group IN relation_groups |
-       score +
-       CASE group.rel_type
-         WHEN 'DIRECTED' THEN 4.2 * CASE WHEN group.shared_node_count > 0 THEN 1.0 ELSE 0.0 END
-         WHEN 'ACTED_IN' THEN 1.5 * toFloat(CASE WHEN group.shared_node_count > 3 THEN 3 ELSE group.shared_node_count END)
-         ELSE 0.9 * toFloat(CASE WHEN group.shared_node_count > 2 THEN 2 ELSE group.shared_node_count END)
-       END +
-       0.75 * toFloat(CASE WHEN group.shared_seed_count > 1 THEN group.shared_seed_count - 1 ELSE 0 END)
-     ) AS base_score,
-     size(relation_groups) AS relation_diversity,
-     reduce(seed_cov = 0, group IN relation_groups | seed_cov + group.shared_seed_count) AS seed_overlap_total
+     matched_genres,
+     matched_directors,
+     collect(DISTINCT {
+       pid: a.pid,
+       name: coalesce(a.name_zh, a.name)
+     })[..10] AS matched_actors
+WHERE size(matched_genres) + size(matched_directors) + size(matched_actors) > 0
 RETURN target.mid AS movie_id,
        target.title AS title,
-       base_score + 0.95 * toFloat(relation_diversity) + 0.15 * toFloat(seed_overlap_total) AS content_score,
-       relation_groups AS shared_reasons
-ORDER BY content_score DESC, movie_id ASC
+       matched_genres,
+       matched_directors,
+       matched_actors
+ORDER BY size(matched_directors) DESC,
+         size(matched_genres) DESC,
+         size(matched_actors) DESC,
+         movie_id ASC
 LIMIT $limit
 """
 
 
+def _resolve_feature_context(
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+) -> Dict[str, List[str]]:
+    if not user_profile:
+        seed_ids = dedupe_preserve_order(seed_movie_ids)
+        return {
+            "genre_names": [],
+            "director_ids": [],
+            "actor_ids": [],
+            "context_movie_ids": seed_ids,
+        }
+
+    positive_features = user_profile.get("positive_features", {})
+    return {
+        "genre_names": top_weighted_items(positive_features.get("genres", {}), 10),
+        "director_ids": top_weighted_items(positive_features.get("directors", {}), 8),
+        "actor_ids": top_weighted_items(positive_features.get("actors", {}), 14),
+        "context_movie_ids": dedupe_preserve_order(
+            user_profile.get("context_movie_ids")
+            or user_profile.get("positive_movie_ids")
+            or [],
+        ),
+    }
+
+
 def _format_content_reasons(
-    reason_items: List[Dict[str, Any]],
-    extra_reasons: List[str] | None = None,
+    matched_genres: List[str],
+    matched_directors: List[Dict[str, Any]],
+    matched_actors: List[Dict[str, Any]],
+    profile_reasons: List[str],
 ) -> List[str]:
-    if not reason_items:
-        return extra_reasons[:1] if extra_reasons else []
+    reasons = []
+    if matched_directors:
+        reasons.append(
+            "命中偏好导演 " + " / ".join(
+                item["name"]
+                for item in matched_directors[:2]
+                if item.get("name")
+            ),
+        )
+    if matched_genres:
+        reasons.append("命中偏好类型 " + " / ".join(matched_genres[:2]))
+    if not reasons and matched_actors:
+        reasons.append(
+            "命中偏好演员 " + " / ".join(
+                item["name"]
+                for item in matched_actors[:2]
+                if item.get("name")
+            ),
+        )
+    reasons.extend(profile_reasons[:1])
+    deduped = []
+    seen = set()
+    for reason in reasons:
+        if not reason or reason in seen:
+            continue
+        seen.add(reason)
+        deduped.append(reason)
+    return deduped[:3]
 
-    fragments = []
-    for item in reason_items[:3]:
-        rel_type = item.get("rel_type", "")
-        names = [name for name in item.get("reason_names", []) if name]
-        label = RELATION_REASON_LABELS.get(rel_type, "共享特征")
-        if names:
-            fragments.append(f"{label} {' / '.join(names[:2])}")
 
-    if not fragments:
-        return extra_reasons[:1] if extra_reasons else []
+def _base_match_score(
+    record: Dict[str, Any],
+    user_profile: Dict[str, Any],
+) -> float:
+    positive_features = user_profile.get("positive_features", {})
+    matched_genres = record.get("matched_genres") or []
+    matched_directors = record.get("matched_directors") or []
+    matched_actors = record.get("matched_actors") or []
 
-    reason_text = "，".join(fragments)
-    if len(reason_items) > 3:
-        reason_text += f" 等 {len(reason_items)} 个图谱共性"
-    if extra_reasons:
-        reason_text += f"；{extra_reasons[0]}"
-    return [reason_text]
+    genre_score = sum(
+        positive_features.get("genres", {}).get(name, 0.0)
+        for name in matched_genres[:4]
+    ) * 0.18
+    director_score = sum(
+        positive_features.get("directors", {}).get(item.get("pid"), 0.0)
+        for item in matched_directors[:3]
+        if item.get("pid")
+    ) * 0.24
+    actor_score = sum(
+        positive_features.get("actors", {}).get(item.get("pid"), 0.0)
+        for item in matched_actors[:5]
+        if item.get("pid")
+    ) * 0.08
+    return genre_score + director_score + actor_score
 
 
 def _rerank_content_records(
     driver,
-    seed_ids: List[str],
+    user_profile: Dict[str, Any] | None,
     records,
     timeout_ms: int | None,
 ) -> List[Dict[str, Any]]:
@@ -110,28 +153,43 @@ def _rerank_content_records(
         return []
 
     candidate_ids = [record["movie_id"] for record in records]
-    feature_map = fetch_movie_feature_map(
+    feature_map = fetch_movie_graph_profile_map(
         driver,
-        seed_ids + candidate_ids,
+        candidate_ids,
         timeout_ms=timeout_ms,
     )
-    seed_profile = build_seed_profile(feature_map, seed_ids)
 
     reranked = []
     for record in records:
         movie_id = record["movie_id"]
-        metadata_bonus, metadata_reasons = score_metadata_alignment(
-            feature_map.get(movie_id),
-            seed_profile,
+        profile_score, profile_reasons, negative_signals = (
+            score_movie_against_user_profile(
+                feature_map.get(movie_id),
+                user_profile,
+            )
+            if user_profile
+            else (0.0, [], [])
+        )
+        base_score = (
+            _base_match_score(record, user_profile)
+            if user_profile
+            else float(
+                len(record.get("matched_genres") or [])
+                + len(record.get("matched_directors") or [])
+                + len(record.get("matched_actors") or [])
+            )
         )
         reranked.append({
             "movie_id": movie_id,
             "title": record.get("title", ""),
-            "score": float(record["content_score"]) + metadata_bonus,
+            "score": base_score + 0.72 * profile_score,
             "reasons": _format_content_reasons(
-                record.get("shared_reasons", []),
-                extra_reasons=metadata_reasons,
+                record.get("matched_genres") or [],
+                record.get("matched_directors") or [],
+                record.get("matched_actors") or [],
+                profile_reasons,
             ),
+            "negative_signals": negative_signals[:2],
             "source": "graph_content",
         })
 
@@ -141,6 +199,7 @@ def _rerank_content_records(
 
 def _get_graph_content_recommendations_sync(
     user_id: int,
+    user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
     exclude_mock_users: bool = True,
@@ -149,13 +208,20 @@ def _get_graph_content_recommendations_sync(
 ) -> List[Dict[str, Any]]:
     del user_id, exclude_mock_users
 
-    seed_ids = dedupe_preserve_order(seed_movie_ids)
-    if not seed_ids:
+    feature_context = _resolve_feature_context(
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+    )
+    if (
+        not feature_context["genre_names"]
+        and not feature_context["director_ids"]
+        and not feature_context["actor_ids"]
+    ):
         return []
 
     seen_ids = dedupe_preserve_order(seen_movie_ids)
     driver = Neo4jConnection.get_driver()
-    candidate_limit = min(max(limit * 3, 100), 180)
+    candidate_limit = min(max(limit * 6, 120), 220)
 
     with driver.session() as session:
         try:
@@ -163,8 +229,10 @@ def _get_graph_content_recommendations_sync(
                 session,
                 CONTENT_QUERY,
                 timeout_ms=timeout_ms,
-                seed_ids=seed_ids,
                 seen_movie_ids=seen_ids,
+                genre_names=feature_context["genre_names"],
+                director_ids=feature_context["director_ids"],
+                actor_ids=feature_context["actor_ids"],
                 limit=candidate_limit,
             )
         except Exception as exc:
@@ -173,7 +241,7 @@ def _get_graph_content_recommendations_sync(
 
     return _rerank_content_records(
         driver,
-        seed_ids,
+        user_profile,
         records,
         timeout_ms=timeout_ms,
     )[:limit]
@@ -181,6 +249,7 @@ def _get_graph_content_recommendations_sync(
 
 async def get_graph_content_recommendations(
     user_id: int,
+    user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
     exclude_mock_users: bool = True,
@@ -188,11 +257,12 @@ async def get_graph_content_recommendations(
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
 ) -> List[Dict[str, Any]]:
     """
-    通过知识图谱中导演、演员、类型的共享路径做内容相似推荐。
+    根据用户画像在知识图谱中的导演、演员、类型特征进行内容推荐。
     """
     return await asyncio.to_thread(
         _get_graph_content_recommendations_sync,
         user_id,
+        user_profile,
         seed_movie_ids,
         seen_movie_ids,
         exclude_mock_users,

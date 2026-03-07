@@ -4,60 +4,155 @@
 import asyncio
 from typing import Any, Dict, List
 
-from app.algorithms.common import dedupe_preserve_order, run_query
+from app.algorithms.common import (
+    dedupe_preserve_order,
+    fetch_movie_graph_profile_map,
+    run_query,
+    score_movie_against_user_profile,
+)
 from app.db.neo4j import Neo4jConnection
 
-POSITIVE_RATING = 4.0
-MIN_OVERLAP = 2
+POSITIVE_RATING = 3.5
 SHRINKAGE = 2.0
-NEIGHBOR_LIMIT = 30
+NEIGHBOR_LIMIT = 40
 DEFAULT_TIMEOUT_MS = 800
 
 CF_QUERY = """
-WITH $seed_ids AS seed_ids
-UNWIND seed_ids AS seed_id
-MATCH (seed:Movie {mid: seed_id})<-[shared_rel:RATED]-(neighbor:User)
+WITH $positive_movie_ids AS positive_movie_ids
+UNWIND positive_movie_ids AS positive_movie_id
+MATCH (:Movie {mid: positive_movie_id})<-[shared_rel:RATED]-(neighbor:User)
 WHERE neighbor.id <> $user_id
   AND shared_rel.rating >= $positive_rating
   AND (NOT $exclude_mock_users OR coalesce(neighbor.is_mock, false) = false)
-WITH seed_ids, neighbor, count(DISTINCT seed_id) AS overlap
-WHERE overlap >= $min_overlap
+WITH neighbor,
+     count(DISTINCT positive_movie_id) AS positive_overlap,
+     avg(shared_rel.rating) AS shared_positive_avg
+WHERE positive_overlap >= $min_overlap
+OPTIONAL MATCH (neighbor)-[conflict_rel:RATED]->(negative_movie:Movie)
+WHERE negative_movie.mid IN $negative_movie_ids
+  AND conflict_rel.rating >= $positive_rating
+WITH neighbor,
+     positive_overlap,
+     shared_positive_avg,
+     count(DISTINCT negative_movie) AS negative_conflict_count
 MATCH (neighbor)-[liked_rel:RATED]->(:Movie)
 WHERE liked_rel.rating >= $positive_rating
-WITH seed_ids, neighbor, overlap, count(liked_rel) AS neighbor_like_count
-WITH seed_ids, neighbor, overlap,
-     (toFloat(overlap) / sqrt(toFloat(size(seed_ids)) * toFloat(neighbor_like_count))) *
-     (toFloat(overlap) / (toFloat(overlap) + $shrinkage)) AS similarity
+WITH neighbor,
+     positive_overlap,
+     shared_positive_avg,
+     negative_conflict_count,
+     count(liked_rel) AS neighbor_positive_count
+WITH neighbor,
+     positive_overlap,
+     shared_positive_avg,
+     negative_conflict_count,
+     (
+       (toFloat(positive_overlap) / sqrt(toFloat($positive_count) * toFloat(neighbor_positive_count))) *
+       (toFloat(positive_overlap) / (toFloat(positive_overlap) + $shrinkage))
+     ) * (1.0 + 0.04 * (shared_positive_avg - $positive_rating)) -
+     (0.10 * toFloat(negative_conflict_count)) AS similarity
 WHERE similarity > 0
 ORDER BY similarity DESC
 LIMIT $neighbor_limit
 MATCH (neighbor)-[candidate_rel:RATED]->(candidate:Movie)
 WHERE candidate_rel.rating >= $positive_rating
-  AND NOT candidate.mid IN $seed_ids
   AND NOT candidate.mid IN $seen_movie_ids
 RETURN candidate.mid AS movie_id,
        candidate.title AS title,
-       sum(similarity * candidate_rel.rating) AS cf_score,
+       sum(similarity * (candidate_rel.rating - 2.5)) AS cf_score,
        count(DISTINCT neighbor) AS similar_user_count,
-       max(similarity) AS strongest_similarity
+       max(similarity) AS strongest_similarity,
+       avg(candidate_rel.rating) AS avg_neighbor_rating
 ORDER BY cf_score DESC, similar_user_count DESC, movie_id ASC
 LIMIT $limit
 """
 
 
+def _resolve_profile_context(
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+) -> tuple[List[str], List[str]]:
+    if user_profile:
+        positive_movie_ids = dedupe_preserve_order(
+            user_profile.get("context_movie_ids")
+            or user_profile.get("positive_movie_ids")
+            or [],
+        )
+        negative_movie_ids = dedupe_preserve_order(
+            user_profile.get("negative_movie_ids") or [],
+        )
+        return positive_movie_ids[:24], negative_movie_ids[:12]
+
+    return dedupe_preserve_order(seed_movie_ids), []
+
+
+def _rerank_cf_records(
+    driver,
+    user_profile: Dict[str, Any] | None,
+    records,
+    timeout_ms: int | None,
+) -> List[Dict[str, Any]]:
+    if not records:
+        return []
+
+    candidate_ids = [record["movie_id"] for record in records]
+    feature_map = fetch_movie_graph_profile_map(
+        driver,
+        candidate_ids,
+        timeout_ms=timeout_ms,
+    )
+    max_score = max(float(record["cf_score"]) for record in records) or 1.0
+
+    reranked = []
+    for record in records:
+        movie_id = record["movie_id"]
+        base_score = float(record["cf_score"]) / max_score
+        profile_score, profile_reasons, negative_signals = (
+            score_movie_against_user_profile(
+                feature_map.get(movie_id),
+                user_profile,
+            )
+            if user_profile
+            else (0.0, [], [])
+        )
+        similar_user_count = int(record["similar_user_count"] or 0)
+        strongest_similarity = float(record["strongest_similarity"] or 0.0)
+        base_reason = f"{similar_user_count} 位相似用户也明显偏好这部电影"
+        if strongest_similarity > 0.2:
+            base_reason += f"，近邻强度 {strongest_similarity:.2f}"
+        reasons = [base_reason, *profile_reasons[:1]]
+        reranked.append({
+            "movie_id": movie_id,
+            "title": record.get("title", ""),
+            "score": 1.05 * base_score + 0.40 * profile_score,
+            "reasons": reasons[:3],
+            "negative_signals": negative_signals[:2],
+            "source": "graph_cf",
+        })
+
+    reranked.sort(key=lambda item: (-item["score"], item["movie_id"]))
+    return reranked
+
+
 def _get_graph_cf_recommendations_sync(
     user_id: int,
+    user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
     exclude_mock_users: bool = True,
     limit: int = 50,
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
 ) -> List[Dict[str, Any]]:
-    seed_ids = dedupe_preserve_order(seed_movie_ids)
-    if not seed_ids:
+    positive_movie_ids, negative_movie_ids = _resolve_profile_context(
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+    )
+    if not positive_movie_ids:
         return []
 
     seen_ids = dedupe_preserve_order(seen_movie_ids)
+    min_overlap = 1 if len(positive_movie_ids) < 4 else 2
+    candidate_limit = min(max(limit * 4, 80), 180)
     driver = Neo4jConnection.get_driver()
 
     with driver.session() as session:
@@ -66,36 +161,29 @@ def _get_graph_cf_recommendations_sync(
             CF_QUERY,
             timeout_ms=timeout_ms,
             user_id=user_id,
-            seed_ids=seed_ids,
+            positive_movie_ids=positive_movie_ids,
+            negative_movie_ids=negative_movie_ids,
+            positive_count=max(len(positive_movie_ids), 1),
             seen_movie_ids=seen_ids,
             exclude_mock_users=exclude_mock_users,
             positive_rating=POSITIVE_RATING,
-            min_overlap=MIN_OVERLAP,
+            min_overlap=min_overlap,
             shrinkage=SHRINKAGE,
             neighbor_limit=NEIGHBOR_LIMIT,
-            limit=limit,
+            limit=candidate_limit,
         )
 
-    results = []
-    for record in records:
-        user_count = int(record["similar_user_count"])
-        strongest_similarity = float(record["strongest_similarity"] or 0.0)
-        reason = f"有 {user_count} 位相似用户给它打了高分"
-        if strongest_similarity > 0:
-            reason += f"，最强近邻相似度 {strongest_similarity:.2f}"
-        results.append({
-            "movie_id": record["movie_id"],
-            "title": record.get("title", ""),
-            "score": float(record["cf_score"]),
-            "reasons": [reason],
-            "source": "graph_cf",
-        })
-
-    return results
+    return _rerank_cf_records(
+        driver,
+        user_profile,
+        records,
+        timeout_ms=timeout_ms,
+    )[:limit]
 
 
 async def get_graph_cf_recommendations(
     user_id: int,
+    user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
     exclude_mock_users: bool = True,
@@ -103,11 +191,12 @@ async def get_graph_cf_recommendations(
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
 ) -> List[Dict[str, Any]]:
     """
-    基于显式种子电影构建邻域，避免直接读取目标用户的完整评分边造成评估泄漏。
+    基于用户画像中的正向电影上下文构建邻域，再用正负反馈做重排。
     """
     return await asyncio.to_thread(
         _get_graph_cf_recommendations_sync,
         user_id,
+        user_profile,
         seed_movie_ids,
         seen_movie_ids,
         exclude_mock_users,

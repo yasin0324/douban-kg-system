@@ -6,11 +6,10 @@ import logging
 from typing import Any, Dict, List
 
 from app.algorithms.common import (
-    build_seed_profile,
     dedupe_preserve_order,
-    fetch_movie_feature_map,
+    fetch_movie_graph_profile_map,
     run_query,
-    score_metadata_alignment,
+    score_movie_against_user_profile,
 )
 from app.db.neo4j import Neo4jConnection
 
@@ -25,22 +24,22 @@ DROP_GRAPH_QUERY = "CALL gds.graph.drop($graph_name, false) YIELD graphName RETU
 
 LOCAL_CANDIDATE_QUERY = """
 MATCH (source:Movie)-[source_rel:DIRECTED|ACTED_IN|HAS_GENRE]-(shared_node)-[target_rel:DIRECTED|ACTED_IN|HAS_GENRE]-(target:Movie)
-WHERE source.mid IN $seed_ids
-  AND NOT target.mid IN $seed_ids
+WHERE source.mid IN $context_movie_ids
+  AND NOT target.mid IN $context_movie_ids
   AND NOT target.mid IN $seen_movie_ids
   AND type(source_rel) = type(target_rel)
 WITH target,
      type(source_rel) AS rel_type,
      count(DISTINCT shared_node) AS shared_node_count,
-     count(DISTINCT source) AS shared_seed_count
+     count(DISTINCT source) AS shared_context_count
 WITH target,
      sum(
        CASE rel_type
-         WHEN 'DIRECTED' THEN 4.2 * CASE WHEN shared_node_count > 0 THEN 1.0 ELSE 0.0 END
-         WHEN 'ACTED_IN' THEN 1.4 * toFloat(CASE WHEN shared_node_count > 3 THEN 3 ELSE shared_node_count END)
+         WHEN 'DIRECTED' THEN 4.0 * CASE WHEN shared_node_count > 0 THEN 1.0 ELSE 0.0 END
+         WHEN 'ACTED_IN' THEN 1.45 * toFloat(CASE WHEN shared_node_count > 3 THEN 3 ELSE shared_node_count END)
          ELSE 0.55 * toFloat(CASE WHEN shared_node_count > 2 THEN 2 ELSE shared_node_count END)
        END +
-       0.45 * toFloat(CASE WHEN shared_seed_count > 1 THEN shared_seed_count - 1 ELSE 0 END)
+       0.30 * toFloat(CASE WHEN shared_context_count > 1 THEN shared_context_count - 1 ELSE 0 END)
      ) AS local_score
 RETURN target.mid AS movie_id,
        local_score
@@ -57,14 +56,14 @@ CALL gds.graph.project.cypher(
   WHERE m1.mid IN $projection_ids
     AND m2.mid IN $projection_ids
     AND id(m1) < id(m2)
-  WITH m1, m2, 4.8 AS weight
+  WITH m1, m2, 4.5 AS weight
   RETURN id(m1) AS source, id(m2) AS target, weight
   UNION ALL
   MATCH (m1:Movie)-[:DIRECTED]-(shared:Person)-[:DIRECTED]-(m2:Movie)
   WHERE m1.mid IN $projection_ids
     AND m2.mid IN $projection_ids
     AND id(m1) < id(m2)
-  WITH m1, m2, 4.8 AS weight
+  WITH m1, m2, 4.5 AS weight
   RETURN id(m2) AS source, id(m1) AS target, weight
   UNION ALL
   MATCH (m1:Movie)-[:ACTED_IN]-(shared:Person)-[:ACTED_IN]-(m2:Movie)
@@ -72,7 +71,7 @@ CALL gds.graph.project.cypher(
     AND m2.mid IN $projection_ids
     AND id(m1) < id(m2)
   WITH m1, m2, count(DISTINCT shared) AS overlap
-  WITH m1, m2, 1.55 * toFloat(CASE WHEN overlap > 3 THEN 3 ELSE overlap END) AS weight
+  WITH m1, m2, 1.45 * toFloat(CASE WHEN overlap > 3 THEN 3 ELSE overlap END) AS weight
   WHERE weight > 0
   RETURN id(m1) AS source, id(m2) AS target, weight
   UNION ALL
@@ -81,7 +80,7 @@ CALL gds.graph.project.cypher(
     AND m2.mid IN $projection_ids
     AND id(m1) < id(m2)
   WITH m1, m2, count(DISTINCT shared) AS overlap
-  WITH m1, m2, 1.55 * toFloat(CASE WHEN overlap > 3 THEN 3 ELSE overlap END) AS weight
+  WITH m1, m2, 1.45 * toFloat(CASE WHEN overlap > 3 THEN 3 ELSE overlap END) AS weight
   WHERE weight > 0
   RETURN id(m2) AS source, id(m1) AS target, weight
   UNION ALL
@@ -90,7 +89,7 @@ CALL gds.graph.project.cypher(
     AND m2.mid IN $projection_ids
     AND id(m1) < id(m2)
   WITH m1, m2, count(DISTINCT shared) AS overlap
-  WITH m1, m2, 0.4 * toFloat(CASE WHEN overlap > 2 THEN 2 ELSE overlap END) AS weight
+  WITH m1, m2, 0.45 * toFloat(CASE WHEN overlap > 2 THEN 2 ELSE overlap END) AS weight
   WHERE weight > 0
   RETURN id(m1) AS source, id(m2) AS target, weight
   UNION ALL
@@ -99,7 +98,7 @@ CALL gds.graph.project.cypher(
     AND m2.mid IN $projection_ids
     AND id(m1) < id(m2)
   WITH m1, m2, count(DISTINCT shared) AS overlap
-  WITH m1, m2, 0.4 * toFloat(CASE WHEN overlap > 2 THEN 2 ELSE overlap END) AS weight
+  WITH m1, m2, 0.45 * toFloat(CASE WHEN overlap > 2 THEN 2 ELSE overlap END) AS weight
   WHERE weight > 0
   RETURN id(m2) AS source, id(m1) AS target, weight
   ',
@@ -130,7 +129,7 @@ RETURN graphName
 
 WEIGHTED_PPR_QUERY = """
 MATCH (m:Movie)
-WHERE m.mid IN $seed_ids
+WHERE m.mid IN $context_movie_ids
 WITH collect(m) AS source_nodes
 CALL gds.pageRank.stream($graph_name, {
   sourceNodes: source_nodes,
@@ -141,7 +140,7 @@ CALL gds.pageRank.stream($graph_name, {
 YIELD nodeId, score
 WITH gds.util.asNode(nodeId) AS node, score
 WHERE 'Movie' IN labels(node)
-  AND NOT node.mid IN $seed_ids
+  AND NOT node.mid IN $context_movie_ids
   AND NOT node.mid IN $seen_movie_ids
 RETURN node.mid AS movie_id,
        node.title AS title,
@@ -152,7 +151,7 @@ LIMIT $limit
 
 FALLBACK_PPR_QUERY = """
 MATCH (m:Movie)
-WHERE m.mid IN $seed_ids
+WHERE m.mid IN $context_movie_ids
 WITH collect(m) AS source_nodes
 CALL gds.pageRank.stream($graph_name, {
   sourceNodes: source_nodes,
@@ -162,7 +161,7 @@ CALL gds.pageRank.stream($graph_name, {
 YIELD nodeId, score
 WITH gds.util.asNode(nodeId) AS node, score
 WHERE 'Movie' IN labels(node)
-  AND NOT node.mid IN $seed_ids
+  AND NOT node.mid IN $context_movie_ids
   AND NOT node.mid IN $seen_movie_ids
 RETURN node.mid AS movie_id,
        node.title AS title,
@@ -204,18 +203,33 @@ def _drop_projection(session, graph_name: str, timeout_ms: int | None = None):
     )
 
 
+def _resolve_context_movie_ids(
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+) -> List[str]:
+    if user_profile:
+        context_movie_ids = dedupe_preserve_order(
+            user_profile.get("graph_context_movie_ids")
+            or user_profile.get("context_movie_ids")
+            or user_profile.get("positive_movie_ids")
+            or [],
+        )
+        return context_movie_ids[:18]
+    return dedupe_preserve_order(seed_movie_ids)
+
+
 def _format_ppr_reasons(
     base_reason: str,
     metadata_reasons: List[str] | None = None,
 ) -> List[str]:
     if metadata_reasons:
-        return [f"{base_reason}，{metadata_reasons[0]}"]
+        return [base_reason, metadata_reasons[0]]
     return [base_reason]
 
 
 def _rerank_ppr_records(
     driver,
-    seed_ids: List[str],
+    user_profile: Dict[str, Any] | None,
     records,
     timeout_ms: int | None,
     base_reason: str,
@@ -224,27 +238,31 @@ def _rerank_ppr_records(
         return []
 
     candidate_ids = [record["movie_id"] for record in records]
-    feature_map = fetch_movie_feature_map(
+    feature_map = fetch_movie_graph_profile_map(
         driver,
-        seed_ids + candidate_ids,
+        candidate_ids,
         timeout_ms=timeout_ms,
     )
-    seed_profile = build_seed_profile(feature_map, seed_ids)
     max_score = max(float(record["ppr_score"]) for record in records) or 1.0
 
     reranked = []
     for record in records:
         movie_id = record["movie_id"]
         normalized_graph_score = float(record["ppr_score"]) / max_score
-        metadata_bonus, metadata_reasons = score_metadata_alignment(
-            feature_map.get(movie_id),
-            seed_profile,
+        profile_score, metadata_reasons, negative_signals = (
+            score_movie_against_user_profile(
+                feature_map.get(movie_id),
+                user_profile,
+            )
+            if user_profile
+            else (0.0, [], [])
         )
         reranked.append({
             "movie_id": movie_id,
             "title": record.get("title", ""),
-            "score": 0.9 * normalized_graph_score + 0.55 * metadata_bonus,
+            "score": 0.95 * normalized_graph_score + 0.60 * profile_score,
             "reasons": _format_ppr_reasons(base_reason, metadata_reasons),
+            "negative_signals": negative_signals[:2],
             "source": "graph_ppr",
         })
 
@@ -254,6 +272,7 @@ def _rerank_ppr_records(
 
 def _get_graph_ppr_recommendations_sync(
     user_id: int,
+    user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
     exclude_mock_users: bool = True,
@@ -262,13 +281,16 @@ def _get_graph_ppr_recommendations_sync(
 ) -> List[Dict[str, Any]]:
     del exclude_mock_users
 
-    seed_ids = dedupe_preserve_order(seed_movie_ids)
-    if not seed_ids:
+    context_movie_ids = _resolve_context_movie_ids(
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+    )
+    if not context_movie_ids:
         return []
 
     seen_ids = dedupe_preserve_order(seen_movie_ids)
     driver = Neo4jConnection.get_driver()
-    candidate_limit = min(max(limit * 4, 120), 180)
+    candidate_limit = min(max(limit * 4, 120), 220)
     local_graph_name = LOCAL_GRAPH_NAME_TEMPLATE.format(user_id=user_id)
 
     with driver.session() as session:
@@ -277,12 +299,12 @@ def _get_graph_ppr_recommendations_sync(
                 session,
                 LOCAL_CANDIDATE_QUERY,
                 timeout_ms=timeout_ms,
-                seed_ids=seed_ids,
+                context_movie_ids=context_movie_ids,
                 seen_movie_ids=seen_ids,
                 limit=candidate_limit,
             )
             candidate_ids = [record["movie_id"] for record in candidate_records]
-            projection_ids = dedupe_preserve_order(seed_ids + candidate_ids)
+            projection_ids = dedupe_preserve_order(context_movie_ids + candidate_ids)
             if not candidate_ids:
                 return []
 
@@ -303,7 +325,7 @@ def _get_graph_ppr_recommendations_sync(
                 WEIGHTED_PPR_QUERY,
                 timeout_ms=timeout_ms,
                 graph_name=local_graph_name,
-                seed_ids=seed_ids,
+                context_movie_ids=context_movie_ids,
                 seen_movie_ids=seen_ids,
                 damping_factor=0.76,
                 max_iterations=30,
@@ -311,10 +333,10 @@ def _get_graph_ppr_recommendations_sync(
             )
             return _rerank_ppr_records(
                 driver,
-                seed_ids,
+                user_profile,
                 records,
                 timeout_ms=timeout_ms,
-                base_reason="通过种子电影周边的导演、演员与类型局部图游走发现",
+                base_reason="从你的兴趣画像对应子图中游走发现了这部电影",
             )[:limit]
         except Exception as exc:
             logger.warning("局部电影投影 PPR 执行失败，回退异构图版本: %s", exc)
@@ -340,7 +362,7 @@ def _get_graph_ppr_recommendations_sync(
                 FALLBACK_PPR_QUERY,
                 timeout_ms=timeout_ms,
                 graph_name=FALLBACK_GRAPH_NAME,
-                seed_ids=seed_ids,
+                context_movie_ids=context_movie_ids,
                 seen_movie_ids=seen_ids,
                 damping_factor=0.7,
                 max_iterations=25,
@@ -352,7 +374,7 @@ def _get_graph_ppr_recommendations_sync(
 
     return _rerank_ppr_records(
         driver,
-        seed_ids,
+        user_profile,
         records,
         timeout_ms=timeout_ms,
         base_reason="通过图谱随机游走发现的隐性关联",
@@ -361,6 +383,7 @@ def _get_graph_ppr_recommendations_sync(
 
 async def get_graph_ppr_recommendations(
     user_id: int,
+    user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
     exclude_mock_users: bool = True,
@@ -368,11 +391,12 @@ async def get_graph_ppr_recommendations(
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
 ) -> List[Dict[str, Any]]:
     """
-    基于 Neo4j GDS 的 Personalized PageRank，在种子电影局部子图中做稀疏图游走。
+    基于用户画像的正向上下文，在知识图谱局部子图中执行 Personalized PageRank。
     """
     return await asyncio.to_thread(
         _get_graph_ppr_recommendations_sync,
         user_id,
+        user_profile,
         seed_movie_ids,
         seen_movie_ids,
         exclude_mock_users,

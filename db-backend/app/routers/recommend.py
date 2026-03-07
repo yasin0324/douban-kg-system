@@ -1,12 +1,9 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from app.dependencies import get_current_user, get_mysql_conn
-from app.algorithms.hybrid_manager import manager as hybrid_manager
-from app.algorithms.graph_content import get_graph_content_recommendations
-from app.algorithms.graph_cf import get_graph_cf_recommendations
-from app.algorithms.graph_ppr import get_graph_ppr_recommendations
-from app.services import user_service
+from app.services import recommend_service
 
 router = APIRouter(prefix="/api/recommend", tags=["推荐系统"])
 
@@ -14,52 +11,42 @@ router = APIRouter(prefix="/api/recommend", tags=["推荐系统"])
 async def get_personal_recommendations(
     algorithm: Optional[str] = Query("hybrid", description="推荐算法类型: ppr, content, cf, hybrid"),
     limit: int = Query(20, ge=1, le=50),
+    exclude_movie_ids: Optional[List[str]] = Query(None, description="重新生成时希望尽量避开的电影"),
+    reroll_token: Optional[str] = Query(None, description="重新生成请求的随机标识"),
     user=Depends(get_current_user),
-    conn=Depends(get_mysql_conn)
+    conn=Depends(get_mysql_conn),
 ):
-    user_id = user["id"]
-    
-    # 动态获取当前用户最近打高分的电影作为种子节点
-    seeds = user_service.get_high_rated_movie_ids(conn, user_id, limit=5)
-    seen_movie_ids = user_service.get_seen_movie_ids(conn, user_id)
-    
-    # 防止完全冷启动报错，如果没有最近高分历史，退化一下提供备用的种子电影
-    if not seeds:
-        seeds = ["1292052", "1291546", "1292720"] # 肖申克的救赎, 霸王别姬, 阿甘正传作为退路
-        
     try:
-        if algorithm == "ppr":
-            results = await get_graph_ppr_recommendations(
-                user_id=user_id,
-                seed_movie_ids=seeds,
-                seen_movie_ids=seen_movie_ids,
-                limit=limit,
-            )
-        elif algorithm == "content":
-            results = await get_graph_content_recommendations(
-                user_id=user_id,
-                seed_movie_ids=seeds,
-                seen_movie_ids=seen_movie_ids,
-                limit=limit,
-            )
-        elif algorithm == "cf":
-            results = await get_graph_cf_recommendations(
-                user_id=user_id,
-                seed_movie_ids=seeds,
-                seen_movie_ids=seen_movie_ids,
-                limit=limit,
-            )
-        elif algorithm == "hybrid":
-            results = await hybrid_manager.get_hybrid_recommendations(
-                user_id=user_id,
-                seed_movie_ids=seeds,
-                seen_movie_ids=seen_movie_ids,
-                limit=limit,
-            )
-        else:
-            raise HTTPException(status_code=400, detail="不支持的算法类型")
-            
-        return {"items": results, "algorithm": algorithm}
+        return await recommend_service.build_personal_recommendation_payload(
+            conn=conn,
+            user_id=user["id"],
+            algorithm=algorithm,
+            limit=limit,
+            exclude_movie_ids=exclude_movie_ids,
+            reroll_token=reroll_token,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/explain", summary="推荐结果解释图")
+def explain_recommendation(
+    target_mid: str = Query(..., description="目标推荐电影 ID"),
+    algorithm: Optional[str] = Query("hybrid", description="推荐算法类型: ppr, content, cf, hybrid"),
+    user=Depends(get_current_user),
+    conn=Depends(get_mysql_conn),
+):
+    try:
+        return recommend_service.build_recommendation_explain_payload(
+            conn=conn,
+            user_id=user["id"],
+            target_mid=target_mid,
+            algorithm=algorithm,
+        )
     except HTTPException:
         raise
     except Exception as e:

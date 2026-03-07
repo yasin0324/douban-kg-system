@@ -46,11 +46,42 @@ def test_graph_cf_uses_explicit_context_and_filters(monkeypatch):
         }]
 
     monkeypatch.setattr(graph_cf, "run_query", fake_run_query)
+    monkeypatch.setattr(
+        graph_cf,
+        "fetch_movie_graph_profile_map",
+        lambda driver, movie_ids, timeout_ms=None: {
+            "m100": {
+                "regions": {"美国"},
+                "languages": {"英语"},
+                "year": 2014,
+                "rating": 8.1,
+                "content_type": "movie",
+                "votes": 8000,
+                "genres": {"科幻"},
+                "genre_names": ["科幻"],
+                "directors": [],
+                "director_ids": set(),
+                "director_names": [],
+                "actors": [],
+                "actor_ids": set(),
+                "actor_names": [],
+            },
+        },
+    )
     monkeypatch.setattr(graph_cf.Neo4jConnection, "get_driver", lambda: DummyDriver())
 
     items = graph_cf._get_graph_cf_recommendations_sync(
         user_id=7,
-        seed_movie_ids=["1", "1", "2"],
+        user_profile={
+            "context_movie_ids": ["1", "1", "2"],
+            "negative_movie_ids": ["7"],
+            "positive_features": {"genres": {"科幻": 2.4}, "directors": {}, "actors": {}, "regions": {"美国": 1.2}, "languages": {"英语": 1.0}},
+            "negative_features": {"genres": {}, "directors": {}, "actors": {}, "regions": {}, "languages": {}},
+            "exploration_features": {"genres": {}, "directors": {}, "actors": {}},
+            "positive_years": [2014],
+            "positive_ratings": [8.3],
+            "content_type_counter": {"movie": 1.0},
+        },
         seen_movie_ids=["9", "9"],
         exclude_mock_users=True,
         limit=10,
@@ -58,10 +89,11 @@ def test_graph_cf_uses_explicit_context_and_filters(monkeypatch):
     )
 
     assert captured["timeout_ms"] == 600
-    assert captured["params"]["seed_ids"] == ["1", "2"]
+    assert captured["params"]["positive_movie_ids"] == ["1", "2"]
+    assert captured["params"]["negative_movie_ids"] == ["7"]
     assert captured["params"]["seen_movie_ids"] == ["9"]
     assert captured["params"]["exclude_mock_users"] is True
-    assert captured["params"]["min_overlap"] == 2
+    assert captured["params"]["min_overlap"] == 1
     assert items[0]["movie_id"] == "m100"
     assert "相似用户" in items[0]["reasons"][0]
 
@@ -74,35 +106,18 @@ def test_graph_content_formats_weighted_reasons(monkeypatch):
         return [{
             "movie_id": "m200",
             "title": "Movie 200",
-            "content_score": 4.2,
-            "shared_reasons": [
-                {"rel_type": "DIRECTED", "reason_names": ["诺兰"]},
-                {"rel_type": "HAS_GENRE", "reason_names": ["科幻"]},
-                {"rel_type": "ACTED_IN", "reason_names": ["马特·达蒙"]},
+            "matched_genres": ["科幻"],
+            "matched_directors": [
+                {"pid": "p1", "name": "诺兰"},
             ],
+            "matched_actors": [],
         }]
 
     monkeypatch.setattr(graph_content, "run_query", fake_run_query)
     monkeypatch.setattr(
         graph_content,
-        "fetch_movie_feature_map",
+        "fetch_movie_graph_profile_map",
         lambda driver, movie_ids, timeout_ms=None: {
-            "10": {
-                "regions": {"美国"},
-                "languages": {"英语"},
-                "year": 2010,
-                "rating": 8.5,
-                "content_type": "movie",
-                "votes": 10000,
-            },
-            "20": {
-                "regions": {"美国"},
-                "languages": {"英语"},
-                "year": 2014,
-                "rating": 8.1,
-                "content_type": "movie",
-                "votes": 8000,
-            },
             "m200": {
                 "regions": {"美国"},
                 "languages": {"英语"},
@@ -110,6 +125,14 @@ def test_graph_content_formats_weighted_reasons(monkeypatch):
                 "rating": 8.3,
                 "content_type": "movie",
                 "votes": 9000,
+                "genres": {"科幻"},
+                "genre_names": ["科幻"],
+                "directors": [{"pid": "p1", "name": "诺兰"}],
+                "director_ids": {"p1"},
+                "director_names": ["诺兰"],
+                "actors": [],
+                "actor_ids": set(),
+                "actor_names": [],
             },
         },
     )
@@ -117,31 +140,37 @@ def test_graph_content_formats_weighted_reasons(monkeypatch):
 
     items = graph_content._get_graph_content_recommendations_sync(
         user_id=7,
-        seed_movie_ids=["10", "10", "20"],
+        user_profile={
+            "positive_features": {
+                "genres": {"科幻": 2.8},
+                "directors": {"p1": 3.1},
+                "actors": {},
+                "regions": {"美国": 1.4},
+                "languages": {"英语": 1.2},
+            },
+            "negative_features": {"genres": {}, "directors": {}, "actors": {}, "regions": {}, "languages": {}},
+            "exploration_features": {"genres": {}, "directors": {}, "actors": {}},
+            "positive_years": [2010, 2014],
+            "positive_ratings": [8.5, 8.1],
+            "content_type_counter": {"movie": 2.0},
+        },
         seen_movie_ids=["30"],
         limit=5,
     )
 
-    assert captured["params"]["seed_ids"] == ["10", "20"]
+    assert captured["params"]["genre_names"] == ["科幻"]
+    assert captured["params"]["director_ids"] == ["p1"]
     assert captured["params"]["seen_movie_ids"] == ["30"]
     assert items[0]["movie_id"] == "m200"
-    assert "共享导演 诺兰" in items[0]["reasons"][0]
-    assert "共享类型 科幻" in items[0]["reasons"][0]
+    assert "命中偏好导演 诺兰" in items[0]["reasons"][0]
+    assert "命中偏好类型 科幻" in items[0]["reasons"][1]
 
 
 def test_graph_ppr_reranks_candidates_with_metadata_bonus(monkeypatch):
     monkeypatch.setattr(
         graph_ppr,
-        "fetch_movie_feature_map",
+        "fetch_movie_graph_profile_map",
         lambda driver, movie_ids, timeout_ms=None: {
-            "seed": {
-                "regions": {"美国"},
-                "languages": {"英语"},
-                "year": 2014,
-                "rating": 8.5,
-                "content_type": "movie",
-                "votes": 40000,
-            },
             "m1": {
                 "regions": {"法国"},
                 "languages": {"法语"},
@@ -149,6 +178,14 @@ def test_graph_ppr_reranks_candidates_with_metadata_bonus(monkeypatch):
                 "rating": 6.1,
                 "content_type": "movie",
                 "votes": 50,
+                "genres": {"剧情"},
+                "genre_names": ["剧情"],
+                "directors": [],
+                "director_ids": set(),
+                "director_names": [],
+                "actors": [],
+                "actor_ids": set(),
+                "actor_names": [],
             },
             "m2": {
                 "regions": {"美国"},
@@ -157,13 +194,28 @@ def test_graph_ppr_reranks_candidates_with_metadata_bonus(monkeypatch):
                 "rating": 8.4,
                 "content_type": "movie",
                 "votes": 50000,
+                "genres": {"科幻"},
+                "genre_names": ["科幻"],
+                "directors": [],
+                "director_ids": set(),
+                "director_names": [],
+                "actors": [],
+                "actor_ids": set(),
+                "actor_names": [],
             },
         },
     )
 
     items = graph_ppr._rerank_ppr_records(
         driver=None,
-        seed_ids=["seed"],
+        user_profile={
+            "positive_features": {"genres": {"科幻": 3.0}, "directors": {}, "actors": {}, "regions": {"美国": 2.0}, "languages": {"英语": 1.5}},
+            "negative_features": {"genres": {}, "directors": {}, "actors": {}, "regions": {}, "languages": {}},
+            "exploration_features": {"genres": {}, "directors": {}, "actors": {}},
+            "positive_years": [2014],
+            "positive_ratings": [8.5],
+            "content_type_counter": {"movie": 1.0},
+        },
         records=[
             {"movie_id": "m1", "title": "Movie 1", "ppr_score": 0.50},
             {"movie_id": "m2", "title": "Movie 2", "ppr_score": 0.45},
@@ -173,7 +225,7 @@ def test_graph_ppr_reranks_candidates_with_metadata_bonus(monkeypatch):
     )
 
     assert items[0]["movie_id"] == "m2"
-    assert "地区接近" in items[0]["reasons"][0]
+    assert "偏好类型 科幻" in items[0]["reasons"][1]
 
 
 def test_hybrid_manager_reweights_when_branch_times_out(monkeypatch):
@@ -201,7 +253,7 @@ def test_hybrid_manager_reweights_when_branch_times_out(monkeypatch):
     items = asyncio.run(
         manager.get_hybrid_recommendations(
             user_id=1,
-            seed_movie_ids=["10", "20"],
+            user_profile={"context_movie_ids": ["10", "20"]},
             seen_movie_ids=["30"],
             limit=5,
         )
@@ -209,7 +261,11 @@ def test_hybrid_manager_reweights_when_branch_times_out(monkeypatch):
 
     assert items[0]["movie_id"] == "m1"
     assert items[0]["final_score"] == 1.0
+    assert items[0]["source_algorithms"] == ["graph_cf"]
+    assert items[0]["score_breakdown"] == {"graph_cf": 1.0}
     assert items[1]["final_score"] == 0.0
+    assert items[1]["source_algorithms"] == ["graph_cf"]
+    assert items[1]["score_breakdown"] == {"graph_cf": 0.0}
 
 
 def test_recommend_route_keeps_response_shape(monkeypatch):
@@ -222,22 +278,99 @@ def test_recommend_route_keeps_response_shape(monkeypatch):
     def override_conn():
         yield object()
 
-    async def fake_hybrid(**kwargs):
-        return [{"movie_id": "m9", "final_score": 0.93, "reasons": ["cf"]}]
+    captured = {}
+
+    async def fake_payload(**kwargs):
+        captured.update(kwargs)
+        return {
+            "algorithm": "hybrid",
+            "cold_start": False,
+            "generation_mode": "profile",
+            "profile_summary": {"rating_count": 4, "likes": 1, "wants": 2},
+            "profile_highlights": [{"type": "genre", "label": "科幻"}],
+            "items": [{
+                "movie": {"mid": "m9", "title": "Movie 9"},
+                "score": 0.93,
+                "reasons": ["cf"],
+                "source_algorithms": ["cf"],
+                "score_breakdown": {"cf": 0.93},
+            }],
+        }
 
     app.dependency_overrides[recommend.get_current_user] = override_current_user
     app.dependency_overrides[recommend.get_mysql_conn] = override_conn
-    monkeypatch.setattr(recommend.user_service, "get_high_rated_movie_ids", lambda conn, user_id, limit=5: ["1", "2"])
-    monkeypatch.setattr(recommend.user_service, "get_seen_movie_ids", lambda conn, user_id: ["3"])
-    monkeypatch.setattr(recommend.hybrid_manager, "get_hybrid_recommendations", fake_hybrid)
+    monkeypatch.setattr(
+        recommend.recommend_service,
+        "build_personal_recommendation_payload",
+        fake_payload,
+    )
 
     with TestClient(app) as client:
-        response = client.get("/api/recommend/personal?algorithm=hybrid&limit=5")
+        response = client.get(
+            "/api/recommend/personal?algorithm=hybrid&limit=5&exclude_movie_ids=1&exclude_movie_ids=2&reroll_token=reroll-1",
+        )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["algorithm"] == "hybrid"
-    assert payload["items"] == [{"movie_id": "m9", "final_score": 0.93, "reasons": ["cf"]}]
+    assert payload["generation_mode"] == "profile"
+    assert payload["profile_highlights"] == [{"type": "genre", "label": "科幻"}]
+    assert payload["items"][0]["movie"] == {"mid": "m9", "title": "Movie 9"}
+    assert payload["items"][0]["score_breakdown"] == {"cf": 0.93}
+    assert captured["user_id"] == 9
+    assert captured["exclude_movie_ids"] == ["1", "2"]
+    assert captured["reroll_token"] == "reroll-1"
+
+
+def test_recommend_explain_route_returns_graph_payload(monkeypatch):
+    app = FastAPI()
+    app.include_router(recommend.router)
+
+    def override_current_user():
+        return {"id": 12}
+
+    def override_conn():
+        yield object()
+
+    captured = {}
+
+    def fake_explain(**kwargs):
+        captured.update(kwargs)
+        return {
+            "algorithm": "cf",
+            "target_movie": {"mid": "m9", "title": "Movie 9"},
+            "representative_movies": [{"mid": "1", "title": "Seed 1"}],
+            "profile_highlights": [{"type": "genre", "label": "科幻"}],
+            "profile_reasons": ["偏好类型 科幻"],
+            "negative_signals": [],
+            "nodes": [{"id": "movie_m9", "label": "Movie 9", "type": "Movie"}],
+            "edges": [],
+            "reason_paths": [],
+            "matched_entities": [],
+            "meta": {"has_graph_evidence": False, "representative_movie_count": 1},
+        }
+
+    app.dependency_overrides[recommend.get_current_user] = override_current_user
+    app.dependency_overrides[recommend.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        recommend.recommend_service,
+        "build_recommendation_explain_payload",
+        fake_explain,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/recommend/explain?target_mid=m9&algorithm=cf",
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["target_movie"]["mid"] == "m9"
+    assert payload["meta"]["has_graph_evidence"] is False
+    assert captured["user_id"] == 12
+    assert captured["target_mid"] == "m9"
+    assert captured["algorithm"] == "cf"
+    assert captured["conn"] is not None
 
 
 def test_time_split_case_avoids_holdout_leakage():

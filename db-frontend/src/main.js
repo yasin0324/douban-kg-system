@@ -8,6 +8,7 @@ import App from "./App.vue";
 import router from "./router";
 import "@/assets/styles/main.scss";
 import { useThemeStore } from "@/stores/theme";
+import { useAuthStore } from "@/stores/auth";
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -19,5 +20,7 @@ app.use(ElementPlus);
 // 初始化主题（必须在 pinia 注册后）
 const themeStore = useThemeStore();
 themeStore.init();
+const authStore = useAuthStore();
+authStore.init();
 
 app.mount("#app");
