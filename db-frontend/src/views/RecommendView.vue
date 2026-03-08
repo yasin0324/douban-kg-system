@@ -1,28 +1,14 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import MovieList from "@/components/movie/MovieList.vue";
-import RecommendationCard from "@/components/recommend/RecommendationCard.vue";
 import RecommendationDetailDrawer from "@/components/recommend/RecommendationDetailDrawer.vue";
-import { moviesApi } from "@/api/movies";
+import { fetchRecommendationExplanation, useRecommendationFeed } from "@/composables/useRecommendations";
 import { useAuthStore } from "@/stores/auth";
-import { useRecommendationFeed } from "@/composables/useRecommendations";
-import { useRecommendationFeedback } from "@/composables/useRecommendationFeedback";
-import { useRecommendationHistory } from "@/composables/useRecommendationHistory";
-import {
-    ALGORITHM_OPTIONS,
-    formatAlgorithmLabel,
-    formatGenerationModeLabel,
-} from "@/utils/recommendation";
+import { useThemeStore } from "@/stores/theme";
+import { proxyImage } from "@/utils/image";
+import { formatSourceAlgorithmLabel } from "@/utils/recommendation";
 
-const router = useRouter();
 const authStore = useAuthStore();
-
-const algorithm = ref("cfkg");
-const sampleMovies = ref([]);
-const sampleLoading = ref(false);
-const selectedRecommendation = ref(null);
-const recommendationDrawerVisible = ref(false);
+const themeStore = useThemeStore();
 
 const {
     data: recommendData,
@@ -31,578 +17,670 @@ const {
     loadRecommendations,
 } = useRecommendationFeed({
     algorithm: "cfkg",
-    limit: 12,
+    limit: 6,
 });
-const {
-    preferenceStateMap,
-    preferenceLoadingMap,
-    hydratePreferenceState,
-    togglePreference,
-} = useRecommendationFeedback();
-const { rememberMovies, buildRerollParams } = useRecommendationHistory();
 
-const activeAlgorithm = computed(
-    () =>
-        ALGORITHM_OPTIONS.find((item) => item.value === algorithm.value) ||
-        ALGORITHM_OPTIONS[0],
+const explainMap = ref({});
+const explainLoading = ref(false);
+const selectedRecommendation = ref(null);
+const recommendationDrawerVisible = ref(false);
+
+const defaultCover =
+    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzBmMTcyYSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjQyIiBmaWxsPSIjMzM0MTU1IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==";
+
+const dnaTags = computed(() => {
+    const highlights = recommendData.value?.profile_highlights || [];
+    if (highlights.length) {
+        return highlights.map((item) => item.label).slice(0, 6);
+    }
+    if (recommendData.value?.cold_start) {
+        return ["冷启动中"];
+    }
+    return ["画像构建中"];
+});
+
+const dnaLogic = computed(() => {
+    const highlights = recommendData.value?.profile_highlights || [];
+    if (highlights.length) {
+        const labels = highlights.slice(0, 3).map((item) => item.label).join("、");
+        return `系统根据你近期高权重行为、导演偏好、类型共现和主题路径，构建出当前的兴趣基因画像（${labels}）。`;
+    }
+    if (recommendData.value?.cold_start) {
+        return "当前仍处于冷启动阶段，系统会优先结合有限行为信号与稳定候选完成推荐。";
+    }
+    return "系统正在根据你的评分、喜欢和想看行为，逐步形成稳定的兴趣基因画像。";
+});
+
+const displayItems = computed(() =>
+    (recommendData.value?.items || []).slice(0, 4).map((item) => {
+        const explain = explainMap.value[item.movie.mid] || null;
+        const path = explain?.reason_paths?.[0] || null;
+        return {
+            ...item,
+            explain,
+            pathSteps: path
+                ? [
+                    "用户",
+                    `偏好电影：${path.representative_title}`,
+                    `${path.relation_label}${path.matched_entities?.[0] ? `：${path.matched_entities[0]}` : ""}`,
+                    `推荐结果：${item.movie.title}`,
+                ]
+                : [],
+            signalRows: Object.entries(item.score_breakdown || {})
+                .sort((a, b) => b[1] - a[1])
+                .map(([source, value]) => ({
+                    label: formatSourceAlgorithmLabel(source),
+                    value: Number(value).toFixed(3),
+                })),
+        };
+    }),
 );
-const recommendItems = computed(() => recommendData.value?.items || []);
-const profileSummary = computed(() => recommendData.value?.profile_summary || null);
-const profileHighlights = computed(
-    () => recommendData.value?.profile_highlights || [],
-);
-const behaviorBadges = computed(() => {
-    const summary = profileSummary.value;
-    if (!summary) {
-        return [];
-    }
-    return [
-        summary.rating_count ? `${summary.rating_count} 次评分` : "",
-        summary.likes ? `${summary.likes} 部喜欢` : "",
-        summary.wants ? `${summary.wants} 部想看` : "",
-        summary.positive_movie_count
-            ? `${summary.positive_movie_count} 部正向兴趣电影`
-            : "",
-    ].filter(Boolean);
-});
-const statusDescription = computed(() => {
-    if (!recommendData.value) {
-        return "等待生成推荐结果";
-    }
-    if (recommendData.value.cold_start) {
-        return "当前行为数据仍然偏少，系统会混合已有兴趣信号和冷启动兜底结果。";
-    }
-    return "系统已根据你的评分、喜欢、想看和知识图谱特征聚合出用户画像。";
-});
-
-const loadSampleMovies = async () => {
-    sampleLoading.value = true;
-    try {
-        const { data } = await moviesApi.getTop(8);
-        sampleMovies.value = data || [];
-    } catch (err) {
-        console.error("推荐页样本电影加载失败:", err);
-        sampleMovies.value = [];
-    } finally {
-        sampleLoading.value = false;
-    }
-};
-
-const applyRecommendationPayload = async (payload) => {
-    const movieIds = (payload.items || [])
-        .map((item) => item.movie?.mid)
-        .filter(Boolean);
-    await hydratePreferenceState(movieIds);
-    rememberMovies(algorithm.value, movieIds);
-};
-
-const loadRecommendationPage = async ({ reroll = false } = {}) => {
-    if (!authStore.isLoggedIn) {
-        return;
-    }
-    try {
-        const payload = await loadRecommendations({
-            algorithm: algorithm.value,
-            limit: 12,
-            ...(reroll ? buildRerollParams(algorithm.value) : {}),
-        });
-        await applyRecommendationPayload(payload);
-    } catch (err) {
-        console.error("推荐页加载失败:", err);
-    }
-};
-
-const handleRefresh = async () => {
-    await loadRecommendationPage({ reroll: true });
-};
-
-const handlePreferenceToggle = async ({ mid, prefType }) => {
-    try {
-        await togglePreference(mid, prefType);
-        await loadRecommendationPage();
-    } catch (err) {
-        console.error("推荐反馈失败:", err);
-    }
-};
-
-const openRecommendationDetail = (item) => {
-    selectedRecommendation.value = item;
-    recommendationDrawerVisible.value = true;
-};
 
 onMounted(async () => {
-    if (authStore.isLoggedIn) {
-        await loadRecommendationPage();
-        return;
-    }
-    await loadSampleMovies();
+    await loadPage();
 });
 
 watch(
     () => authStore.isLoggedIn,
     async (loggedIn) => {
         if (loggedIn) {
-            await loadRecommendationPage();
+            await loadPage();
             return;
         }
-        selectedRecommendation.value = null;
-        recommendationDrawerVisible.value = false;
-        await loadSampleMovies();
+        explainMap.value = {};
     },
 );
 
-watch(algorithm, async () => {
+async function loadPage() {
     if (!authStore.isLoggedIn) {
         return;
     }
-    await loadRecommendationPage();
-});
+    try {
+        const payload = await loadRecommendations({ algorithm: "cfkg", limit: 6 });
+        await loadExplainSummaries(payload?.items || []);
+    } catch (err) {
+        console.error("推荐页加载失败:", err);
+    }
+}
+
+async function loadExplainSummaries(items) {
+    const topItems = items.slice(0, 4);
+    if (!topItems.length) {
+        explainMap.value = {};
+        return;
+    }
+
+    explainLoading.value = true;
+    const results = await Promise.allSettled(
+        topItems.map((item) =>
+            fetchRecommendationExplanation({
+                target_mid: item.movie.mid,
+                algorithm: "cfkg",
+            }),
+        ),
+    );
+
+    const nextMap = {};
+    results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+            nextMap[topItems[index].movie.mid] = result.value;
+        }
+    });
+    explainMap.value = nextMap;
+    explainLoading.value = false;
+}
+
+function openRecommendationDetail(item) {
+    selectedRecommendation.value = item;
+    recommendationDrawerVisible.value = true;
+}
 </script>
 
 <template>
-    <div class="recommend-view">
-        <div class="container page-padding">
-            <header class="page-hero card">
-                <div class="hero-main">
-                    <span class="hero-eyebrow">Recommendation Center</span>
-                    <h1 class="page-title">智能推荐</h1>
-                    <p class="hero-desc">
-                        以 CFKG 联合建模为主链路，补充图协同过滤、图内容推荐和
-                        Personalized PageRank 对比结果，直接展示“用户画像如何落到知识图谱上”。
-                    </p>
-                </div>
-                <div class="hero-side">
-                    <div class="hero-stat">
-                        <strong>{{
-                            authStore.isLoggedIn ? recommendItems.length : 4
-                        }}</strong>
-                        <span>{{
-                            authStore.isLoggedIn ? "当前推荐结果" : "推荐算法"
-                        }}</span>
-                    </div>
-                </div>
+    <div
+        class="insights-view"
+        :class="themeStore.isDark ? 'theme-dark' : 'theme-light'"
+    >
+        <div class="insights-shell">
+            <header class="page-header">
+                <span class="page-route">核心可解释推荐页 /recommend</span>
             </header>
 
-            <section class="algorithm-panel card">
-                <div class="panel-head">
-                    <div>
-                        <h2 class="section-title">算法切换</h2>
-                        <p class="panel-desc">
-                            单算法查看独立结果差异，默认使用 CFKG 主推荐链路。
-                        </p>
-                    </div>
-                </div>
-
-                <el-radio-group
-                    v-model="algorithm"
-                    size="large"
-                    class="algorithm-switch"
-                >
-                    <el-radio-button
-                        v-for="item in ALGORITHM_OPTIONS"
-                        :key="item.value"
-                        :value="item.value"
-                    >
-                        {{ item.label }}
-                    </el-radio-button>
-                </el-radio-group>
-
-                <p class="algorithm-intro">
-                    {{ activeAlgorithm.description }}
-                </p>
-            </section>
-
             <template v-if="authStore.isLoggedIn">
-                <section class="status-panel card">
-                    <div class="status-copy">
-                        <span class="status-eyebrow">{{
-                            formatAlgorithmLabel(algorithm)
-                        }}</span>
-                        <h2 class="status-title">
-                            系统正在根据你的用户画像生成推荐
-                        </h2>
-                        <p class="panel-desc">{{ statusDescription }}</p>
-
-                        <div
-                            v-if="recommendData?.generation_mode"
-                            class="status-line"
+                <section class="dna-panel">
+                    <h2>用户兴趣基因</h2>
+                    <div class="dna-tags">
+                        <span
+                            v-for="tag in dnaTags"
+                            :key="tag"
+                            class="dna-tag"
                         >
-                            <el-tag size="small" effect="plain" round>
-                                {{
-                                    formatGenerationModeLabel(
-                                        recommendData.generation_mode,
-                                    )
-                                }}
-                            </el-tag>
-                        </div>
-
-                        <div v-if="behaviorBadges.length" class="chip-row">
-                            <el-tag
-                                v-for="badge in behaviorBadges"
-                                :key="badge"
-                                size="small"
-                                effect="plain"
-                                round
-                            >
-                                {{ badge }}
-                            </el-tag>
-                        </div>
-
-                        <div v-if="profileHighlights.length" class="chip-row">
-                            <el-tag
-                                v-for="highlight in profileHighlights"
-                                :key="`${highlight.type}-${highlight.label}`"
-                                size="small"
-                                round
-                            >
-                                {{ highlight.label }}
-                            </el-tag>
-                        </div>
+                            {{ tag }}
+                        </span>
                     </div>
-
-                    <div class="status-actions">
-                        <div class="status-count">
-                            <strong>{{ recommendItems.length }}</strong>
-                            <span>结果数</span>
-                        </div>
-                        <el-button
-                            type="primary"
-                            plain
-                            @click="handleRefresh"
-                        >
-                            重新生成
-                        </el-button>
-                        <el-button @click="router.push('/profile')">
-                            查看我的行为
-                        </el-button>
-                    </div>
+                    <p class="dna-logic">{{ dnaLogic }}</p>
                 </section>
 
                 <el-alert
-                    v-if="recommendData?.cold_start"
-                    class="panel-alert"
-                    type="info"
-                    show-icon
-                    :closable="false"
-                    title="当前仍处于冷启动阶段。继续补充喜欢、想看和评分后，推荐会更贴近你的真实兴趣。"
-                />
-
-                <el-alert
                     v-if="recommendError"
-                    class="panel-alert"
+                    class="page-alert"
                     type="warning"
                     show-icon
                     :closable="false"
                     :title="recommendError"
                 />
 
-                <section v-if="recommendItems.length" class="results-section">
-                    <div
-                        class="recommend-grid"
-                        v-loading="recommendLoading"
-                        element-loading-text="正在生成推荐..."
-                    >
-                        <RecommendationCard
-                            v-for="item in recommendItems"
-                            :key="item.movie.mid"
-                            :item="item"
-                            show-actions
-                            :feedback-state="
-                                preferenceStateMap[item.movie.mid] || {}
-                            "
-                            :feedback-loading="
-                                preferenceLoadingMap[item.movie.mid] || false
-                            "
-                            @open="openRecommendationDetail"
-                            @toggle-preference="handlePreferenceToggle($event)"
-                        />
-                    </div>
-                </section>
-
                 <section
-                    v-else-if="!recommendLoading"
-                    class="empty-panel card"
+                    class="evidence-panel"
+                    v-loading="recommendLoading"
                 >
-                    <h2>当前没有可展示的推荐结果</h2>
-                    <p>
-                        先标记一些喜欢/想看或补充评分，再回来生成推荐。
-                    </p>
-                    <div class="empty-actions">
-                        <el-button
-                            type="primary"
-                            @click="router.push('/movies/filter')"
-                        >
-                            去找电影
-                        </el-button>
-                        <el-button @click="router.push('/profile')">
-                            查看我的行为
-                        </el-button>
-                    </div>
-                </section>
-            </template>
+                    <h2>可解释证据</h2>
 
-            <template v-else>
-                <section class="guest-panel card">
-                    <div class="guest-copy">
-                        <span class="status-eyebrow">未登录</span>
-                        <h2 class="status-title">登录后生成你的专属推荐</h2>
-                        <p class="panel-desc">
-                            推荐页会结合你的历史评分、喜欢与想看，聚合出用户画像并解释图谱证据链。
-                        </p>
-                        <div class="empty-actions">
-                            <el-button
-                                type="primary"
-                                @click="
-                                    router.push({
-                                        name: 'login',
-                                        query: { redirect: '/recommend' },
-                                    })
-                                "
+                    <article
+                        v-for="item in displayItems"
+                        :key="item.movie.mid"
+                        class="insight-card"
+                    >
+                        <div class="visual-layer">
+                            <div class="poster-frame">
+                                <img
+                                    :src="proxyImage(item.movie.cover) || defaultCover"
+                                    :alt="item.movie.title"
+                                    @error="(e) => (e.target.src = defaultCover)"
+                                />
+                            </div>
+                            <div class="visual-copy">
+                                <h3>{{ item.movie.title }}</h3>
+                                <div class="rating-line">
+                                    {{ item.movie.rating ? `${item.movie.rating.toFixed(1)}/10` : "暂无评分" }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="logic-layer">
+                            <div class="logic-block">
+                                <span class="logic-title">推荐逻辑</span>
+                                <p>{{ item.reasons?.[0] || "暂无推荐说明" }}</p>
+                            </div>
+
+                            <div
+                                v-if="item.pathSteps.length"
+                                class="logic-block"
                             >
-                                登录开启推荐
-                            </el-button>
-                            <el-button @click="router.push('/movies/filter')">
-                                先逛电影库
-                            </el-button>
-                        </div>
-                    </div>
-                </section>
+                                <span class="logic-title">路径可视化</span>
+                                <div class="path-rail">
+                                    <div
+                                        v-for="(step, index) in item.pathSteps"
+                                        :key="`${item.movie.mid}-${step}`"
+                                        class="path-step"
+                                    >
+                                        <div
+                                            class="path-dot"
+                                            :class="{ active: index === item.pathSteps.length - 1 }"
+                                        />
+                                        <div
+                                            v-if="index !== item.pathSteps.length - 1"
+                                            class="path-line"
+                                        />
+                                        <span class="path-label">{{ step }}</span>
+                                    </div>
+                                </div>
+                            </div>
 
-                <section class="sample-section">
-                    <div class="panel-head">
-                        <div>
-                            <h2 class="section-title">示例 / 热门电影</h2>
-                            <p class="panel-desc">
-                                未登录时展示通用样本，便于先了解页面结构和系统能力。
-                            </p>
+                            <div
+                                v-else-if="explainLoading"
+                                class="logic-block logic-note"
+                            >
+                                正在整理路径证据...
+                            </div>
                         </div>
-                    </div>
-                    <MovieList :movies="sampleMovies" :loading="sampleLoading" />
+
+                        <div class="signal-layer">
+                            <span class="signal-title">排序信号</span>
+                            <div class="score-line">
+                                推荐值 {{ Number(item.score || 0).toFixed(3) }}
+                            </div>
+
+                            <div
+                                v-if="item.source_algorithms?.length"
+                                class="signal-tags"
+                            >
+                                <span
+                                    v-for="source in item.source_algorithms"
+                                    :key="source"
+                                    class="signal-tag"
+                                >
+                                    {{ formatSourceAlgorithmLabel(source) }}
+                                </span>
+                            </div>
+
+                            <div
+                                v-if="item.signalRows.length"
+                                class="signal-rows"
+                            >
+                                <div
+                                    v-for="row in item.signalRows"
+                                    :key="row.label"
+                                    class="signal-row"
+                                >
+                                    <span>{{ row.label }}</span>
+                                    <strong>{{ row.value }}</strong>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="graph-button"
+                                @click="openRecommendationDetail(item)"
+                            >
+                                查看完整知识路径
+                            </button>
+                        </div>
+                    </article>
+
+                    <el-empty
+                        v-if="!recommendLoading && !displayItems.length"
+                        :image-size="72"
+                        description="当前没有可展示的推荐结果"
+                    />
                 </section>
             </template>
+
+            <section v-else class="guest-panel">
+                <h2>登录后查看可解释推荐</h2>
+                <p>推荐页会展示真实的用户兴趣基因、推荐逻辑、路径证据和知识图谱解释。</p>
+            </section>
         </div>
 
         <RecommendationDetailDrawer
             v-model="recommendationDrawerVisible"
             :item="selectedRecommendation"
-            :algorithm="recommendData?.algorithm || algorithm"
+            algorithm="cfkg"
         />
     </div>
 </template>
 
 <style scoped lang="scss">
-.recommend-view {
-    padding-top: var(--space-xl);
-    padding-bottom: var(--space-2xl);
+.insights-view {
+    min-height: 100%;
+    padding: 20px 0 40px;
 }
 
-.page-padding {
-    display: grid;
-    gap: var(--space-lg);
-}
-
-.page-hero,
-.algorithm-panel,
-.status-panel,
-.guest-panel,
-.empty-panel {
-    padding: var(--space-xl);
-}
-
-.page-hero {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-lg);
+.theme-dark {
     background:
-        radial-gradient(
-            circle at top right,
-            rgba(0, 181, 29, 0.14),
-            transparent 42%
-        ),
-        var(--bg-card);
+        radial-gradient(circle at top center, rgba(93, 136, 168, 0.18), transparent 22%),
+        linear-gradient(180deg, #0a0f18 0%, #0d1119 100%);
+    color: #eef2f7;
 }
 
-.hero-main {
-    display: grid;
-    gap: var(--space-sm);
+.theme-light {
+    background:
+        radial-gradient(circle at top center, rgba(93, 136, 168, 0.08), transparent 24%),
+        linear-gradient(180deg, #f4f4f2 0%, #eeefec 100%);
+    color: #17202b;
 }
 
-.hero-eyebrow,
-.status-eyebrow {
-    color: var(--color-accent);
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+.insights-shell {
+    width: min(1280px, calc(100vw - 48px));
+    margin: 0 auto;
 }
 
-.hero-desc,
-.panel-desc {
-    color: var(--text-secondary);
+.page-header {
+    padding: 12px 8px 18px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    margin-bottom: 18px;
 }
 
-.hero-side {
+.page-route,
+.dna-panel h2,
+.evidence-panel h2,
+.visual-copy h3 {
+    font-family: "Iowan Old Style", "Times New Roman", serif;
+}
+
+.page-route {
+    font-size: 1.15rem;
+}
+
+.dna-panel,
+.evidence-panel,
+.guest-panel {
+    margin-bottom: 18px;
+}
+
+.dna-tags {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin: 14px 0;
 }
 
-.hero-stat {
+.dna-tag {
+    padding: 0.85rem 1.5rem;
+    border-radius: 14px;
+    font-size: 1rem;
+    font-family: "Iowan Old Style", "Times New Roman", serif;
+}
+
+.theme-dark .dna-tag {
+    border: 1px solid rgba(173, 220, 235, 0.62);
+    background: linear-gradient(180deg, rgba(11, 19, 31, 0.86), rgba(18, 28, 39, 0.9));
+    color: #f3f4f6;
+    box-shadow:
+        inset 0 0 0 1px rgba(212, 248, 255, 0.08),
+        0 0 24px rgba(151, 211, 229, 0.1);
+}
+
+.theme-light .dna-tag {
+    border: 1px solid rgba(84, 116, 132, 0.34);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(236, 240, 243, 0.96));
+    color: #15202b;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.64),
+        0 8px 18px rgba(72, 88, 102, 0.08);
+}
+
+.dna-logic,
+.guest-panel p,
+.logic-block p {
+    line-height: 1.7;
+}
+
+.theme-dark .dna-logic,
+.theme-dark .guest-panel p,
+.theme-dark .logic-block p,
+.theme-dark .logic-note {
+    color: #d3d8e1;
+}
+
+.theme-light .dna-logic,
+.theme-light .guest-panel p,
+.theme-light .logic-block p,
+.theme-light .logic-note {
+    color: #485467;
+}
+
+.page-alert {
+    margin-bottom: 16px;
+}
+
+.insight-card {
     display: grid;
-    justify-items: end;
+    grid-template-columns: 290px minmax(0, 1fr) 220px;
+    gap: 0;
+    margin-top: 14px;
+    border-radius: 16px;
+    overflow: hidden;
+}
 
-    strong {
-        font-size: 2.3rem;
-        color: var(--text-primary);
-        line-height: 1;
-    }
+.theme-dark .insight-card {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.92));
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+}
 
-    span {
-        color: var(--text-muted);
-        font-size: 0.88rem;
+.theme-light .insight-card {
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 250, 0.98));
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+}
+
+.visual-layer,
+.logic-layer,
+.signal-layer {
+    padding: 18px;
+}
+
+.visual-layer {
+    display: grid;
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 16px;
+}
+
+.logic-layer {
+    border-left: 1px solid rgba(148, 163, 184, 0.12);
+    border-right: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.poster-frame {
+    border-radius: 12px;
+    overflow: hidden;
+    background: #0f172a;
+    aspect-ratio: 2 / 3;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
     }
 }
 
-.panel-head {
+.visual-copy {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+
+    h3 {
+        margin: 0;
+        font-size: 1.15rem;
+        line-height: 1.15;
+    }
+}
+
+.rating-line {
+    font-size: 1.9rem;
+    font-family: "Iowan Old Style", "Times New Roman", serif;
+}
+
+.logic-title,
+.signal-title {
+    display: block;
+    margin-bottom: 10px;
+    font-family: "Iowan Old Style", "Times New Roman", serif;
+}
+
+.logic-block + .logic-block,
+.signal-tags,
+.signal-rows {
+    margin-top: 16px;
+}
+
+.path-rail {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    margin-top: 12px;
+    overflow-x: auto;
 }
 
-.algorithm-switch {
-    margin-bottom: var(--space-sm);
-    flex-wrap: wrap;
-}
-
-.algorithm-intro {
-    color: var(--text-secondary);
-}
-
-.status-panel {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-lg);
-    background:
-        linear-gradient(
-            140deg,
-            rgba(0, 181, 29, 0.08),
-            rgba(0, 181, 29, 0.02)
-        ),
-        var(--bg-card);
-}
-
-.status-copy {
-    display: grid;
-    gap: var(--space-sm);
-}
-
-.status-title {
-    color: var(--text-primary);
-    font-size: 1.3rem;
-    font-weight: 700;
-}
-
-.status-line {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-}
-
-.chip-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-}
-
-.status-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: var(--space-sm);
-}
-
-.status-count {
-    display: grid;
-    justify-items: end;
-
-    strong {
-        font-size: 1.9rem;
-        line-height: 1;
-        color: var(--text-primary);
-    }
-
-    span {
-        color: var(--text-muted);
-        font-size: 0.86rem;
-    }
-}
-
-.panel-alert {
-    margin-top: calc(var(--space-md) * -0.25);
-}
-
-.results-section {
-    display: grid;
-}
-
-.recommend-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-lg);
-}
-
-.guest-copy {
-    display: grid;
-    gap: var(--space-sm);
-}
-
-.empty-panel {
+.path-step {
+    position: relative;
+    min-width: 132px;
+    padding-top: 18px;
     text-align: center;
-
-    h2 {
-        color: var(--text-primary);
-        margin-bottom: var(--space-sm);
-    }
-
-    p {
-        color: var(--text-secondary);
-        margin-bottom: var(--space-md);
-    }
+    flex: 1 0 0;
 }
 
-.empty-actions {
+.path-dot {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    transform: translateX(-50%);
+}
+
+.theme-dark .path-dot {
+    background: rgba(148, 163, 184, 0.18);
+    border: 1px solid rgba(148, 163, 184, 0.42);
+}
+
+.theme-light .path-dot {
+    background: rgba(148, 163, 184, 0.16);
+    border: 1px solid rgba(100, 116, 139, 0.28);
+}
+
+.theme-dark .path-dot.active {
+    background: #c6f0ff;
+    box-shadow: 0 0 18px rgba(190, 239, 255, 0.42);
+}
+
+.theme-light .path-dot.active {
+    background: #3e6c83;
+    box-shadow: 0 0 14px rgba(62, 108, 131, 0.18);
+}
+
+.path-line {
+    position: absolute;
+    top: 8px;
+    left: calc(50% + 9px);
+    width: calc(100% - 18px);
+    height: 2px;
+}
+
+.theme-dark .path-line {
+    background: linear-gradient(90deg, rgba(120, 144, 156, 0.55), rgba(196, 240, 255, 0.65));
+}
+
+.theme-light .path-line {
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.45), rgba(62, 108, 131, 0.48));
+}
+
+.path-label {
+    display: block;
+    line-height: 1.4;
+    font-size: 0.95rem;
+}
+
+.score-line {
+    font-family: "Iowan Old Style", "Times New Roman", serif;
+    font-size: 1.35rem;
+}
+
+.signal-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-sm);
+    gap: 8px;
 }
 
-@media (max-width: 1024px) {
-    .recommend-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+.signal-tag {
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.84rem;
+}
+
+.theme-dark .signal-tag {
+    background: rgba(148, 163, 184, 0.12);
+    color: #dbe4f0;
+}
+
+.theme-light .signal-tag {
+    background: rgba(148, 163, 184, 0.1);
+    color: #334155;
+}
+
+.signal-rows {
+    display: grid;
+    gap: 10px;
+}
+
+.signal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.graph-button {
+    margin-top: 20px;
+    width: 100%;
+    padding: 0.72rem 1rem;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.theme-dark .graph-button {
+    border: 1px solid rgba(227, 243, 252, 0.38);
+    background: rgba(15, 23, 42, 0.6);
+    color: #eef2f7;
+}
+
+.theme-light .graph-button {
+    border: 1px solid rgba(62, 108, 131, 0.24);
+    background: rgba(255, 255, 255, 0.82);
+    color: #1f2937;
+}
+
+.guest-panel {
+    padding: 28px;
+    border-radius: 18px;
+}
+
+.theme-dark .guest-panel {
+    background: rgba(17, 24, 39, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.theme-light .guest-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+@media (max-width: 1180px) {
+    .insight-card {
+        grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .signal-layer {
+        grid-column: 1 / -1;
+        border-top: 1px solid rgba(148, 163, 184, 0.12);
     }
 }
 
-@media (max-width: 768px) {
-    .page-hero,
-    .status-panel {
-        flex-direction: column;
+@media (max-width: 860px) {
+    .insights-shell {
+        width: min(100vw - 24px, 1280px);
     }
 
-    .status-actions,
-    .status-count,
-    .hero-stat {
-        align-items: flex-start;
-        justify-items: start;
+    .insight-card {
+        grid-template-columns: 1fr;
     }
 
-    .recommend-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--space-md);
+    .logic-layer {
+        border-left: none;
+        border-right: none;
+        border-top: 1px solid rgba(148, 163, 184, 0.12);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     }
 
-    .empty-actions {
-        flex-direction: column;
+    .visual-layer {
+        grid-template-columns: 104px minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .page-route {
+        font-size: 1rem;
+    }
+
+    .dna-tag {
+        width: 100%;
+        text-align: center;
+    }
+
+    .visual-layer {
+        grid-template-columns: 1fr;
+    }
+
+    .poster-frame {
+        max-width: 180px;
+    }
+
+    .path-step {
+        min-width: 120px;
     }
 }
 </style>

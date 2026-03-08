@@ -2,6 +2,7 @@
 推荐服务
 """
 from collections import Counter, defaultdict
+import logging
 import random
 from typing import Any, Dict, List
 
@@ -22,6 +23,8 @@ from app.algorithms.graph_ppr import get_graph_ppr_recommendations
 from app.algorithms.hybrid_manager import manager as hybrid_manager
 from app.db.neo4j import Neo4jConnection
 from app.services import user_service
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_EXPLAIN_TIMEOUT_MS = 1200
 DEFAULT_PROFILE_TIMEOUT_MS = 1000
@@ -142,6 +145,13 @@ def _fetch_movie_brief_map(movie_ids: List[str], timeout_ms: int | None = None) 
     if not requested_ids:
         return {}
 
+    return _fetch_movie_brief_map_from_neo4j(requested_ids, timeout_ms=timeout_ms)
+
+
+def _fetch_movie_brief_map_from_neo4j(
+    requested_ids: List[str],
+    timeout_ms: int | None = None,
+) -> Dict[str, Dict[str, Any]]:
     driver = Neo4jConnection.get_driver()
     with driver.session() as session:
         records = run_query(
@@ -162,6 +172,60 @@ def _fetch_movie_brief_map(movie_ids: List[str], timeout_ms: int | None = None) 
             "genres": [genre for genre in record.get("genres", []) if genre],
         }
     return brief_map
+
+
+def _fetch_movie_brief_map_from_mysql(conn, movie_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    requested_ids = dedupe_preserve_order(movie_ids)
+    if not requested_ids:
+        return {}
+
+    placeholders = ",".join(["%s"] * len(requested_ids))
+    query = f"""
+        SELECT douban_id AS mid,
+               name AS title,
+               douban_score AS rating,
+               year,
+               cover,
+               genres
+        FROM movies
+        WHERE douban_id IN ({placeholders})
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(query, tuple(requested_ids))
+        rows = cursor.fetchall()
+
+    row_map: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        mid = str(row["mid"])
+        row_map[mid] = {
+            "mid": mid,
+            "title": row.get("title") or mid,
+            "rating": float(row["rating"]) if row.get("rating") is not None else None,
+            "year": int(row["year"]) if row.get("year") is not None else None,
+            "cover": row.get("cover"),
+            "genres": [
+                genre.strip()
+                for genre in str(row.get("genres") or "").replace(" / ", "/").split("/")
+                if genre.strip()
+            ],
+        }
+    return row_map
+
+
+def _fetch_movie_brief_map_safe(
+    conn,
+    movie_ids: List[str],
+    timeout_ms: int | None = None,
+) -> Dict[str, Dict[str, Any]]:
+    requested_ids = dedupe_preserve_order(movie_ids)
+    if not requested_ids:
+        return {}
+
+    try:
+        return _fetch_movie_brief_map_from_neo4j(requested_ids, timeout_ms=timeout_ms)
+    except Exception:
+        logger.warning("Neo4j movie brief query failed, falling back to MySQL", exc_info=True)
+        return _fetch_movie_brief_map_from_mysql(conn, requested_ids)
 
 
 def _collect_profile_highlights(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -304,17 +368,19 @@ def _get_fallback_query(algorithm: str) -> str:
 
 def _build_fallback_reason(algorithm: str, record: Dict[str, Any]) -> List[str]:
     if algorithm == "cfkg":
-        return ["CFKG 模型暂未命中有效候选，已回退到综合口碑、热度与图谱结构的兜底推荐"]
+        return ["当前根据口碑、热度与图谱结构信号，为你补充了稳定的推荐候选"]
     if algorithm == "cf":
-        return [f"冷启动阶段优先参考大众高分行为，已有 {int(record.get('crowd_count') or 0)} 位用户给出高分"]
+        return [f"当前优先参考大众高分行为，已有 {int(record.get('crowd_count') or 0)} 位用户给出高分"]
     if algorithm == "content":
-        return ["冷启动阶段优先推荐口碑稳定、类型特征清晰的电影"]
+        return ["当前优先推荐口碑稳定、类型特征清晰的电影"]
     if algorithm == "ppr":
-        return ["冷启动阶段优先推荐图谱连接度高、关联路径丰富的电影"]
-    return ["冷启动阶段采用综合口碑、热度与图谱结构的兜底推荐"]
+        return ["当前优先推荐图谱连接度高、关联路径丰富的电影"]
+    return ["当前根据综合口碑、热度与图谱结构信号补充推荐结果"]
 
 
 def _normalize_fallback_score(algorithm: str, record: Dict[str, Any]) -> float:
+    if record.get("hybrid_score") is not None:
+        return float(record.get("hybrid_score") or 0)
     if algorithm == "cfkg":
         return float(record.get("hybrid_score") or 0)
     if algorithm == "cf":
@@ -330,14 +396,30 @@ def _get_fallback_recommendations(
     algorithm: str,
     seen_movie_ids: List[str],
     limit: int,
+    conn=None,
 ) -> List[Dict[str, Any]]:
-    driver = Neo4jConnection.get_driver()
-    with driver.session() as session:
-        records = run_query(
-            session,
-            _get_fallback_query(algorithm),
-            timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS,
-            seen_movie_ids=dedupe_preserve_order(seen_movie_ids),
+    deduped_seen_movie_ids = dedupe_preserve_order(seen_movie_ids)
+    try:
+        driver = Neo4jConnection.get_driver()
+        with driver.session() as session:
+            records = run_query(
+                session,
+                _get_fallback_query(algorithm),
+                timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS,
+                seen_movie_ids=deduped_seen_movie_ids,
+                limit=limit,
+            )
+    except Exception:
+        if conn is None:
+            raise
+        logger.warning(
+            "Neo4j fallback query failed for algorithm=%s, falling back to MySQL",
+            algorithm,
+            exc_info=True,
+        )
+        records = _get_mysql_fallback_recommendations(
+            conn=conn,
+            seen_movie_ids=deduped_seen_movie_ids,
             limit=limit,
         )
 
@@ -351,6 +433,41 @@ def _get_fallback_recommendations(
         }
         for record in records
     ]
+
+
+def _get_mysql_fallback_recommendations(
+    conn,
+    seen_movie_ids: List[str],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    deduped_seen_movie_ids = dedupe_preserve_order(seen_movie_ids)
+    params: List[Any] = []
+    exclude_clause = ""
+    if deduped_seen_movie_ids:
+        placeholders = ",".join(["%s"] * len(deduped_seen_movie_ids))
+        exclude_clause = f"AND douban_id NOT IN ({placeholders})"
+        params.extend(deduped_seen_movie_ids)
+
+    query = f"""
+        SELECT douban_id AS movie_id,
+               name AS title,
+               douban_score AS rating,
+               douban_votes AS votes,
+               (
+                 (50000 * 7.0 + COALESCE(douban_votes, 0) * COALESCE(douban_score, 0.0))
+                 / (50000 + COALESCE(douban_votes, 0))
+               ) AS hybrid_score
+        FROM movies
+        WHERE type = 'movie'
+          AND douban_score IS NOT NULL
+          {exclude_clause}
+        ORDER BY hybrid_score DESC, COALESCE(douban_votes, 0) DESC, douban_id ASC
+        LIMIT %s
+    """
+    params.append(limit)
+    with conn.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        return cursor.fetchall()
 
 
 def _normalize_recommendation_items(
@@ -474,6 +591,7 @@ async def build_personal_recommendation_payload(
                 algorithm=algorithm,
                 seen_movie_ids=seen_movie_ids,
                 limit=max(limit * 2, 20),
+                conn=conn,
             )
             raw_items = _merge_unique_items(raw_items, fallback_items)
 
@@ -482,10 +600,11 @@ async def build_personal_recommendation_payload(
             algorithm=algorithm,
             seen_movie_ids=seen_movie_ids,
             limit=max(limit * 3, 30),
+            conn=conn,
         )
 
     movie_ids = [item["movie_id"] for item in raw_items]
-    brief_map = _fetch_movie_brief_map(movie_ids, timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS)
+    brief_map = _fetch_movie_brief_map_safe(conn, movie_ids, timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS)
     normalized_items = _normalize_recommendation_items(
         raw_items,
         brief_map,

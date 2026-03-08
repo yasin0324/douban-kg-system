@@ -32,6 +32,16 @@ export const SOURCE_ALGORITHM_LABELS = {
     cf: "图协同过滤",
     content: "图内容推荐",
     ppr: "PPR",
+    profile: "画像匹配",
+};
+
+export const SOURCE_ALGORITHM_COLORS = {
+    cfkg: "linear-gradient(90deg, #00b51d, #3dd56d)",
+    hybrid: "linear-gradient(90deg, #4f46e5, #7c3aed)",
+    cf: "linear-gradient(90deg, #0f766e, #14b8a6)",
+    content: "linear-gradient(90deg, #ca8a04, #f59e0b)",
+    ppr: "linear-gradient(90deg, #2563eb, #60a5fa)",
+    profile: "linear-gradient(90deg, #1f2937, #6b7280)",
 };
 
 export const GENERATION_MODE_LABELS = {
@@ -49,6 +59,10 @@ export const formatAlgorithmLabel = (algorithm) =>
 
 export const formatSourceAlgorithmLabel = (algorithm) =>
     SOURCE_ALGORITHM_LABELS[algorithm] || algorithm;
+
+export const getSourceAlgorithmColor = (algorithm) =>
+    SOURCE_ALGORITHM_COLORS[algorithm] ||
+    "linear-gradient(90deg, #64748b, #94a3b8)";
 
 export const formatGenerationModeLabel = (generationMode) =>
     GENERATION_MODE_LABELS[generationMode] || "推荐模式";

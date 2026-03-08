@@ -452,3 +452,106 @@ def test_cfkg_explain_payload_falls_back_to_signal_node(monkeypatch):
 
     assert payload["meta"]["has_graph_evidence"] is False
     assert any(edge["type"] == "CFKG_SIGNAL" for edge in payload["edges"])
+
+
+def test_fallback_recommendations_use_mysql_when_neo4j_times_out(monkeypatch):
+    monkeypatch.setattr(
+        recommend_service,
+        "run_query",
+        lambda session, query, timeout_ms=None, **params: (_ for _ in ()).throw(RuntimeError("neo4j timeout")),
+    )
+
+    class DummySession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class DummyDriver:
+        def session(self):
+            return DummySession()
+
+    class DummyCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+
+        def fetchall(self):
+            return [
+                {
+                    "movie_id": "m2",
+                    "title": "Movie 2",
+                    "rating": 8.8,
+                    "votes": 100000,
+                    "hybrid_score": 8.3,
+                }
+            ]
+
+    class DummyConn:
+        def cursor(self):
+            return DummyCursor()
+
+    monkeypatch.setattr(recommend_service.Neo4jConnection, "get_driver", lambda: DummyDriver())
+
+    items = recommend_service._get_fallback_recommendations(
+        algorithm="cfkg",
+        seen_movie_ids=["m1"],
+        limit=5,
+        conn=DummyConn(),
+    )
+
+    assert items[0]["movie_id"] == "m2"
+    assert items[0]["score"] == 8.3
+    assert items[0]["source"] == "cfkg"
+
+
+def test_movie_brief_map_uses_mysql_when_neo4j_times_out(monkeypatch):
+    monkeypatch.setattr(
+        recommend_service,
+        "run_query",
+        lambda session, query, timeout_ms=None, **params: (_ for _ in ()).throw(RuntimeError("neo4j timeout")),
+    )
+
+    class DummyCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+
+        def fetchall(self):
+            return [
+                {
+                    "mid": "m2",
+                    "title": "Movie 2",
+                    "rating": 8.7,
+                    "year": 2024,
+                    "cover": "cover.jpg",
+                    "genres": "科幻/动作",
+                }
+            ]
+
+    class DummyConn:
+        def cursor(self):
+            return DummyCursor()
+
+    brief_map = recommend_service._fetch_movie_brief_map_safe(
+        conn=DummyConn(),
+        movie_ids=["m2"],
+        timeout_ms=500,
+    )
+
+    assert brief_map["m2"]["title"] == "Movie 2"
+    assert brief_map["m2"]["cover"] == "cover.jpg"
+    assert brief_map["m2"]["genres"] == ["科幻", "动作"]

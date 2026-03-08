@@ -1,13 +1,9 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import KnowledgeGraph from "@/components/graph/KnowledgeGraph.vue";
 import { fetchRecommendationExplanation } from "@/composables/useRecommendations";
-import {
-    formatAlgorithmLabel,
-    formatScore,
-    formatSourceAlgorithmLabel,
-} from "@/utils/recommendation";
+import { useThemeStore } from "@/stores/theme";
+import { proxyImage } from "@/utils/image";
 
 const props = defineProps({
     modelValue: {
@@ -25,53 +21,50 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue"]);
+const themeStore = useThemeStore();
 
-const router = useRouter();
+const defaultCover =
+    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzBjMTExYiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjQyIiBmaWxsPSIjMzM0MTU1IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==";
+
 const drawerVisible = computed({
     get: () => props.modelValue,
     set: (value) => emit("update:modelValue", value),
 });
-const activeTab = ref("reasons");
-const metricsPanels = ref([]);
+
 const explainLoading = ref(false);
-const explainError = ref("");
 const explainPayload = ref(null);
-const explainCacheKey = ref("");
+const explainError = ref("");
+const cacheKey = ref("");
 
 const currentMovie = computed(() => props.item?.movie || null);
-const breakdownEntries = computed(() =>
-    Object.entries(props.item?.score_breakdown || {}).sort(
-        (a, b) => b[1] - a[1],
-    ),
+const currentReasons = computed(() => props.item?.reasons || []);
+const fallbackPath = computed(() => props.item?.pathNodes || []);
+const matchedEntities = computed(
+    () => explainPayload.value?.matched_entities || [],
 );
-const profileHighlights = computed(
-    () => explainPayload.value?.profile_highlights || [],
-);
-const representativeMovies = computed(
-    () => explainPayload.value?.representative_movies || [],
-);
-const profileReasons = computed(() => {
-    const reasons = [
-        ...(props.item?.reasons || []),
-        ...(explainPayload.value?.profile_reasons || []),
-    ];
-    return [...new Set(reasons.filter(Boolean))].slice(0, 4);
-});
-const negativeSignals = computed(() => {
-    const signals = [
-        ...(props.item?.negative_signals || []),
-        ...(explainPayload.value?.negative_signals || []),
-    ];
-    return [...new Set(signals.filter(Boolean))].slice(0, 3);
+const reasonPaths = computed(() => explainPayload.value?.reason_paths || []);
+const graphNodes = computed(() => explainPayload.value?.nodes || []);
+const graphEdges = computed(() => explainPayload.value?.edges || []);
+
+const headline = computed(() => {
+    if (currentReasons.value.length) {
+        return currentReasons.value[0];
+    }
+    return "推荐路径与用户兴趣画像存在明确关联。";
 });
 
 const loadExplanation = async () => {
     if (!drawerVisible.value || !currentMovie.value?.mid) {
         return;
     }
+    if (props.item?.sample) {
+        explainPayload.value = null;
+        explainError.value = "";
+        return;
+    }
 
-    const cacheKey = [currentMovie.value.mid, props.algorithm].join("|");
-    if (cacheKey === explainCacheKey.value) {
+    const nextKey = `${props.algorithm}:${currentMovie.value.mid}`;
+    if (cacheKey.value === nextKey) {
         return;
     }
 
@@ -82,42 +75,14 @@ const loadExplanation = async () => {
             target_mid: currentMovie.value.mid,
             algorithm: props.algorithm,
         });
-        explainCacheKey.value = cacheKey;
+        cacheKey.value = nextKey;
     } catch (err) {
-        explainError.value =
-            err.response?.data?.detail || "推荐解释加载失败，请稍后重试";
         explainPayload.value = null;
+        explainError.value =
+            err.response?.data?.detail || "知识路径加载失败";
     } finally {
         explainLoading.value = false;
     }
-};
-
-const handleNodeClick = (node) => {
-    const rawId = node.id.split("_").slice(1).join("_");
-    drawerVisible.value = false;
-    if (node.type === "Movie") {
-        router.push(`/movies/${rawId}`);
-        return;
-    }
-    if (node.type === "Person") {
-        router.push(`/persons/${rawId}`);
-        return;
-    }
-    if (node.type === "Genre") {
-        router.push({ path: "/movies/filter", query: { genre: node.label } });
-    }
-};
-
-const goMovieDetail = () => {
-    if (!currentMovie.value?.mid) return;
-    drawerVisible.value = false;
-    router.push(`/movies/${currentMovie.value.mid}`);
-};
-
-const goMovieGraph = () => {
-    if (!currentMovie.value?.mid) return;
-    drawerVisible.value = false;
-    router.push(`/graph/movie/${currentMovie.value.mid}`);
 };
 
 watch(
@@ -125,10 +90,7 @@ watch(
     ([visible]) => {
         if (visible) {
             loadExplanation();
-            return;
         }
-        activeTab.value = "reasons";
-        metricsPanels.value = [];
     },
 );
 </script>
@@ -136,409 +98,334 @@ watch(
 <template>
     <el-drawer
         v-model="drawerVisible"
-        size="720px"
-        class="recommendation-drawer"
+        class="insight-drawer"
+        size="min(94vw, 1080px)"
     >
         <template #header>
-            <div class="drawer-header" v-if="currentMovie">
-                <div>
-                    <h2 class="drawer-title">{{ currentMovie.title }}</h2>
-                    <p class="drawer-subtitle">
-                        {{ formatAlgorithmLabel(algorithm) }} · 推荐值
-                        {{ formatScore(item?.score) }}
-                    </p>
+            <div
+                v-if="currentMovie"
+                class="drawer-header"
+                :class="themeStore.isDark ? 'theme-dark' : 'theme-light'"
+            >
+                <div class="poster-shell">
+                    <img
+                        :src="proxyImage(currentMovie.cover) || defaultCover"
+                        :alt="currentMovie.title"
+                        @error="(e) => (e.target.src = defaultCover)"
+                    />
                 </div>
-                <div class="drawer-header-tags">
-                    <el-tag
-                        v-for="source in item?.source_algorithms || []"
-                        :key="source"
-                        type="success"
-                        effect="plain"
-                    >
-                        {{ formatSourceAlgorithmLabel(source) }}
-                    </el-tag>
+                <div class="header-copy">
+                    <span class="header-kicker">知识路径</span>
+                    <h2>{{ currentMovie.title }}</h2>
+                    <p>{{ headline }}</p>
                 </div>
             </div>
         </template>
 
-        <div v-if="currentMovie" class="drawer-body">
-            <div class="drawer-summary card">
-                <div class="summary-block">
-                    <span class="summary-label">推荐理由</span>
-                    <ul class="reason-list">
-                        <li v-for="reason in profileReasons" :key="reason">
-                            {{ reason }}
-                        </li>
-                    </ul>
+        <div
+            v-if="currentMovie"
+            class="drawer-body"
+            :class="themeStore.isDark ? 'theme-dark' : 'theme-light'"
+        >
+            <section class="drawer-panel">
+                <span class="panel-kicker">推荐逻辑</span>
+                <p class="panel-copy">{{ headline }}</p>
+            </section>
+
+            <section class="drawer-panel">
+                <span class="panel-kicker">路径摘要</span>
+
+                <div v-if="reasonPaths.length" class="path-list">
+                    <article
+                        v-for="path in reasonPaths"
+                        :key="`${path.representative_mid}-${path.relation_type}`"
+                        class="path-card"
+                    >
+                        <strong>{{ path.template || path.relation_label }}</strong>
+                        <p>
+                            {{ path.representative_title }} ·
+                            {{ (path.matched_entities || []).join(" / ") }}
+                        </p>
+                    </article>
                 </div>
 
-                <div v-if="profileHighlights.length" class="summary-block">
-                    <span class="summary-label">画像标签</span>
-                    <div class="chip-row">
-                        <el-tag
-                            v-for="highlight in profileHighlights"
-                            :key="`${highlight.type}-${highlight.label}`"
-                            size="small"
-                            effect="plain"
-                            round
-                        >
-                            {{ highlight.label }}
-                        </el-tag>
+                <div v-else-if="fallbackPath.length" class="fallback-path">
+                    <span
+                        v-for="step in fallbackPath"
+                        :key="step"
+                        class="fallback-chip"
+                    >
+                        {{ step }}
+                    </span>
+                </div>
+
+                <el-empty
+                    v-else-if="!explainLoading"
+                    :image-size="56"
+                    description="暂无路径数据"
+                />
+            </section>
+
+            <section
+                v-if="matchedEntities.length"
+                class="drawer-panel"
+            >
+                <span class="panel-kicker">命中实体</span>
+                <div class="entity-groups">
+                    <div
+                        v-for="group in matchedEntities"
+                        :key="group.type"
+                        class="entity-group"
+                    >
+                        <strong>{{ group.type }}</strong>
+                        <div class="entity-tags">
+                            <span
+                                v-for="entity in group.items"
+                                :key="entity"
+                                class="entity-tag"
+                            >
+                                {{ entity }}
+                            </span>
+                        </div>
                     </div>
+                </div>
+            </section>
+
+            <section class="drawer-panel graph-panel">
+                <span class="panel-kicker">知识图谱</span>
+
+                <div
+                    v-if="explainLoading && !graphNodes.length"
+                    class="graph-placeholder"
+                >
+                    正在载入知识路径...
                 </div>
 
                 <div
-                    v-if="representativeMovies.length"
-                    class="summary-block"
+                    v-else-if="graphNodes.length"
+                    class="graph-shell"
                 >
-                    <span class="summary-label">代表兴趣电影</span>
-                    <div class="chip-row">
-                        <el-tag
-                            v-for="movie in representativeMovies"
-                            :key="movie.mid"
-                            size="small"
-                            round
-                        >
-                            {{ movie.title }}
-                        </el-tag>
-                    </div>
+                    <KnowledgeGraph
+                        :nodes="graphNodes"
+                        :edges="graphEdges"
+                        :loading="explainLoading"
+                        layout="force"
+                        :min-height="340"
+                    />
                 </div>
 
-                <div class="summary-actions">
-                    <el-button type="primary" @click="goMovieDetail">
-                        电影详情
-                    </el-button>
-                    <el-button @click="goMovieGraph">知识图谱</el-button>
-                    <el-button plain @click="goMovieDetail">前往评分</el-button>
+                <div
+                    v-else
+                    class="graph-placeholder"
+                >
+                    暂无图谱证据
                 </div>
-            </div>
+            </section>
 
-            <el-tabs v-model="activeTab" class="drawer-tabs">
-                <el-tab-pane label="推荐理由" name="reasons">
-                    <div class="panel-stack">
-                        <div class="info-card card">
-                            <h3 class="panel-title">画像命中点</h3>
-                            <ul
-                                v-if="profileReasons.length"
-                                class="reason-list compact"
-                            >
-                                <li v-for="reason in profileReasons" :key="reason">
-                                    {{ reason }}
-                                </li>
-                            </ul>
-                            <el-empty
-                                v-else-if="!explainLoading"
-                                description="当前结果暂无更多画像命中说明"
-                            />
-                        </div>
-
-                        <div class="info-card card">
-                            <h3 class="panel-title">命中解释路径</h3>
-                            <div
-                                v-if="explainPayload?.reason_paths?.length"
-                                class="reason-paths"
-                            >
-                                <div
-                                    v-for="path in explainPayload.reason_paths"
-                                    :key="
-                                        `${path.representative_mid}-${path.relation_type}`
-                                    "
-                                    class="reason-path-item"
-                                >
-                                    <span class="path-title">
-                                        {{ path.representative_title }} ·
-                                        {{ path.relation_label }}
-                                    </span>
-                                    <div class="chip-row">
-                                        <el-tag
-                                            v-for="entity in path.matched_entities"
-                                            :key="entity"
-                                            size="small"
-                                            effect="plain"
-                                        >
-                                            {{ entity }}
-                                        </el-tag>
-                                    </div>
-                                </div>
-                            </div>
-                            <el-empty
-                                v-else-if="!explainLoading"
-                                description="暂无更细粒度的路径说明"
-                            />
-                        </div>
-
-                        <div class="info-card card">
-                            <h3 class="panel-title">图谱命中实体</h3>
-                            <div
-                                v-if="explainPayload?.matched_entities?.length"
-                                class="entity-groups"
-                            >
-                                <div
-                                    v-for="group in explainPayload.matched_entities"
-                                    :key="group.type"
-                                    class="entity-group"
-                                >
-                                    <span class="entity-title">
-                                        {{ group.type }}
-                                    </span>
-                                    <div class="chip-row">
-                                        <el-tag
-                                            v-for="entity in group.items"
-                                            :key="entity"
-                                            size="small"
-                                        >
-                                            {{ entity }}
-                                        </el-tag>
-                                    </div>
-                                </div>
-                            </div>
-                            <el-empty
-                                v-else-if="!explainLoading"
-                                description="当前结果主要由算法聚合信号支撑"
-                            />
-                        </div>
-                    </div>
-                </el-tab-pane>
-
-                <el-tab-pane label="关系可视化" name="graph">
-                    <div class="graph-panel card">
-                        <div class="graph-header">
-                            <div>
-                                <h3 class="panel-title">推荐证据小图</h3>
-                                <p class="graph-hint">
-                                    仅展示少量代表兴趣电影与目标电影之间的关键证据链。
-                                </p>
-                            </div>
-                        </div>
-                        <el-alert
-                            v-if="explainError"
-                            :title="explainError"
-                            type="warning"
-                            show-icon
-                            :closable="false"
-                        />
-                        <KnowledgeGraph
-                            v-else
-                            :nodes="explainPayload?.nodes || []"
-                            :edges="explainPayload?.edges || []"
-                            :loading="explainLoading"
-                            :highlight-id="`movie_${currentMovie.mid}`"
-                            layout="force"
-                            :min-height="320"
-                            @node-click="handleNodeClick"
-                        />
-                        <p
-                            v-if="
-                                explainPayload &&
-                                explainPayload.meta &&
-                                !explainPayload.meta.has_graph_evidence
-                            "
-                            class="graph-empty-tip"
-                        >
-                            当前卡片更依赖画像聚合和算法信号，因此图中补充了偏好提示节点。
-                        </p>
-                    </div>
-                </el-tab-pane>
-
-                <el-tab-pane label="算法指标" name="metrics">
-                    <div class="metrics-panel card">
-                        <el-collapse v-model="metricsPanels">
-                            <el-collapse-item
-                                title="查看推荐值与分支贡献"
-                                name="scores"
-                            >
-                                <div class="metrics-content">
-                                    <div class="metric-row">
-                                        <span>推荐值</span>
-                                        <strong>{{ formatScore(item?.score) }}</strong>
-                                    </div>
-                                    <div
-                                        v-if="breakdownEntries.length"
-                                        class="metric-breakdown"
-                                    >
-                                        <div
-                                            v-for="[source, score] in breakdownEntries"
-                                            :key="source"
-                                            class="metric-row"
-                                        >
-                                            <span>
-                                                {{
-                                                    formatSourceAlgorithmLabel(
-                                                        source,
-                                                    )
-                                                }}
-                                            </span>
-                                            <strong>{{
-                                                formatScore(score)
-                                            }}</strong>
-                                        </div>
-                                    </div>
-                                    <div
-                                        v-if="negativeSignals.length"
-                                        class="metric-signals"
-                                    >
-                                        <span class="summary-label">弱负反馈降权</span>
-                                        <ul class="reason-list compact">
-                                            <li
-                                                v-for="signal in negativeSignals"
-                                                :key="signal"
-                                            >
-                                                {{ signal }}
-                                            </li>
-                                        </ul>
-                                    </div>
-                                    <el-empty
-                                        v-if="
-                                            !breakdownEntries.length &&
-                                            !negativeSignals.length
-                                        "
-                                        description="当前算法没有额外的指标明细"
-                                    />
-                                </div>
-                            </el-collapse-item>
-                        </el-collapse>
-                    </div>
-                </el-tab-pane>
-            </el-tabs>
+            <el-alert
+                v-if="explainError"
+                class="drawer-alert"
+                type="warning"
+                show-icon
+                :closable="false"
+                :title="explainError"
+            />
         </div>
     </el-drawer>
 </template>
 
 <style scoped lang="scss">
 .drawer-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-md);
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 20px;
     width: 100%;
 }
 
-.drawer-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-primary);
+.poster-shell {
+    border-radius: 18px;
+    overflow: hidden;
+    background: #0f172a;
+    min-height: 240px;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
 }
 
-.drawer-subtitle {
-    margin-top: 6px;
-    color: var(--text-secondary);
-    font-size: 0.92rem;
+.header-copy {
+    display: grid;
+    align-content: center;
+    gap: 10px;
 }
 
-.drawer-header-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
+.header-kicker,
+.panel-kicker {
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.theme-dark .header-kicker,
+.theme-dark .panel-kicker {
+    color: #8bb8c8;
+}
+
+.theme-light .header-kicker,
+.theme-light .panel-kicker {
+    color: #46687a;
+}
+
+.header-copy h2,
+.panel-copy,
+.path-card p,
+.entity-group strong {
+    margin: 0;
+}
+
+.header-copy h2 {
+    font-size: 2rem;
+    font-family: "Iowan Old Style", "Times New Roman", serif;
 }
 
 .drawer-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-}
-
-.drawer-summary,
-.info-card,
-.graph-panel,
-.metrics-panel {
-    padding: var(--space-lg);
-}
-
-.drawer-summary {
     display: grid;
-    gap: var(--space-lg);
+    gap: 16px;
 }
 
-.summary-label,
-.panel-title,
-.path-title,
-.entity-title {
-    color: var(--text-primary);
-    font-weight: 600;
+.drawer-panel {
+    padding: 20px;
+    border-radius: 18px;
 }
 
-.reason-list {
-    margin: var(--space-sm) 0 0;
-    padding-left: 18px;
-    color: var(--text-secondary);
+.theme-dark .drawer-panel {
+    background: #111827;
+    border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
-.reason-list.compact {
-    margin-top: var(--space-sm);
+.theme-light .drawer-panel {
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
-.chip-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
-}
-
-.summary-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-}
-
-.panel-stack {
-    display: grid;
-    gap: var(--space-lg);
-}
-
-.reason-paths,
+.path-list,
 .entity-groups {
     display: grid;
-    gap: var(--space-md);
-    margin-top: var(--space-md);
+    gap: 12px;
+    margin-top: 12px;
 }
 
-.reason-path-item,
-.entity-group {
-    padding: var(--space-md);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
+.path-card {
+    padding: 14px 16px;
+    border-radius: 14px;
 }
 
-.graph-panel {
-    display: grid;
-    gap: var(--space-md);
+.theme-dark .path-card {
+    background: rgba(148, 163, 184, 0.08);
 }
 
-.graph-hint,
-.graph-empty-tip {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
+.theme-light .path-card {
+    background: rgba(148, 163, 184, 0.08);
 }
 
-.metrics-content {
-    display: grid;
-    gap: var(--space-sm);
+.path-card strong {
+    display: block;
+    margin-bottom: 6px;
 }
 
-.metric-row {
+.theme-dark .path-card strong,
+.theme-dark .header-copy p,
+.theme-dark .panel-copy,
+.theme-dark .path-card p,
+.theme-dark .graph-placeholder {
+    color: #c8d0dc;
+}
+
+.theme-light .path-card strong,
+.theme-light .header-copy p,
+.theme-light .panel-copy,
+.theme-light .path-card p,
+.theme-light .graph-placeholder {
+    color: #475569;
+}
+
+.header-copy p,
+.panel-copy,
+.path-card p,
+.graph-placeholder {
+    line-height: 1.7;
+}
+
+.fallback-path {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.fallback-chip,
+.entity-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+}
+
+.theme-dark .fallback-chip,
+.theme-dark .entity-tag {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    color: #dbe4f0;
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.theme-light .fallback-chip,
+.theme-light .entity-tag {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    color: #334155;
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.entity-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.graph-shell,
+.graph-placeholder {
+    margin-top: 14px;
+}
+
+.graph-placeholder {
+    min-height: 220px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-md);
-    color: var(--text-secondary);
+    justify-content: center;
+    border-radius: 16px;
 }
 
-.metric-signals {
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--border-color);
+.theme-dark .graph-placeholder {
+    border: 1px dashed rgba(148, 163, 184, 0.24);
 }
 
-@media (max-width: 768px) {
+.theme-light .graph-placeholder {
+    border: 1px dashed rgba(148, 163, 184, 0.24);
+}
+
+.drawer-alert {
+    margin-top: 4px;
+}
+
+@media (max-width: 860px) {
     .drawer-header {
-        flex-direction: column;
+        grid-template-columns: 1fr;
     }
 
-    .summary-actions {
-        flex-direction: column;
-
-        .el-button {
-            width: 100%;
-        }
+    .poster-shell {
+        max-width: 220px;
     }
 }
 </style>
