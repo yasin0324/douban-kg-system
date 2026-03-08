@@ -2,7 +2,8 @@
 
 **项目**: douban-kg-system 后端服务  
 **框架**: FastAPI + Neo4j + MySQL  
-**日期**: 2026-02-24
+**日期**: 2026-02-24  
+**最后更新**: 2026-03-07
 
 ---
 
@@ -12,7 +13,7 @@
 
 1. **数据查询服务**：提供电影搜索、详情、分类浏览等基础数据接口
 2. **图谱查询服务**：封装 Neo4j Cypher 查询，提供关系探索和图谱可视化数据
-3. **推荐引擎服务**：实现多种推荐算法，支持单电影推荐和基于用户偏好的个性化推荐
+3. **推荐引擎服务**：实现多种推荐算法，支持基于用户画像的个性化推荐与结果解释
 4. **用户与管理服务**：用户注册/登录/评分/偏好管理（喜欢/想看）以及管理员登录与用户管理
 
 ```
@@ -57,7 +58,6 @@ db-backend/
 |   |   +-- movie.py            # MovieBase, MovieDetail, MovieListResponse
 |   |   +-- person.py           # PersonBase, PersonDetail
 |   |   +-- graph.py            # GraphNode, GraphEdge, GraphResponse
-|   |   +-- recommend.py        # RecommendRequest, RecommendResponse
 |   |   +-- user.py             # UserRegister, UserLogin, UserPreference
 |   |   +-- admin.py            # AdminLogin, AdminUserUpdate, AdminActionLog
 |   |
@@ -81,15 +81,15 @@ db-backend/
 |   |   +-- movie_service.py    # 电影查询、搜索、筛选
 |   |   +-- person_service.py   # 影人查询
 |   |   +-- graph_service.py    # 图谱关系探索
-|   |   +-- recommend_service.py # 推荐引擎调度（含个性化推荐）
+|   |   +-- recommend_service.py # 推荐引擎调度（画像构建、解释、冷启动、重刷）
 |   |
 |   +-- algorithms/             # 推荐算法实现
 |   |   +-- __init__.py
-|   |   +-- base.py             # 推荐算法基类
-|   |   +-- ppr.py              # Personalized PageRank
-|   |   +-- content_based.py    # 基于内容的推荐
-|   |   +-- collaborative_filtering.py # 协同过滤（ItemCF/UserCF）
-|   |   +-- hybrid.py           # 混合推荐策略
+|   |   +-- common.py           # 画像特征构建、通用打分工具
+|   |   +-- graph_ppr.py        # Personalized PageRank
+|   |   +-- graph_content.py    # 图内容推荐
+|   |   +-- graph_cf.py         # 图协同过滤
+|   |   +-- hybrid_manager.py   # 混合推荐调度
 |   |
 |   +-- db/                     # 数据库连接管理
 |       +-- __init__.py
@@ -99,7 +99,7 @@ db-backend/
 +-- tests/                      # 测试
 |   +-- test_movies.py
 |   +-- test_graph.py
-|   +-- test_recommend.py
+|   +-- test_recommendation_system.py
 |   +-- test_auth.py
 |
 +-- .env                        # 环境变量
@@ -294,8 +294,8 @@ db-backend/
 
 `pref_type` 可选值：
 
-- `like`（喜欢）：表示用户已看过并喜欢这部电影，推荐权重高（0.7）
-- `want_to_watch`（想看）：表示用户感兴趣但还没看，推荐权重低（0.3）
+- `like`（喜欢）：表示用户已看过并明确喜欢这部电影，会作为高权重正反馈参与画像
+- `want_to_watch`（想看）：表示用户感兴趣但未必已观看，会作为弱正反馈与轻探索信号参与画像
 
 **评分请求示例**：
 
@@ -455,56 +455,87 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
 
 | 方法 | 路径                                                   | 说明                         | 认证     |
 | ---- | ------------------------------------------------------ | ---------------------------- | -------- |
-| GET  | `/api/recommend/movie/{mid}?algorithm=hybrid&limit=10` | 基于单部电影的相似推荐       | 无需     |
 | GET  | `/api/recommend/personal?algorithm=hybrid&limit=10`    | **基于用户偏好的个性化推荐** | **需要** |
-| GET  | `/api/recommend/person/{pid}?limit=10`                 | 根据影人推荐电影             | 无需     |
-| GET  | `/api/recommend/algorithms`                            | 获取可用的推荐算法列表       | 无需     |
+| GET  | `/api/recommend/explain?target_mid={mid}&algorithm=cf` | 推荐结果解释图               | **需要** |
 
 **`algorithm` 参数可选值**：
 
 | 值        | 算法                  | 论文中的学术名称        | 原理简述                                       |
 | --------- | --------------------- | ----------------------- | ---------------------------------------------- |
-| `ppr`     | Personalized PageRank | 个性化 PageRank         | 以目标电影为起点在图上随机游走，按访问频率排序 |
-| `content` | 基于内容推荐          | Content-Based Filtering | 根据类型、导演、地区等属性计算相似度           |
-| `cf`      | 协同过滤推荐          | Collaborative Filtering | 基于用户-电影交互矩阵计算相似用户/相似物品     |
+| `ppr`     | Personalized PageRank | 个性化 PageRank         | 以用户画像派生的正向电影上下文为起点在图上随机游走 |
+| `content` | 图内容推荐            | Graph Content-Based Filtering | 根据图谱中的类型、导演、演员等实体命中召回并重排 |
+| `cf`      | 图协同过滤推荐        | Graph Collaborative Filtering | 基于 `User-RATED-Movie` 评分图寻找相似用户邻域 |
 | `hybrid`  | 混合推荐              | Hybrid Recommendation   | 加权融合 PPR、Content 和 CF 的结果             |
 
 **补充参数约定**：
 
 - `limit` 默认 `10`，最大 `50`
-- `algorithm=hybrid` 时允许传入 `weights=w1,w2,w3`（如 `0.5,0.3,0.2`）；非法权重回退默认值
-- 个性化推荐在用户偏好为空时，自动降级为 `top` 榜单或基于热门类型的冷启动推荐
+- `exclude_movie_ids`：仅在“重新生成”时使用，尽量避开上一批结果
+- `reroll_token`：重新生成请求的随机标识，用于后端受控探索重排
+- 个性化推荐在用户行为不足时，自动降级为各算法风格化 fallback 或 `hybrid` 统一冷启动推荐
 
 **个性化推荐的核心逻辑**（`/api/recommend/personal`）：
 
-1. 从 `user_movie_prefs` 表获取当前用户所有偏好电影
-2. 按 `pref_type` 赋予权重：`like` = 0.7，`want_to_watch` = 0.3
-3. 将这些电影作为**多个种子节点**输入推荐算法：
-    - **PPR 模式**：多起点随机游走，每个种子的跳回概率按权重分配
-    - **Content 模式**：取所有种子电影特征向量的加权平均，作为"用户口味画像"
-    - **CF 模式**：基于用户偏好矩阵计算邻域相似度并召回候选电影
-    - **Hybrid 模式**：融合三种算法的结果（数据不足时自动关闭 CF 分支）
-4. 排除用户已标记过的电影（避免推荐已看过的）
+1. 聚合当前用户的全部行为：
+    - 评分
+    - 喜欢
+    - 想看
+2. 生成带强弱语义的用户画像：
+    - `4.0-5.0`：强正反馈
+    - `3.5`：弱正反馈
+    - `3.0` 及以下：弱负反馈
+    - `喜欢`：高权重正反馈
+    - `想看`：弱正反馈 + 轻探索信号
+3. 将画像映射到知识图谱特征：
+    - 正负向电影上下文
+    - 类型 / 导演 / 演员 / 地区 / 语言偏好
+    - 代表兴趣电影
+4. 四种算法均以画像作为入口运行：
+    - **PPR**：从画像派生的正向电影上下文启动局部图游走
+    - **Content**：按图谱实体命中召回，再结合画像重排
+    - **CF**：在 Neo4j 评分图中构建近邻，结合弱负反馈降权
+    - **Hybrid**：并发调度三条分支，动态门控融合
+5. 过滤策略：
+    - 排除已评分电影
+    - 排除已喜欢电影
+    - 不排除仅想看电影
+6. 解释接口不再要求前端传种子电影，而是后端自动选择少量代表兴趣电影用于抽屉解释
 
 **响应示例** (`GET /api/recommend/personal?algorithm=hybrid&limit=5`)：
 
 ```json
 {
-    "user": { "id": 1, "nickname": "张三" },
     "algorithm": "hybrid",
-    "based_on": [
-        { "mid": "1292052", "title": "肖申克的救赎", "pref_type": "like" },
-        { "mid": "1291546", "title": "霸王别姬", "pref_type": "like" }
+    "cold_start": false,
+    "generation_mode": "profile",
+    "profile_summary": {
+        "rating_count": 12,
+        "likes": 6,
+        "wants": 8,
+        "positive_movie_count": 14
+    },
+    "profile_highlights": [
+        { "type": "genre", "label": "科幻" },
+        { "type": "director", "label": "克里斯托弗·诺兰" }
     ],
-    "recommendations": [
+    "items": [
         {
-            "mid": "1292063",
-            "title": "美丽人生",
-            "rating": 9.5,
-            "genres": ["剧情", "喜剧", "爱情"],
-            "cover": "https://img...",
+            "movie": {
+                "mid": "1292063",
+                "title": "美丽人生",
+                "rating": 9.5,
+                "year": 1997,
+                "genres": ["剧情", "喜剧", "爱情"],
+                "cover": "https://img..."
+            },
             "score": 0.89,
-            "reason": "与您喜欢的《肖申克的救赎》有相似的剧情风格"
+            "reasons": ["命中偏好类型 剧情", "相似用户也明显偏好这部电影"],
+            "source_algorithms": ["cf", "content"],
+            "negative_signals": [],
+            "score_breakdown": {
+                "cf": 0.51,
+                "content": 0.38
+            }
         }
     ]
 }
@@ -541,8 +572,8 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
 
 **推荐可视化扩展（可选）**：
 
-- 推荐结果页支持“推荐理由图谱化”，展示 `seed_movie -> person/genre -> recommended_movie`
-- 对每条推荐返回 `explain_paths`（最多 3 条）用于可解释展示
+- 推荐结果页支持“推荐理由图谱化”，展示 `representative_movie -> person/genre -> recommended_movie`
+- 对每条推荐返回 `reason_paths`、`matched_entities` 与证据小图数据，用于可解释展示
 
 ---
 
@@ -550,129 +581,68 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
 
 ### 4.1 算法一：Personalized PageRank (PPR)
 
-**原理**：
+当前 PPR 已切换为“画像驱动的图游走”，不再暴露前端显式种子。
 
-标准 PageRank 是 Google 搜索引擎的核心算法，用于衡量网页的"重要性"。Personalized PageRank（个性化 PageRank）是其变体，核心思想是：
+核心流程：
 
-以目标电影为"起始节点"，在整个图谱上进行**随机游走（Random Walk）**：
+1. 从用户画像中抽取 `graph_context_movie_ids`
+2. 基于导演、演员、类型三类关系构建局部候选池
+3. 优先投影局部电影图，执行加权 PageRank
+4. 若局部投影失败，再回退到常驻异构图版本
+5. 用用户画像特征对 PPR 分数做二次重排
 
-- 每一步，以概率 alpha（通常取 0.85）沿着关系边走向相邻节点
-- 以概率 1-alpha（即 0.15）**跳回起始节点**
-- 经过大量迭代后，每个节点被访问的概率趋于稳定
-- 被访问概率最高的 Movie 节点即为推荐结果
-
-**单电影推荐 vs 个性化推荐**：
-
-- **单电影**：起始节点为 1 个电影，跳回时 100% 概率回到该电影
-- **个性化推荐**：起始节点为用户偏好的 N 部电影，跳回时按偏好权重分配概率（如"喜欢"的电影占 70%，"想看"的占 30%），最终推荐结果融合了用户的整体口味
-
-**为什么适合我们的图谱**：
-
-- 如果一部电影和目标电影**共享相同的导演、演员或类型**，随机游走者更容易到达它
-- PPR 天然能发现**多跳隐性关联**：例如"和目标电影导演的其他作品风格类似的电影"
-
-**备选 Python 实现**（不依赖 GDS 插件）：
-
-```python
-def personalized_pagerank(graph, source_ids, source_weights, alpha=0.85, max_iter=100):
-    """
-    graph: {node_id: [neighbor_ids]}
-    source_ids: 种子节点列表（单电影推荐时为1个，个性化推荐时为多个）
-    source_weights: 每个种子的跳回权重
-    """
-    scores = {node: 0.0 for node in graph}
-    # 初始概率分配给种子节点
-    for sid, w in zip(source_ids, source_weights):
-        scores[sid] = w
-
-    for _ in range(max_iter):
-        new_scores = {}
-        for node in graph:
-            # 跳回种子节点的概率（按权重分配）
-            teleport = 0.0
-            if node in source_ids:
-                idx = source_ids.index(node)
-                teleport = source_weights[idx]
-            new_scores[node] = (1 - alpha) * teleport
-            # 来自邻居的传播
-            for neighbor in graph[node]:
-                out_degree = len(graph[neighbor])
-                if out_degree > 0:
-                    new_scores[node] += alpha * scores[neighbor] / out_degree
-        scores = new_scores
-
-    return sorted(scores.items(), key=lambda x: -x[1])
-```
+这样既保留了知识图谱推荐的多跳隐性关联能力，又避免了前端“必须指定依据电影”的交互负担。
 
 ### 4.2 算法二：基于内容推荐 (Content-Based)
 
-**原理**：
+当前 Content 分支是图原生内容推荐，不是传统文本向量推荐。
 
-将每部电影表示为一个**特征向量**，通过计算两部电影特征向量之间的**余弦相似度**来度量相似程度。
+核心思路：
 
-**特征维度设计**：
+1. 从画像中抽取高权重 `Genre / Director / Actor`
+2. 在 Neo4j 中直接查找命中这些实体的候选电影
+3. 再结合：
+   - 地区 / 语言 / 年代 / 评分接近度
+   - 负反馈惩罚
+   - `想看` 带来的轻探索奖励
+4. 输出具备强解释性的理由文本
 
-| 特征           | 编码方式                             | 权重 | 理由                       |
-| -------------- | ------------------------------------ | ---- | -------------------------- |
-| 类型 (genres)  | Multi-Hot 编码（32维，每种类型一位） | 0.35 | 类型是用户兴趣的最直接标签 |
-| 导演           | One-Hot 编码 + 相似度匹配            | 0.25 | 导演风格对电影调性影响极大 |
-| 地区 (regions) | Multi-Hot 编码                       | 0.10 | 不同地区有不同的电影风格   |
-| 评分 (rating)  | 归一化到 [0, 1]                      | 0.15 | 推荐质量相近的作品         |
-| 年代 (year)    | 高斯衰减函数                         | 0.10 | 年代越接近越相似           |
-| 演员重合度     | Jaccard 系数                         | 0.05 | 共同演员暗示风格相近       |
-
-**个性化推荐时**：取用户所有偏好电影的特征向量，按 `like`/`want_to_watch` 权重加权平均，得到一个**用户口味画像向量（User Profile Vector）**，然后找与该画像最相似的电影。
-
-**余弦相似度计算**：
-
-```
-similarity(A, B) = (A . B) / (||A|| x ||B||)
-```
+因此 Content 当前更适合在论文中描述为“基于知识图谱实体重合与画像重排的图内容推荐”。
 
 ### 4.3 算法三：混合推荐 (Hybrid)
 
-**原理**：
+当前 Hybrid 不是固定权重拼接，而是“动态门控 + 归一化 + 分支熔断”的调度器。
 
-单一推荐算法各有局限——PPR 擅长发现**图谱结构上的关联**但可能推荐类型差异较大的电影；Content-Based 擅长推荐**属性相似**的电影但容易导致"信息茧房"；Collaborative Filtering 擅长学习群体偏好但依赖用户行为规模。
+关键策略：
 
-混合推荐通过**加权线性融合**三种算法的推荐评分，取长补短：
+- 并发调度 `CF / Content / PPR`
+- 分支级超时控制
+- 分支结果 Min-Max 归一化
+- 根据分支可用性动态调整权重
+- 返回 `score_breakdown` 供前端解释
 
-```
-hybrid_score(movie) = w1 x ppr_score(movie) + w2 x content_score(movie) + w3 x cf_score(movie)
-```
-
-**默认权重**：`w1 = 0.5`（PPR），`w2 = 0.3`（Content-Based），`w3 = 0.2`（CF）
-
-**可调参数**：前端可以通过 `weights` 参数调整比例，用于对比实验。  
-当用户行为数据不足时，自动使用两路融合：`w1 = 0.6`，`w2 = 0.4`，`w3 = 0`。
+这使得 Hybrid 既能保持效果稳定，也方便在答辩中展示“多算法融合而不是单一路径”的设计价值。
 
 ### 4.4 算法四：协同过滤 (Collaborative Filtering, CF)
 
-**结论（是否适合本项目）**：**适合加入，且作为混合推荐的核心分支之一**。
+当前 CF 已采用图协同过滤实现，核心依赖 Neo4j 中的 `User-RATED-Movie` 评分图。
 
-**适配原因**：
+实现特点：
 
-- CF 擅长发现用户群体偏好的隐含关联，提供图谱结构和文本内容之外的“惊喜感（Serendipity）”推荐。
-- 结合大模型（LLM）生成模拟的用户评分数据，能完美解决基于真实用户行为冷启动的难题。
+1. 使用画像中的正向电影上下文查找相似用户
+2. 使用重叠数量、邻域规模和收缩惩罚计算近邻相似度
+3. 若近邻同时喜欢用户负反馈电影，则施加惩罚
+4. 召回相似用户高分电影，再结合画像做二次重排
 
-**实现策略（创新点：大语言模型数据增强）**：
-
-- **数据生成**：编写 Python 脚本调用 LLM，基于设定好的数十种“骨灰级影迷”画像（如“资深科幻迷”、“重度港片爱好者”），从已有热门电影库中自动生成 10 万+ 条符合逻辑、分布合理的模拟评分数据（User-Item Rating）。
-- **算法实现**：使用 Pandas 和 sklearn（或 Surprise 库）读取模拟评分数据，构建 User-Item 评分矩阵，执行矩阵分解（SVD）或计算物品相似度（ItemCF）。
-- **产出结果**：将离线训练好的用户或电影相似度矩阵存入数据库或 Redis，在推荐 API 请求时极速召回，并作为 `hybrid` 混合推荐的重要得分权重分量。
-
-**系统冷启动与启用策略**：
-
-- 只要 LLM 模拟数据集生成并跑通 CF 矩阵，即可满血启用，不受项目早期真实用户数量限制。
-- 新注册的真实用户只需添加少数几个“喜欢/想看”电影，即可在矩阵中匹配到最相似的“模拟大V用户画像”，从而迅速获得高质量协同推荐。
-- 后期随真实用户数据积累，可直接无缝整合真实数据进行在线更新。
+因此当前 CF 是“图协同过滤”，而不是离线矩阵分解版本。
 
 ### 4.5 算法调度与降级策略
 
 - **默认算法**：`hybrid`
-- **冷启动用户**（无偏好）：优先 `content + 热门榜`
-- **低活跃数据期**：关闭 `cf` 分量，退化为 `ppr+content`
-- **高并发保护**：推荐超时优先返回缓存结果或热门兜底列表
+- **冷启动用户**：`hybrid` 使用统一 fallback，单算法尽量保留各自风格
+- **重新生成**：前端仅在主动刷新时传 `exclude_movie_ids` 与 `reroll_token`
+- **多样性策略**：后端在候选池中进行“相关性 + 多样性 + 轻随机扰动”重排
+- **高并发保护**：分支超时自动降级，不阻塞主链路
 
 ---
 
@@ -869,10 +839,10 @@ CACHE_TTL_SECONDS=300
 | 电影/影人查询 API  | 系统实现 -- 数据查询模块           | MySQL + Neo4j 双数据源策略，各自负责的查询类型               |
 | 图谱探索 API       | 系统实现 -- 知识图谱应用           | Cypher 图模式匹配、多跳关系查询、最短路径算法                |
 | PPR 推荐算法       | 推荐算法研究 -- 基于图结构的推荐   | 随机游走模型、衰减因子分析、时间复杂度                       |
-| Content-Based 推荐 | 推荐算法研究 -- 基于内容的推荐     | 特征工程、向量化表示、余弦相似度                             |
-| 协同过滤推荐       | 推荐算法研究 -- 基于行为协同过滤   | 用户-电影交互矩阵、ItemCF/UserCF、相似度计算                 |
-| 个性化推荐         | 推荐算法研究 -- 基于用户画像的推荐 | 多种子 PPR、用户口味画像向量、偏好类型权重设计               |
-| 混合推荐           | 推荐算法研究 -- 混合推荐策略       | PPR + Content + CF 融合、权重参数调优、对比实验              |
+| Content-Based 推荐 | 推荐算法研究 -- 基于内容的推荐     | 图谱实体命中、画像重排、解释性理由生成                       |
+| 协同过滤推荐       | 推荐算法研究 -- 基于行为协同过滤   | Neo4j 评分图近邻传播、重叠约束、弱负反馈惩罚                 |
+| 个性化推荐         | 推荐算法研究 -- 基于用户画像的推荐 | 全行为画像构建、正负反馈加权、代表兴趣电影与解释图           |
+| 混合推荐           | 推荐算法研究 -- 混合推荐策略       | PPR + Content + CF 动态门控融合、超时降级、贡献拆解          |
 | 统计 API           | 系统验证 -- 数据分析               | 数据分布可视化，验证图谱的完整性                             |
 
 ---
@@ -890,7 +860,7 @@ CACHE_TTL_SECONDS=300
 | 图谱探索（1跳）        | <300ms   | <800ms   | 1.5s     | 带 `node_limit/edge_limit`          |
 | 图谱探索（2跳）        | <800ms   | <1800ms  | 3s       | 默认关闭，仅受控启用                |
 | 推荐（movie/person）   | <700ms   | <2000ms  | 3s       | PPR/Content/CF 召回后重排，允许缓存 |
-| 个性化推荐（personal） | <1000ms  | <3000ms  | 4s       | 偏好画像 + 多种子                   |
+| 个性化推荐（personal） | <1000ms  | <3000ms  | 4s       | 用户画像 + 正负反馈 + 图谱解释      |
 
 性能压测建议：
 

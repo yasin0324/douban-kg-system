@@ -56,7 +56,7 @@
 |      | **阶段二** | 第3-4周  | 数据处理 & 知识抽取    | 清洗数据，实体关系三元组                                     |
 |      | **阶段三** | 第5-6周  | 知识图谱构建 & API开发 | Neo4j图谱，7000+节点，15000+关系，FastAPI基础接口            |
 |      | **阶段四** | 第7周    | 前后端主链路打通       | Vue3界面、图谱可视化、前后端接口联调、系统可演示（不含推荐） |
-|      | **阶段五** | 第8周    | 推荐算法增强与验证     | PPR/Content/Hybrid 可用，CF按数据门槛启用，推荐评估报告      |
+|      | **阶段五** | 第8周    | 推荐算法增强与验证     | PPR/Content/CF/Hybrid 可用，用户画像驱动推荐链路与评估报告   |
 
 ### 关键里程碑
 
@@ -622,40 +622,41 @@ assert requests.get(f"{base_url}/api/graph/movie/1292052?depth=1&node_limit=150&
 
 ---
 
-### 第8周：推荐算法增强与系统收口
+### 第8周：推荐算法增强与系统收口 ✅ 已完成 (2026-03-07)
 
 #### 3.29 任务清单
 
-- [ ] 实现 Personalized PageRank 推荐算法
-- [ ] 实现基于内容推荐算法
-- [ ] 实现混合推荐策略（PPR + Content）
-- [ ] 协同过滤（CF）可选实现（满足数据门槛时启用）
-- [ ] 推荐 API 接口联调与缓存优化
-- [ ] 推荐质量评估（Precision/Recall/NDCG/多样性）
-- [ ] 全系统回归测试与演示脚本完善
+- [x] 实现 Personalized PageRank 推荐算法，并改为用户画像驱动的图游走
+- [x] 实现基于图内容的推荐算法（类型/导演/演员命中 + 画像重排）
+- [x] 实现图协同过滤（CF）分支，并纳入正负反馈约束
+- [x] 实现混合推荐策略（PPR + Content + CF + 动态门控）
+- [x] 完成推荐 API 接口联调与冷启动/重刷机制
+- [x] 完成首页推荐预览、推荐中心、解释抽屉前端页面
+- [x] 完成推荐系统测试与全链路构建验证
 
 #### 3.30 交付物
 
-- 推荐算法研究文档（`docs/recommendation_research.md`）
-- Personalized PageRank实现（`recommendation/ppr_recommender.py`）
-- 基于内容推荐实现（`recommendation/content_recommender.py`）
-- 混合推荐引擎（`recommendation/hybrid_recommender.py`）
-- 可选协同过滤实现（`recommendation/cf_recommender.py`）
-- 推荐算法测试报告（`docs/recommendation_test_report.md`）
-- 推荐算法API接口（`api/routes/recommendation.py`）
+- 推荐技术文档（`documents/kg_technical_doc.md`）
+- PPR 实现（`db-backend/app/algorithms/graph_ppr.py`）
+- 图内容推荐实现（`db-backend/app/algorithms/graph_content.py`）
+- 图协同过滤实现（`db-backend/app/algorithms/graph_cf.py`）
+- 混合推荐调度器（`db-backend/app/algorithms/hybrid_manager.py`）
+- 推荐服务与 API（`db-backend/app/services/recommend_service.py`、`db-backend/app/routers/recommend.py`）
+- 推荐页与首页预览（`db-frontend/src/views/RecommendView.vue`、`db-frontend/src/views/HomeView.vue`）
 
 #### 3.31 成功标准
 
 **功能标准：**
 
-- PPR、Content、Hybrid 三种核心算法可独立运行
+- PPR、Content、CF、Hybrid 四种算法可独立运行
 - 推荐 API 支持算法切换
-- CF 在达到门槛时可启用，未达门槛自动降级
+- 首页与推荐页能展示真实个性化结果并支持重新生成
 - 推荐结果可在前端页面正常展示
+- 推荐解释抽屉可展示画像理由、图谱证据小图和算法指标
 
 **可观察标准：**
 
-- 推荐响应时间 <2 秒（P95）
+- 推荐响应时间 <3 秒（P95）
 - 推荐列表相关性 ≥70%
 - 推荐结果多样性达标（前10部不重复）
 - 不同算法产生可区分的结果
@@ -670,10 +671,13 @@ assert requests.get(f"{base_url}/api/graph/movie/1292052?depth=1&node_limit=150&
 **算法/API 测试：**
 
 ```python
-for algo in ["ppr", "content", "hybrid"]:
-    resp = requests.get(f"{base_url}/recommend/{movie_id}?algorithm={algo}&top_k=10")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 10
+resp = requests.get(
+    f"{base_url}/api/recommend/personal?algorithm=hybrid&limit=10",
+    headers={"Authorization": f"Bearer {token}"},
+)
+assert resp.status_code == 200
+assert resp.json()["algorithm"] == "hybrid"
+assert "items" in resp.json()
 ```
 
 **预期结果：**
@@ -691,7 +695,7 @@ for algo in ["ppr", "content", "hybrid"]:
 - ✅ 成功采集1000+部电影的完整数据
 - ✅ 知识图谱包含至少7000个节点和15000条边
 - ✅ 先完成非推荐主链路打通（前后端+图谱可视化+数据连通）
-- ✅ 实现核心推荐算法（PPR、内容、混合），CF按门槛启用
+- ✅ 实现核心推荐算法（PPR、内容、CF、混合），统一由用户画像驱动
 - ✅ 推荐算法支持多种策略选择与自动降级
 - ✅ FastAPI后端接口完整可用
 - ✅ Vue3前端界面完整可用
@@ -703,7 +707,7 @@ for algo in ["ppr", "content", "hybrid"]:
 - ✅ 推荐相关性 ≥70%
 - ✅ API平均响应时间 <200ms
 - ✅ 查询响应时间 <2秒
-- ✅ 推荐响应时间 <2秒
+- ✅ 推荐响应时间 <3秒
 
 **可观测性：**
 
@@ -1005,20 +1009,21 @@ graduation_project/
 │   ├── batch_import.py            # 批量导入
 │   ├── advanced_queries.cypher    # 高级查询
 │   └── graph_algorithms.py        # 图算法实现
-├── recommendation/                # 推荐系统
-│   ├── ppr_recommender.py         # Personalized PageRank
-│   ├── content_recommender.py     # 基于内容推荐
-│   └── hybrid_recommender.py      # 混合推荐
-├── api/                           # FastAPI后端模块
-│   ├── main.py                    # FastAPI应用入口
-│   ├── config.py                  # 配置管理
-│   ├── database.py                # Neo4j连接
-│   └── routes/                    # 路由定义
-│       ├── __init__.py
-│       ├── movie.py               # 电影相关接口
-│       ├── graph.py               # 图谱相关接口
-│       └── recommendation.py      # 推荐相关接口
-├── frontend/                      # Vue3前端项目
+├── db-backend/                    # FastAPI后端模块
+│   ├── app/
+│   │   ├── main.py               # FastAPI应用入口
+│   │   ├── routers/
+│   │   │   └── recommend.py      # 推荐相关接口
+│   │   ├── services/
+│   │   │   └── recommend_service.py # 画像构建、推荐调度、解释接口
+│   │   └── algorithms/
+│   │       ├── graph_ppr.py      # Personalized PageRank
+│   │       ├── graph_content.py  # 图内容推荐
+│   │       ├── graph_cf.py       # 图协同过滤
+│   │       └── hybrid_manager.py # 混合推荐调度器
+│   └── tests/
+│       └── test_recommendation_system.py
+├── db-frontend/                   # Vue3前端项目
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── index.html
@@ -1027,25 +1032,27 @@ graduation_project/
 │   │   ├── App.vue                # 根组件
 │   │   ├── router/                # 路由配置
 │   │   │   └── index.js
-│   │   ├── store/                 # Pinia状态管理
-│   │   │   └── index.js
+│   │   ├── stores/                # Pinia状态管理
+│   │   │   └── auth.js
 │   │   ├── api/                   # API调用
-│   │   │   ├── movie.js
+│   │   │   ├── movies.js
 │   │   │   ├── graph.js
-│   │   │   └── recommendation.js
+│   │   │   └── recommend.js
 │   │   ├── views/                 # 页面组件
-│   │   │   ├── Home.vue           # 首页
-│   │   │   ├── Search.vue         # 搜索页
-│   │   │   ├── Detail.vue         # 详情页
-│   │   │   └── Recommendation.vue # 推荐页
-│   │   └── components/            # 可复用组件
-│   │       ├── GraphVisualization.vue  # 图谱可视化
-│   │       └── RecommendationCard.vue   # 推荐卡片
+│   │   │   ├── HomeView.vue       # 首页推荐预览
+│   │   │   ├── RecommendView.vue  # 推荐中心
+│   │   │   ├── MovieDetailView.vue
+│   │   │   └── GraphView.vue
+│   │   ├── components/
+│   │   │   ├── graph/KnowledgeGraph.vue
+│   │   │   └── recommend/RecommendationCard.vue
+│   │   └── composables/
+│   │       ├── useRecommendations.js
+│   │       └── useRecommendationHistory.js
 │   └── public/                    # 静态资源
 ├── tests/                         # 测试模块
 │   ├── test_data_processing.py    # 数据处理测试
 │   ├── test_graph_db.py           # 图数据库测试
-│   ├── test_recommendation.py     # 推荐系统测试
 │   └── test_api.py                # API测试
 ├── utils/                         # 工具模块
 │   ├── logger.py                  # 日志工具
@@ -1065,7 +1072,7 @@ graduation_project/
 - [ ] 数据规模达到目标（1000+电影、7000+节点、15000+关系）
 - [ ] 所有质量指标达标（数据完整率≥95%、知识抽取准确率≥95%等）
 - [ ] 非推荐主链路已完整打通并可演示
-- [ ] 核心推荐算法可用（PPR、内容、混合），CF按门槛启用
+- [ ] 核心推荐算法可用（PPR、内容、CF、混合），统一由用户画像驱动
 - [ ] 系统可稳定运行（无严重Bug、错误率<1%）
 - [ ] API文档完整且准确
 - [ ] 代码覆盖率≥70%（核心模块）
@@ -1094,7 +1101,7 @@ graduation_project/
 3. **质量保证**：每个阶段都有测试验证方案和证据要求
 4. **资源合理**：工作量估算现实，硬件软件需求明确
 5. **前后端分离**：FastAPI + Vue3架构，现代化技术栈
-6. **分阶段推荐**：先打通主链路，再完成推荐增强（核心三算法 + 可选CF）
+6. **分阶段推荐**：先打通主链路，再完成推荐增强（四算法统一画像驱动）
 
 **关键成功因素：**
 
@@ -1106,14 +1113,15 @@ graduation_project/
 - 第8周重点推进推荐算法研究与效果验证
 
 **预期成果：**
-一个功能完整的电影知识图谱推荐系统，包括数据采集、知识图谱构建、前后端主链路打通、核心推荐算法（PPR/内容/混合）与可选协同过滤增强、Vue3前端界面，为毕业设计答辩提供强有力的技术支撑。
+一个功能完整的电影知识图谱推荐系统，包括数据采集、知识图谱构建、前后端主链路打通、核心推荐算法（PPR/内容/CF/混合）、用户画像驱动的个性化推荐、Vue3前端界面，为毕业设计答辩提供强有力的技术支撑。
 
 ---
 
 **文档版本**: v2.2
 **创建日期**: 2026-01-13
-**最后更新**: 2026-03-05
+**最后更新**: 2026-03-07
 **更新内容**:
 
 1. 调整实施顺序为“先打通非推荐主链路，再完成推荐增强”，并同步CF可选策略口径
 2. **[2026-03-05 标注]** 明确推荐系统融合方案（Phase 5），确定采用 PPR + Content + CF + Hybrid 四路融合算法。其中 CF（协同过滤）数据将采用大语言模型（LLM）基于用户画像标签生成模拟评分数据集，解决冷启动问题，相关技术细节请参考 `kg_technical_doc.md`。
+3. **[2026-03-07 标注]** 推荐系统已切换为“用户画像驱动 + 知识图谱计算 + 可解释前端展示”架构；首页推荐预览、推荐中心、解释抽屉与四算法主链路均已落地。

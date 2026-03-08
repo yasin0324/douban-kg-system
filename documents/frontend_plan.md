@@ -1,6 +1,6 @@
 # 前端开发规划书（MVP 阶段）
 
-**版本**: v1.1 | **日期**: 2026-02-28 | **最后更新**: 2026-02-28
+**版本**: v1.2 | **日期**: 2026-02-28 | **最后更新**: 2026-03-07
 
 ---
 
@@ -8,12 +8,11 @@
 
 ### 1.1 目标
 
-基于已完成的后端 MVP（41 个 API 端点），开发 Vue3 前端应用，实现豆瓣电影知识图谱的**可视化浏览、搜索和探索**功能。
+基于已完成的后端 MVP，开发 Vue3 前端应用，实现豆瓣电影知识图谱的**可视化浏览、搜索、探索与个性化推荐**功能。
 
 ### 1.2 MVP 范围
 
-- ✅ 实现：电影搜索与浏览、电影/影人详情、知识图谱可视化、统计看板、用户认证、用户偏好（喜欢/想看/评分）
-- ❌ 推迟：推荐算法相关界面（待后端 v1.1 完成后再开发）
+- ✅ 实现：电影搜索与浏览、电影/影人详情、知识图谱可视化、统计看板、用户认证、用户偏好（喜欢/想看/评分）、推荐系统前端
 - ❌ 推迟：管理后台（admin 界面暂不做前端，通过 API 管理）
 
 ### 1.3 技术栈
@@ -40,7 +39,7 @@
 /search?q=xxx             → 搜索结果页
 /movies/filter            → 电影筛选页（类型/年代/评分）
 /movies/:mid              → 电影详情页
-/recommend                → 推荐页（Phase 5）
+/recommend                → 推荐页（推荐中心）
 /persons/:pid             → 影人详情页
 /graph/movie/:mid         → 电影关联图谱
 /graph/person/:pid        → 影人关联图谱
@@ -298,7 +297,7 @@ db-frontend/
 │   │   ├── LoginView.vue        # ✅ 登录页（表单验证+redirect）
 │   │   ├── RegisterView.vue     # ✅ 注册页（5 字段+密码验证）
 │   │   ├── ProfileView.vue      # ✅ 个人中心（三 Tab+偏好/评分管理）
-│   │   └── RecommendView.vue    # ✅ 占位（Phase 5）
+│   │   └── RecommendView.vue    # ✅ 推荐中心（算法切换+解释抽屉+重刷）
 │   ├── App.vue                  # 根组件（Header+router-view 过渡动画+Footer）
 │   └── main.js                  # 入口（Vue+Pinia+Router+ElementPlus+暗色主题）
 ├── .env                         # VITE_API_BASE=http://localhost:8000
@@ -351,17 +350,17 @@ db-frontend/
 - ✅ 全局 loading / 错误处理（Axios 拦截器 401 自动刷新 + ElMessage 全局提示）
 - ✅ 响应式适配（移动端单列布局）
 
-### Phase 5：智能推荐（待定）
+### Phase 5：智能推荐（1 天）✅ 已完成 (2026-03-07)
 
-- ✅ 首页"为你推荐"占位区域（类型探索与高分电影之间，虚线边框 + 敬请期待提示）
-- ✅ 导航栏添加"推荐"入口（电影库与路径查询之间）
-- ✅ `/recommend` 路由 + `RecommendView.vue` 占位页（功能预告卡片）
-- 对接推荐 API（待后端推荐算法完成后实现）：
-    - `GET /api/recommend/personal?algorithm=hybrid` — 混合个性化推荐（综合 PPR+Content+CF）
-    - `GET /api/recommend/movie/{mid}?algorithm=ppr` — 基于电影的相似推荐
-    - `GET /api/recommend/person/{pid}` — 基于影人的相关推荐
-- 首页推荐区域替换为真实推荐电影卡片
-- 推荐页完整 UI（推荐类型切换、推荐理由展示、刷新推荐）
+- ✅ 首页“为你推荐”占位区域替换为真实推荐预览
+- ✅ `/recommend` 从占位页升级为推荐中心
+- ✅ 对接 `GET /api/recommend/personal`，支持 `algorithm / limit / exclude_movie_ids / reroll_token`
+- ✅ 对接 `GET /api/recommend/explain`，用于解释抽屉的证据小图与画像解释
+- ✅ 首页与推荐页统一采用“用户画像驱动”口径，不展示主界面的显式依据电影
+- ✅ 推荐页支持四算法切换：`hybrid / cf / content / ppr`
+- ✅ 推荐卡片支持轻量反馈：`喜欢 / 想看 / 去评分`
+- ✅ 解释抽屉支持三层信息：推荐理由、关系可视化、算法指标
+- ✅ 浏览器端实现“30 分钟内、按算法独立”的推荐重刷历史，仅在“重新生成”时避让上一批结果
 
 ---
 
@@ -404,12 +403,11 @@ db-frontend/
 | 统计 | GET    | `/api/stats/top-actors`              | 统计页            |
 | 统计 | GET    | `/api/stats/top-directors`           | 统计页            |
 | 统计 | GET    | `/api/stats/rating-distribution`     | 统计页            |
-| 推荐 | GET    | `/api/recommend/movie/{mid}`         | 电影详情/推荐页   |
 | 推荐 | GET    | `/api/recommend/personal`            | 首页/推荐页       |
-| 推荐 | GET    | `/api/recommend/person/{pid}`        | 影人详情/推荐页   |
+| 推荐 | GET    | `/api/recommend/explain`             | 首页/推荐页抽屉   |
 | 代理 | GET    | `/api/proxy/image?url={url}`         | 全局（图片代理）  |
 
-共计 **37 个 API** 对接（含 1 个图片代理接口）。
+共计 **36 个 API** 对接（含 1 个图片代理接口）。
 
 ---
 
