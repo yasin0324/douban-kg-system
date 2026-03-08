@@ -1,8 +1,8 @@
 export const ALGORITHM_OPTIONS = [
     {
-        value: "hybrid",
-        label: "混合推荐",
-        description: "综合图协同过滤、图内容推荐和 Personalized PageRank。",
+        value: "cfkg",
+        label: "CFKG",
+        description: "以用户-电影交互和电影知识图谱联合建模的主推荐链路。",
     },
     {
         value: "cf",
@@ -21,11 +21,13 @@ export const ALGORITHM_OPTIONS = [
     },
 ];
 
-export const ALGORITHM_LABELS = Object.fromEntries(
-    ALGORITHM_OPTIONS.map((item) => [item.value, item.label]),
-);
+export const ALGORITHM_LABELS = {
+    hybrid: "混合推荐",
+    ...Object.fromEntries(ALGORITHM_OPTIONS.map((item) => [item.value, item.label])),
+};
 
 export const SOURCE_ALGORITHM_LABELS = {
+    cfkg: "CFKG",
     hybrid: "混合推荐",
     cf: "图协同过滤",
     content: "图内容推荐",

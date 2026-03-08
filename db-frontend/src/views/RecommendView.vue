@@ -18,7 +18,7 @@ import {
 const router = useRouter();
 const authStore = useAuthStore();
 
-const algorithm = ref("hybrid");
+const algorithm = ref("cfkg");
 const sampleMovies = ref([]);
 const sampleLoading = ref(false);
 const selectedRecommendation = ref(null);
@@ -30,7 +30,7 @@ const {
     error: recommendError,
     loadRecommendations,
 } = useRecommendationFeed({
-    algorithm: "hybrid",
+    algorithm: "cfkg",
     limit: 12,
 });
 const {
@@ -167,8 +167,8 @@ watch(algorithm, async () => {
                     <span class="hero-eyebrow">Recommendation Center</span>
                     <h1 class="page-title">智能推荐</h1>
                     <p class="hero-desc">
-                        以图协同过滤、图内容推荐、Personalized PageRank 和混合推荐为核心，
-                        直接展示“用户画像如何落到知识图谱上”。
+                        以 CFKG 联合建模为主链路，补充图协同过滤、图内容推荐和
+                        Personalized PageRank 对比结果，直接展示“用户画像如何落到知识图谱上”。
                     </p>
                 </div>
                 <div class="hero-side">
@@ -188,7 +188,7 @@ watch(algorithm, async () => {
                     <div>
                         <h2 class="section-title">算法切换</h2>
                         <p class="panel-desc">
-                            单算法查看独立结果差异，默认使用混合推荐。
+                            单算法查看独立结果差异，默认使用 CFKG 主推荐链路。
                         </p>
                     </div>
                 </div>

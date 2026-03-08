@@ -15,6 +15,7 @@ from app.algorithms.common import (
     score_movie_against_user_profile,
     top_weighted_items,
 )
+from app.algorithms.cfkg import get_cfkg_recommendations
 from app.algorithms.graph_cf import get_graph_cf_recommendations
 from app.algorithms.graph_content import get_graph_content_recommendations
 from app.algorithms.graph_ppr import get_graph_ppr_recommendations
@@ -25,9 +26,11 @@ from app.services import user_service
 DEFAULT_EXPLAIN_TIMEOUT_MS = 1200
 DEFAULT_PROFILE_TIMEOUT_MS = 1000
 SOURCE_NAME_MAP = {
+    "graph_cfkg": "cfkg",
     "graph_cf": "cf",
     "graph_content": "content",
     "graph_ppr": "ppr",
+    "cfkg": "cfkg",
     "cf": "cf",
     "content": "content",
     "ppr": "ppr",
@@ -38,10 +41,16 @@ RELATION_LABELS = {
     "HAS_GENRE": "共同类型",
 }
 SIGNAL_LABELS = {
+    "cfkg": "CFKG 表示学习信号",
     "cf": "相似用户协同信号",
     "content": "图谱内容相似信号",
     "ppr": "图谱游走信号",
     "hybrid": "混合推荐融合信号",
+}
+META_PATH_TEMPLATE_LABELS = {
+    "HAS_GENRE": "User -> Movie -> Genre -> Movie",
+    "DIRECTED": "User -> Movie -> Director -> Movie",
+    "ACTED_IN": "User -> Movie -> Actor -> Movie",
 }
 MOVIE_BRIEF_QUERY = """
 UNWIND $movie_ids AS requested_id
@@ -216,6 +225,13 @@ async def _dispatch_personal_algorithm(
     seen_movie_ids: List[str],
     limit: int,
 ) -> List[Dict[str, Any]]:
+    if algorithm == "cfkg":
+        return await get_cfkg_recommendations(
+            user_id=user_id,
+            user_profile=user_profile,
+            seen_movie_ids=seen_movie_ids,
+            limit=limit,
+        )
     if algorithm == "ppr":
         return await get_graph_ppr_recommendations(
             user_id=user_id,
@@ -275,6 +291,8 @@ def _normalize_score_breakdown(item: Dict[str, Any]) -> Dict[str, float] | None:
 
 
 def _get_fallback_query(algorithm: str) -> str:
+    if algorithm == "cfkg":
+        return FALLBACK_HYBRID_QUERY
     if algorithm == "cf":
         return FALLBACK_CF_QUERY
     if algorithm == "content":
@@ -285,6 +303,8 @@ def _get_fallback_query(algorithm: str) -> str:
 
 
 def _build_fallback_reason(algorithm: str, record: Dict[str, Any]) -> List[str]:
+    if algorithm == "cfkg":
+        return ["CFKG 模型暂未命中有效候选，已回退到综合口碑、热度与图谱结构的兜底推荐"]
     if algorithm == "cf":
         return [f"冷启动阶段优先参考大众高分行为，已有 {int(record.get('crowd_count') or 0)} 位用户给出高分"]
     if algorithm == "content":
@@ -295,6 +315,8 @@ def _build_fallback_reason(algorithm: str, record: Dict[str, Any]) -> List[str]:
 
 
 def _normalize_fallback_score(algorithm: str, record: Dict[str, Any]) -> float:
+    if algorithm == "cfkg":
+        return float(record.get("hybrid_score") or 0)
     if algorithm == "cf":
         return float(record.get("crowd_count") or 0) + float(record.get("avg_rating") or 0)
     if algorithm == "content":
@@ -409,21 +431,31 @@ def _merge_unique_items(
     return merged
 
 
+def _normalize_requested_algorithm(algorithm: str | None) -> str:
+    if not algorithm:
+        return "cfkg"
+    normalized = str(algorithm).lower().strip()
+    if normalized == "hybrid":
+        return "cfkg"
+    return normalized
+
+
 async def build_personal_recommendation_payload(
     conn,
     user_id: int,
-    algorithm: str = "hybrid",
+    algorithm: str = "cfkg",
     limit: int = 20,
     exclude_movie_ids: List[str] | None = None,
     reroll_token: str | None = None,
 ) -> Dict[str, Any]:
+    algorithm = _normalize_requested_algorithm(algorithm)
     user_profile = _build_user_profile(conn, user_id)
     cold_start = bool(user_profile["summary"]["cold_start"])
     hard_excludes = dedupe_preserve_order(user_profile["hard_exclude_movie_ids"])
     reroll_excludes = dedupe_preserve_order(exclude_movie_ids)
     seen_movie_ids = dedupe_preserve_order(hard_excludes + reroll_excludes)
 
-    fallback_used = cold_start and algorithm == "hybrid"
+    fallback_used = cold_start and algorithm == "cfkg"
     candidate_limit = min(max(limit * 4, 80), 220)
     raw_items: List[Dict[str, Any]] = []
 
@@ -437,7 +469,7 @@ async def build_personal_recommendation_payload(
         )
         if not raw_items:
             fallback_used = True
-        elif cold_start and algorithm != "hybrid" and len(raw_items) < max(4, limit // 2):
+        elif cold_start and algorithm != "cfkg" and len(raw_items) < max(4, limit // 2):
             fallback_items = _get_fallback_recommendations(
                 algorithm=algorithm,
                 seen_movie_ids=seen_movie_ids,
@@ -479,8 +511,9 @@ def build_recommendation_explain_payload(
     conn,
     user_id: int,
     target_mid: str,
-    algorithm: str = "hybrid",
+    algorithm: str = "cfkg",
 ) -> Dict[str, Any]:
+    algorithm = _normalize_requested_algorithm(algorithm)
     user_profile = _build_user_profile(conn, user_id)
     representative_ids = dedupe_preserve_order(
         user_profile.get("representative_movie_ids") or [],
@@ -599,6 +632,7 @@ def build_recommendation_explain_payload(
             "representative_title": brief_map[movie_id]["title"],
             "relation_type": rel_type,
             "relation_label": RELATION_LABELS.get(rel_type, rel_type),
+            "template": META_PATH_TEMPLATE_LABELS.get(rel_type),
             "matched_entities": sorted(items)[:4],
         })
 

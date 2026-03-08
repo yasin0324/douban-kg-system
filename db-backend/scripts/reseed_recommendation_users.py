@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """
-基于人设约束生成 mock 图评分数据。
-
-这个脚本保留原有用途，但不再使用随机抽样和随机打分。
-它复用推荐训练型用户生成逻辑，只是默认：
-1. 不清空现有普通用户；
-2. 写入的用户标记为 is_mock = 1；
-3. 用户名前缀改为 graph_mock，便于与 reseed 脚本区分。
+清空普通用户并重建推荐训练型用户数据。
 """
 import argparse
 import os
@@ -20,27 +14,28 @@ from app.seed.recommendation_users import DEFAULT_REPORT_PATH, reseed_recommenda
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="生成人设驱动的 mock 图评分数据")
-    parser.add_argument("--dry-run", action="store_true", help="仅生成报告，不写库")
-    parser.add_argument("--user-count", type=int, default=40, help="生成 mock 用户数量，默认 40")
-    parser.add_argument("--persona-set", default="default", help="默认 default，也支持逗号分隔 persona slug")
-    parser.add_argument("--seed", type=int, default=20260308, help="确定性生成偏移量")
+    parser = argparse.ArgumentParser(description="重建推荐训练型用户数据")
+    parser.add_argument("--dry-run", action="store_true", help="仅生成并校验数据，不写入 MySQL / Neo4j")
+    parser.add_argument("--user-count", type=int, default=200, help="生成的用户数量，默认 200")
+    parser.add_argument(
+        "--persona-set",
+        default="default",
+        help="使用的 persona 集合，默认 default；也支持逗号分隔的 persona slug",
+    )
+    parser.add_argument("--seed", type=int, default=20260308, help="保留兼容的种子参数，当前实现为确定性生成")
     parser.add_argument(
         "--llm-provider",
         default="auto",
         choices=("auto", "kimi", "none"),
         help="LLM 提供方，默认 auto",
     )
-    parser.add_argument(
-        "--report-path",
-        default=DEFAULT_REPORT_PATH.replace("reseed", "graph_mock"),
-        help="报告输出路径",
-    )
+    parser.add_argument("--report-path", default=DEFAULT_REPORT_PATH, help="质量报告输出路径")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
     init_pool()
     conn = get_connection()
     driver = Neo4jConnection.get_driver()
@@ -53,9 +48,9 @@ def main():
             persona_set=args.persona_set,
             llm_provider=args.llm_provider,
             report_path=args.report_path,
-            clear_existing=False,
-            is_mock=True,
-            username_prefix="graph_mock",
+            clear_existing=True,
+            is_mock=False,
+            username_prefix="seed_cfkg",
             seed=args.seed,
         )
     finally:
@@ -63,11 +58,14 @@ def main():
         close_pool()
         Neo4jConnection.close()
 
-    print("mock 图评分数据生成完成")
+    print("推荐训练型用户数据重建完成")
     print(f"user_count={report['user_count']}")
+    print(f"movie_pool_size={report['movie_pool_size']}")
     print(f"rating_count={report['rating_count']}")
     print(f"like_count={report['like_count']}")
     print(f"want_count={report['want_count']}")
+    print(f"clear_positive_preference_ratio={report['profile_usability']['clear_positive_preference_ratio']}")
+    print(f"time_split_ready_ratio={report['profile_usability']['time_split_ready_ratio']}")
     print(f"report_path={args.report_path}")
 
 

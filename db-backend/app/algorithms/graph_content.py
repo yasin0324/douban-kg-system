@@ -55,6 +55,53 @@ LIMIT $limit
 """
 
 
+def _normalize_content_recall_candidates(
+    records,
+    user_profile: Dict[str, Any] | None,
+) -> List[Dict[str, Any]]:
+    if not records:
+        return []
+
+    scored_records = []
+    for record in records:
+        base_score = (
+            _base_match_score(record, user_profile)
+            if user_profile
+            else float(
+                len(record.get("matched_genres") or [])
+                + len(record.get("matched_directors") or [])
+                + len(record.get("matched_actors") or [])
+            )
+        )
+        scored_records.append((record, base_score))
+
+    scores = [score for _, score in scored_records]
+    min_score = min(scores)
+    max_score = max(scores)
+    scale = max(max_score - min_score, 1e-8)
+
+    normalized = []
+    for record, raw_score in scored_records:
+        normalized_score = (raw_score - min_score) / scale if max_score > min_score else 1.0
+        normalized.append({
+            "movie_id": record["movie_id"],
+            "title": record.get("title", ""),
+            "score": normalized_score,
+            "recall_score": normalized_score,
+            "reasons": _format_content_reasons(
+                record.get("matched_genres") or [],
+                record.get("matched_directors") or [],
+                record.get("matched_actors") or [],
+                [],
+            ),
+            "negative_signals": [],
+            "source": "graph_content",
+            "source_algorithms": ["graph_content"],
+        })
+    normalized.sort(key=lambda item: (-item["recall_score"], item["movie_id"]))
+    return normalized
+
+
 def _resolve_feature_context(
     user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
@@ -197,17 +244,13 @@ def _rerank_content_records(
     return reranked
 
 
-def _get_graph_content_recommendations_sync(
-    user_id: int,
+def _fetch_graph_content_candidate_records(
     user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
     seen_movie_ids: List[str] | None = None,
-    exclude_mock_users: bool = True,
     limit: int = 50,
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
-) -> List[Dict[str, Any]]:
-    del user_id, exclude_mock_users
-
+):
     feature_context = _resolve_feature_context(
         user_profile=user_profile,
         seed_movie_ids=seed_movie_ids,
@@ -221,11 +264,10 @@ def _get_graph_content_recommendations_sync(
 
     seen_ids = dedupe_preserve_order(seen_movie_ids)
     driver = Neo4jConnection.get_driver()
-    candidate_limit = min(max(limit * 6, 120), 220)
 
     with driver.session() as session:
         try:
-            records = run_query(
+            return run_query(
                 session,
                 CONTENT_QUERY,
                 timeout_ms=timeout_ms,
@@ -233,11 +275,34 @@ def _get_graph_content_recommendations_sync(
                 genre_names=feature_context["genre_names"],
                 director_ids=feature_context["director_ids"],
                 actor_ids=feature_context["actor_ids"],
-                limit=candidate_limit,
+                limit=limit,
             )
         except Exception as exc:
             logger.warning("图内容推荐执行失败，已自动降级: %s", exc)
             return []
+
+
+def _get_graph_content_recommendations_sync(
+    user_id: int,
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    del user_id, exclude_mock_users
+    candidate_limit = min(max(limit * 6, 120), 220)
+    records = _fetch_graph_content_candidate_records(
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+        seen_movie_ids=seen_movie_ids,
+        limit=candidate_limit,
+        timeout_ms=timeout_ms,
+    )
+    if not records:
+        return []
+    driver = Neo4jConnection.get_driver()
 
     return _rerank_content_records(
         driver,
@@ -245,6 +310,26 @@ def _get_graph_content_recommendations_sync(
         records,
         timeout_ms=timeout_ms,
     )[:limit]
+
+
+def _get_graph_content_recall_candidates_sync(
+    user_id: int,
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    del user_id, exclude_mock_users
+    records = _fetch_graph_content_candidate_records(
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+        seen_movie_ids=seen_movie_ids,
+        limit=limit,
+        timeout_ms=timeout_ms,
+    )
+    return _normalize_content_recall_candidates(records, user_profile=user_profile)[:limit]
 
 
 async def get_graph_content_recommendations(
@@ -261,6 +346,27 @@ async def get_graph_content_recommendations(
     """
     return await asyncio.to_thread(
         _get_graph_content_recommendations_sync,
+        user_id,
+        user_profile,
+        seed_movie_ids,
+        seen_movie_ids,
+        exclude_mock_users,
+        limit,
+        timeout_ms,
+    )
+
+
+async def get_graph_content_recall_candidates(
+    user_id: int,
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    return await asyncio.to_thread(
+        _get_graph_content_recall_candidates_sync,
         user_id,
         user_profile,
         seed_movie_ids,

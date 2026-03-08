@@ -20,7 +20,7 @@ const props = defineProps({
     },
     algorithm: {
         type: String,
-        default: "hybrid",
+        default: "cfkg",
     },
 });
 

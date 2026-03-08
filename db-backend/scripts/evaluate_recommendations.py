@@ -3,12 +3,15 @@
 基于时间切分的离线推荐评估脚本。
 """
 import asyncio
+import argparse
+import logging
 import os
 import sys
 from statistics import mean
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.algorithms.cfkg import get_cfkg_recommendations
 from app.algorithms.graph_cf import get_graph_cf_recommendations
 from app.algorithms.graph_content import get_graph_content_recommendations
 from app.algorithms.graph_ppr import get_graph_ppr_recommendations
@@ -16,13 +19,18 @@ from app.algorithms.hybrid_manager import HybridRecommendationManager
 from app.db.mysql import close_pool, get_connection, init_pool
 from app.db.neo4j import Neo4jConnection
 
+logger = logging.getLogger(__name__)
 EVAL_LIMITS = (10, 20, 50)
 POSITIVE_RATING = 4.0
 EVAL_TIMEOUTS_MS = {
-    "cf": 1500,
-    "content": 8000,
-    "ppr": 12000,
+    "cfkg_raw": 2500,
+    "cfkg_pipeline": 2500,
+    "cfkg": 2500,
+    "cf": 5000,
+    "content": 12000,
+    "ppr": 18000,
 }
+DEFAULT_ALGORITHMS = ["cf", "cfkg_raw", "cfkg_pipeline"]
 
 
 def dedupe_movie_ids(movie_ids):
@@ -90,6 +98,17 @@ def fetch_user_rating_rows(conn, user_id: int):
 
 
 async def run_algorithm(name, manager, user_id, seed_movie_ids, seen_movie_ids, limit):
+    if name in {"cfkg_raw", "cfkg_pipeline", "cfkg"}:
+        ranking_mode = "raw" if name == "cfkg_raw" else "pipeline"
+        return await get_cfkg_recommendations(
+            user_id=user_id,
+            seed_movie_ids=seed_movie_ids,
+            seen_movie_ids=seen_movie_ids,
+            limit=limit,
+            timeout_ms=EVAL_TIMEOUTS_MS["cfkg_pipeline"],
+            disable_profile_rerank=(ranking_mode == "raw"),
+            ranking_mode=ranking_mode,
+        )
     if name == "cf":
         return await get_graph_cf_recommendations(
             user_id=user_id,
@@ -134,6 +153,7 @@ def summarize_report(raw_report):
         cases = data["cases"]
         summary[algorithm] = {
             "cases": cases,
+            "failures": data.get("failures", 0),
             "avg_candidates": round(mean(data["candidate_sizes"]), 2) if data["candidate_sizes"] else 0.0,
             "coverage": len(data["unique_movies"]),
         }
@@ -143,7 +163,27 @@ def summarize_report(raw_report):
     return summary
 
 
-async def evaluate_algorithms(user_limit: int = 100, recommendation_limit: int = 50):
+def parse_algorithm_names(value: str | None) -> list[str]:
+    if not value:
+        return list(DEFAULT_ALGORITHMS)
+    alias_map = {
+        "cfkg": "cfkg_pipeline",
+    }
+    names = []
+    for item in value.split(","):
+        name = item.strip()
+        if not name:
+            continue
+        names.append(alias_map.get(name, name))
+    return names or list(DEFAULT_ALGORITHMS)
+
+
+async def evaluate_algorithms(
+    user_limit: int = 100,
+    recommendation_limit: int = 50,
+    algorithms: list[str] | None = None,
+):
+    algorithms = algorithms or list(DEFAULT_ALGORITHMS)
     manager = HybridRecommendationManager(
         branch_timeouts_ms={
             "graph_cf": EVAL_TIMEOUTS_MS["cf"],
@@ -154,11 +194,12 @@ async def evaluate_algorithms(user_limit: int = 100, recommendation_limit: int =
     raw_report = {
         name: {
             "cases": 0,
+            "failures": 0,
             "hits": {k: 0.0 for k in EVAL_LIMITS},
             "candidate_sizes": [],
             "unique_movies": set(),
         }
-        for name in ("cf", "content", "ppr", "hybrid")
+        for name in algorithms
     }
 
     init_pool()
@@ -170,14 +211,19 @@ async def evaluate_algorithms(user_limit: int = 100, recommendation_limit: int =
                 continue
 
             for algorithm in raw_report:
-                items = await run_algorithm(
-                    algorithm,
-                    manager,
-                    case["user_id"],
-                    case["seed_movie_ids"],
-                    case["seen_movie_ids"],
-                    recommendation_limit,
-                )
+                try:
+                    items = await run_algorithm(
+                        algorithm,
+                        manager,
+                        case["user_id"],
+                        case["seed_movie_ids"],
+                        case["seen_movie_ids"],
+                        recommendation_limit,
+                    )
+                except Exception as exc:
+                    logger.warning("算法 %s 在用户 %s 上评估失败: %s", algorithm, case["user_id"], exc)
+                    raw_report[algorithm]["failures"] += 1
+                    items = []
                 raw_report[algorithm]["cases"] += 1
                 raw_report[algorithm]["candidate_sizes"].append(len(items))
                 raw_report[algorithm]["unique_movies"].update(item["movie_id"] for item in items)
@@ -197,6 +243,7 @@ def print_report(report):
     for algorithm, metrics in report.items():
         print(f"[{algorithm}]")
         print(f"  cases: {metrics['cases']}")
+        print(f"  failures: {metrics['failures']}")
         print(f"  avg_candidates: {metrics['avg_candidates']}")
         print(f"  coverage: {metrics['coverage']}")
         for k in EVAL_LIMITS:
@@ -204,8 +251,25 @@ def print_report(report):
         print()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="离线评估推荐算法")
+    parser.add_argument("--user-limit", type=int, default=100)
+    parser.add_argument("--recommendation-limit", type=int, default=50)
+    parser.add_argument(
+        "--algorithm",
+        default="cf,cfkg_raw,cfkg_pipeline",
+        help="逗号分隔的算法列表，例如 cf,cfkg_raw,cfkg_pipeline",
+    )
+    return parser.parse_args()
+
+
 async def main():
-    report = await evaluate_algorithms()
+    args = parse_args()
+    report = await evaluate_algorithms(
+        user_limit=args.user_limit,
+        recommendation_limit=args.recommendation_limit,
+        algorithms=parse_algorithm_names(args.algorithm),
+    )
     print_report(report)
 
 

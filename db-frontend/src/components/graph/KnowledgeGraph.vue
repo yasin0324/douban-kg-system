@@ -51,6 +51,7 @@ const REL_LABELS = {
     CF_SIGNAL: "协同过滤信号",
     CONTENT_SIGNAL: "内容信号",
     PPR_SIGNAL: "游走信号",
+    CFKG_SIGNAL: "CFKG信号",
     HYBRID_SIGNAL: "混合信号",
     PROFILE_HINT: "画像提示",
 };

@@ -32,7 +32,7 @@ const {
     error: recommendError,
     loadRecommendations,
 } = useRecommendationFeed({
-    algorithm: "hybrid",
+    algorithm: "cfkg",
     limit: 6,
 });
 const {
@@ -79,7 +79,7 @@ const applyRecommendationPayload = async (payload) => {
         .map((item) => item.movie?.mid)
         .filter(Boolean);
     await hydratePreferenceState(movieIds);
-    rememberMovies("hybrid", movieIds);
+    rememberMovies("cfkg", movieIds);
 };
 
 const loadRecommendationPreview = async ({ reroll = false } = {}) => {
@@ -88,9 +88,9 @@ const loadRecommendationPreview = async ({ reroll = false } = {}) => {
     }
     try {
         const payload = await loadRecommendations({
-            algorithm: "hybrid",
+            algorithm: "cfkg",
             limit: 6,
-            ...(reroll ? buildRerollParams("hybrid") : {}),
+            ...(reroll ? buildRerollParams("cfkg") : {}),
         });
         await applyRecommendationPayload(payload);
     } catch (err) {
@@ -302,7 +302,7 @@ const formatNum = (num) => {
                 <template v-if="authStore.isLoggedIn">
                     <div class="recommend-state card">
                         <div class="state-copy">
-                            <span class="state-eyebrow">混合推荐预览</span>
+                            <span class="state-eyebrow">CFKG 推荐预览</span>
                             <h3 class="state-title">
                                 基于你的用户画像实时生成
                             </h3>
@@ -508,7 +508,7 @@ const formatNum = (num) => {
         <RecommendationDetailDrawer
             v-model="recommendationDrawerVisible"
             :item="selectedRecommendation"
-            :algorithm="recommendData?.algorithm || 'hybrid'"
+            :algorithm="recommendData?.algorithm || 'cfkg'"
         />
     </div>
 </template>

@@ -322,6 +322,54 @@ def test_recommend_route_keeps_response_shape(monkeypatch):
     assert captured["reroll_token"] == "reroll-1"
 
 
+def test_recommend_route_defaults_to_cfkg(monkeypatch):
+    app = FastAPI()
+    app.include_router(recommend.router)
+
+    def override_current_user():
+        return {"id": 5}
+
+    def override_conn():
+        yield object()
+
+    captured = {}
+
+    async def fake_payload(**kwargs):
+        captured.update(kwargs)
+        return {
+            "algorithm": "cfkg",
+            "cold_start": False,
+            "generation_mode": "profile",
+            "profile_summary": {"rating_count": 12, "likes": 5, "wants": 3},
+            "profile_highlights": [],
+            "items": [{
+                "movie": {"mid": "m1", "title": "Movie 1"},
+                "score": 0.81,
+                "reasons": ["CFKG 表示学习命中"],
+                "source_algorithms": ["cfkg"],
+                "score_breakdown": {"cfkg": 0.81},
+            }],
+        }
+
+    app.dependency_overrides[recommend.get_current_user] = override_current_user
+    app.dependency_overrides[recommend.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        recommend.recommend_service,
+        "build_personal_recommendation_payload",
+        fake_payload,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/recommend/personal?limit=3")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["algorithm"] == "cfkg"
+    assert payload["items"][0]["score_breakdown"] == {"cfkg": 0.81}
+    assert captured["algorithm"] == "cfkg"
+    assert captured["user_id"] == 5
+
+
 def test_recommend_explain_route_returns_graph_payload(monkeypatch):
     app = FastAPI()
     app.include_router(recommend.router)
@@ -371,6 +419,61 @@ def test_recommend_explain_route_returns_graph_payload(monkeypatch):
     assert captured["target_mid"] == "m9"
     assert captured["algorithm"] == "cf"
     assert captured["conn"] is not None
+
+
+def test_recommend_explain_route_supports_cfkg(monkeypatch):
+    app = FastAPI()
+    app.include_router(recommend.router)
+
+    def override_current_user():
+        return {"id": 21}
+
+    def override_conn():
+        yield object()
+
+    captured = {}
+
+    def fake_explain(**kwargs):
+        captured.update(kwargs)
+        return {
+            "algorithm": "cfkg",
+            "target_movie": {"mid": "m2", "title": "Movie 2"},
+            "representative_movies": [{"mid": "m1", "title": "Movie 1"}],
+            "profile_highlights": [{"type": "genre", "label": "悬疑"}],
+            "profile_reasons": ["命中偏好类型 悬疑"],
+            "negative_signals": [],
+            "nodes": [{"id": "movie_m2", "label": "Movie 2", "type": "Movie"}],
+            "edges": [{"source": "signal_cfkg", "target": "movie_m2", "type": "CFKG_SIGNAL"}],
+            "reason_paths": [{
+                "representative_mid": "m1",
+                "representative_title": "Movie 1",
+                "relation_type": "HAS_GENRE",
+                "relation_label": "共同类型",
+                "template": "User -> Movie -> Genre -> Movie",
+                "matched_entities": ["悬疑"],
+            }],
+            "matched_entities": [{"type": "共同类型", "items": ["悬疑"]}],
+            "meta": {"has_graph_evidence": True, "representative_movie_count": 1},
+        }
+
+    app.dependency_overrides[recommend.get_current_user] = override_current_user
+    app.dependency_overrides[recommend.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        recommend.recommend_service,
+        "build_recommendation_explain_payload",
+        fake_explain,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/recommend/explain?target_mid=m2&algorithm=cfkg")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["algorithm"] == "cfkg"
+    assert payload["reason_paths"][0]["template"] == "User -> Movie -> Genre -> Movie"
+    assert captured["algorithm"] == "cfkg"
+    assert captured["user_id"] == 21
+    assert captured["target_mid"] == "m2"
 
 
 def test_time_split_case_avoids_holdout_leakage():

@@ -56,6 +56,11 @@ Desktop.ini
 *.sqlite
 *.sqlite-journal
 
+tmp/cfkg/
+output/models/cfkg/
+db-backend/tmp/
+db-backend/output/
+
 .cache/
 .hypothesis/
 .history/

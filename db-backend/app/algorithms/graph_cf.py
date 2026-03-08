@@ -68,6 +68,47 @@ LIMIT $limit
 """
 
 
+def _format_cf_base_reason(record: Dict[str, Any]) -> str:
+    similar_user_count = int(record["similar_user_count"] or 0)
+    strongest_similarity = float(record["strongest_similarity"] or 0.0)
+    base_reason = f"{similar_user_count} 位相似用户也明显偏好这部电影"
+    if strongest_similarity > 0.2:
+        base_reason += f"，近邻强度 {strongest_similarity:.2f}"
+    return base_reason
+
+
+def _normalize_recall_candidates(
+    records,
+    score_key: str,
+    source: str,
+) -> List[Dict[str, Any]]:
+    if not records:
+        return []
+
+    scores = [float(record.get(score_key) or 0.0) for record in records]
+    min_score = min(scores)
+    max_score = max(scores)
+    scale = max(max_score - min_score, 1e-8)
+
+    normalized = []
+    for record in records:
+        movie_id = record["movie_id"]
+        raw_score = float(record.get(score_key) or 0.0)
+        normalized_score = (raw_score - min_score) / scale if max_score > min_score else 1.0
+        normalized.append({
+            "movie_id": movie_id,
+            "title": record.get("title", ""),
+            "score": normalized_score,
+            "recall_score": normalized_score,
+            "reasons": [_format_cf_base_reason(record)],
+            "negative_signals": [],
+            "source": source,
+            "source_algorithms": [source],
+        })
+    normalized.sort(key=lambda item: (-item["recall_score"], item["movie_id"]))
+    return normalized
+
+
 def _resolve_profile_context(
     user_profile: Dict[str, Any] | None = None,
     seed_movie_ids: List[str] | None = None,
@@ -86,6 +127,45 @@ def _resolve_profile_context(
     return dedupe_preserve_order(seed_movie_ids), []
 
 
+def _fetch_graph_cf_candidate_records(
+    user_id: int,
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+):
+    positive_movie_ids, negative_movie_ids = _resolve_profile_context(
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+    )
+    if not positive_movie_ids:
+        return []
+
+    seen_ids = dedupe_preserve_order(seen_movie_ids)
+    min_overlap = 1 if len(positive_movie_ids) < 4 else 2
+    driver = Neo4jConnection.get_driver()
+
+    with driver.session() as session:
+        return run_query(
+            session,
+            CF_QUERY,
+            timeout_ms=timeout_ms,
+            user_id=user_id,
+            positive_movie_ids=positive_movie_ids,
+            negative_movie_ids=negative_movie_ids,
+            positive_count=max(len(positive_movie_ids), 1),
+            seen_movie_ids=seen_ids,
+            exclude_mock_users=exclude_mock_users,
+            positive_rating=POSITIVE_RATING,
+            min_overlap=min_overlap,
+            shrinkage=SHRINKAGE,
+            neighbor_limit=NEIGHBOR_LIMIT,
+            limit=limit,
+        )
+
+
 def _rerank_cf_records(
     driver,
     user_profile: Dict[str, Any] | None,
@@ -100,7 +180,7 @@ def _rerank_cf_records(
         driver,
         candidate_ids,
         timeout_ms=timeout_ms,
-    )
+        )
     max_score = max(float(record["cf_score"]) for record in records) or 1.0
 
     reranked = []
@@ -115,12 +195,7 @@ def _rerank_cf_records(
             if user_profile
             else (0.0, [], [])
         )
-        similar_user_count = int(record["similar_user_count"] or 0)
-        strongest_similarity = float(record["strongest_similarity"] or 0.0)
-        base_reason = f"{similar_user_count} 位相似用户也明显偏好这部电影"
-        if strongest_similarity > 0.2:
-            base_reason += f"，近邻强度 {strongest_similarity:.2f}"
-        reasons = [base_reason, *profile_reasons[:1]]
+        reasons = [_format_cf_base_reason(record), *profile_reasons[:1]]
         reranked.append({
             "movie_id": movie_id,
             "title": record.get("title", ""),
@@ -143,35 +218,19 @@ def _get_graph_cf_recommendations_sync(
     limit: int = 50,
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
 ) -> List[Dict[str, Any]]:
-    positive_movie_ids, negative_movie_ids = _resolve_profile_context(
+    candidate_limit = min(max(limit * 4, 80), 180)
+    records = _fetch_graph_cf_candidate_records(
+        user_id=user_id,
         user_profile=user_profile,
         seed_movie_ids=seed_movie_ids,
+        seen_movie_ids=seen_movie_ids,
+        exclude_mock_users=exclude_mock_users,
+        limit=candidate_limit,
+        timeout_ms=timeout_ms,
     )
-    if not positive_movie_ids:
+    if not records:
         return []
-
-    seen_ids = dedupe_preserve_order(seen_movie_ids)
-    min_overlap = 1 if len(positive_movie_ids) < 4 else 2
-    candidate_limit = min(max(limit * 4, 80), 180)
     driver = Neo4jConnection.get_driver()
-
-    with driver.session() as session:
-        records = run_query(
-            session,
-            CF_QUERY,
-            timeout_ms=timeout_ms,
-            user_id=user_id,
-            positive_movie_ids=positive_movie_ids,
-            negative_movie_ids=negative_movie_ids,
-            positive_count=max(len(positive_movie_ids), 1),
-            seen_movie_ids=seen_ids,
-            exclude_mock_users=exclude_mock_users,
-            positive_rating=POSITIVE_RATING,
-            min_overlap=min_overlap,
-            shrinkage=SHRINKAGE,
-            neighbor_limit=NEIGHBOR_LIMIT,
-            limit=candidate_limit,
-        )
 
     return _rerank_cf_records(
         driver,
@@ -179,6 +238,27 @@ def _get_graph_cf_recommendations_sync(
         records,
         timeout_ms=timeout_ms,
     )[:limit]
+
+
+def _get_graph_cf_recall_candidates_sync(
+    user_id: int,
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    records = _fetch_graph_cf_candidate_records(
+        user_id=user_id,
+        user_profile=user_profile,
+        seed_movie_ids=seed_movie_ids,
+        seen_movie_ids=seen_movie_ids,
+        exclude_mock_users=exclude_mock_users,
+        limit=limit,
+        timeout_ms=timeout_ms,
+    )
+    return _normalize_recall_candidates(records, score_key="cf_score", source="graph_cf")[:limit]
 
 
 async def get_graph_cf_recommendations(
@@ -195,6 +275,27 @@ async def get_graph_cf_recommendations(
     """
     return await asyncio.to_thread(
         _get_graph_cf_recommendations_sync,
+        user_id,
+        user_profile,
+        seed_movie_ids,
+        seen_movie_ids,
+        exclude_mock_users,
+        limit,
+        timeout_ms,
+    )
+
+
+async def get_graph_cf_recall_candidates(
+    user_id: int,
+    user_profile: Dict[str, Any] | None = None,
+    seed_movie_ids: List[str] | None = None,
+    seen_movie_ids: List[str] | None = None,
+    exclude_mock_users: bool = True,
+    limit: int = 50,
+    timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
+) -> List[Dict[str, Any]]:
+    return await asyncio.to_thread(
+        _get_graph_cf_recall_candidates_sync,
         user_id,
         user_profile,
         seed_movie_ids,

@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/recommend", tags=["推荐系统"])
 
 @router.get("/personal", summary="个人电影推荐")
 async def get_personal_recommendations(
-    algorithm: Optional[str] = Query("hybrid", description="推荐算法类型: ppr, content, cf, hybrid"),
+    algorithm: Optional[str] = Query("cfkg", description="推荐算法类型: cfkg, ppr, content, cf, hybrid"),
     limit: int = Query(20, ge=1, le=50),
     exclude_movie_ids: Optional[List[str]] = Query(None, description="重新生成时希望尽量避开的电影"),
     reroll_token: Optional[str] = Query(None, description="重新生成请求的随机标识"),
@@ -36,7 +36,7 @@ async def get_personal_recommendations(
 @router.get("/explain", summary="推荐结果解释图")
 def explain_recommendation(
     target_mid: str = Query(..., description="目标推荐电影 ID"),
-    algorithm: Optional[str] = Query("hybrid", description="推荐算法类型: ppr, content, cf, hybrid"),
+    algorithm: Optional[str] = Query("cfkg", description="推荐算法类型: cfkg, ppr, content, cf, hybrid"),
     user=Depends(get_current_user),
     conn=Depends(get_mysql_conn),
 ):
