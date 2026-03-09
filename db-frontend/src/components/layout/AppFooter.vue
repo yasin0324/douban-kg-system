@@ -1,10 +1,7 @@
 <template>
     <footer class="app-footer">
         <div class="footer-inner container">
-            <p>
-                豆瓣电影知识图谱系统 &copy; {{ new Date().getFullYear() }} —
-                毕业设计项目
-            </p>
+            <p>豆瓣电影知识图谱系统 &copy; {{ new Date().getFullYear() }}</p>
         </div>
     </footer>
 </template>
