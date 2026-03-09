@@ -254,7 +254,9 @@ const defaultCover =
                     >
                         <div class="home-poster-shell">
                             <img
-                                :src="proxyImage(item.movie.cover) || defaultCover"
+                                :src="
+                                    proxyImage(item.movie.cover) || defaultCover
+                                "
                                 :alt="item.movie.title"
                                 @error="(e) => (e.target.src = defaultCover)"
                             />
@@ -265,7 +267,9 @@ const defaultCover =
 
                         <div class="home-copy">
                             <h3>{{ item.movie.title }}</h3>
-                            <span class="home-year">{{ item.movie.year || "—" }}</span>
+                            <span class="home-year">{{
+                                item.movie.year || "—"
+                            }}</span>
                             <p>推荐理由：{{ item.summary }}</p>
                         </div>
                     </article>
@@ -395,9 +399,15 @@ const defaultCover =
 .section-link {
     border: none;
     background: transparent;
-    color: #3296d1;
+    color: var(--text-link);
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: color var(--transition-fast);
+
+    &:hover {
+        color: var(--color-accent);
+    }
 }
 
 .genre-tags {
@@ -423,68 +433,91 @@ const defaultCover =
 .home-recommend-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 24px;
+    gap: var(--space-lg);
 }
 
 .home-recommend-card {
     cursor: pointer;
     display: grid;
-    gap: 12px;
+    gap: var(--space-sm);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    transition: all var(--transition-normal);
+
+    &:hover {
+        border-color: var(--color-accent);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-3px);
+    }
 }
 
 .home-poster-shell {
     position: relative;
-    padding: 14px;
-    border-radius: 18px;
-    background: #ffffff;
-    border: 1px solid #d8dadd;
-    box-shadow: 0 14px 26px rgba(15, 23, 42, 0.08);
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
 
     img {
         width: 100%;
         aspect-ratio: 2 / 3;
         object-fit: cover;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
         display: block;
     }
 }
 
 .home-overlay {
     position: absolute;
-    top: 20px;
-    right: 20px;
-    padding: 0.34rem 0.7rem;
+    top: 18px;
+    right: 18px;
+    padding: 0.28rem 0.65rem;
     border-radius: 999px;
-    background: rgba(216, 227, 224, 0.95);
-    color: #22323a;
-    font-size: 0.78rem;
+    background: var(--color-accent);
+    color: #fff;
+    font-size: 0.76rem;
     font-weight: 600;
 }
 
 .home-copy {
     display: grid;
-    gap: 6px;
+    gap: 4px;
+    padding: var(--space-sm) var(--space-md) var(--space-md);
 
     h3 {
         margin: 0;
-        font-size: 1.15rem;
-        font-family: "Iowan Old Style", "Times New Roman", serif;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.4;
     }
 
     p {
         margin: 0;
-        color: #1f2937;
-        line-height: 1.6;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-clamp: 2;
+        overflow: hidden;
     }
 }
 
 .home-year {
-    color: #6b7280;
+    font-size: 0.8rem;
+    color: var(--text-muted);
 }
 
 .recommend-empty {
-    padding: 28px;
+    padding: var(--space-xl);
     color: var(--text-secondary);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    text-align: center;
 }
 
 .load-more-area {

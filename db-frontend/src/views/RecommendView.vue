@@ -1,14 +1,15 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import RecommendationDetailDrawer from "@/components/recommend/RecommendationDetailDrawer.vue";
-import { fetchRecommendationExplanation, useRecommendationFeed } from "@/composables/useRecommendations";
+import {
+    fetchRecommendationExplanation,
+    useRecommendationFeed,
+} from "@/composables/useRecommendations";
 import { useAuthStore } from "@/stores/auth";
-import { useThemeStore } from "@/stores/theme";
 import { proxyImage } from "@/utils/image";
 import { formatSourceAlgorithmLabel } from "@/utils/recommendation";
 
 const authStore = useAuthStore();
-const themeStore = useThemeStore();
 
 const {
     data: recommendData,
@@ -42,7 +43,10 @@ const dnaTags = computed(() => {
 const dnaLogic = computed(() => {
     const highlights = recommendData.value?.profile_highlights || [];
     if (highlights.length) {
-        const labels = highlights.slice(0, 3).map((item) => item.label).join("、");
+        const labels = highlights
+            .slice(0, 3)
+            .map((item) => item.label)
+            .join("、");
         return `系统根据你近期高权重行为、导演偏好、类型共现和主题路径，构建出当前的兴趣基因画像（${labels}）。`;
     }
     if (recommendData.value?.cold_start) {
@@ -60,11 +64,11 @@ const displayItems = computed(() =>
             explain,
             pathSteps: path
                 ? [
-                    "用户",
-                    `偏好电影：${path.representative_title}`,
-                    `${path.relation_label}${path.matched_entities?.[0] ? `：${path.matched_entities[0]}` : ""}`,
-                    `推荐结果：${item.movie.title}`,
-                ]
+                      "用户",
+                      `偏好电影：${path.representative_title}`,
+                      `${path.relation_label}${path.matched_entities?.[0] ? `：${path.matched_entities[0]}` : ""}`,
+                      `推荐结果：${item.movie.title}`,
+                  ]
                 : [],
             signalRows: Object.entries(item.score_breakdown || {})
                 .sort((a, b) => b[1] - a[1])
@@ -96,7 +100,10 @@ async function loadPage() {
         return;
     }
     try {
-        const payload = await loadRecommendations({ algorithm: "cfkg", limit: 6 });
+        const payload = await loadRecommendations({
+            algorithm: "cfkg",
+            limit: 6,
+        });
         await loadExplainSummaries(payload?.items || []);
     } catch (err) {
         console.error("推荐页加载失败:", err);
@@ -137,24 +144,18 @@ function openRecommendationDetail(item) {
 </script>
 
 <template>
-    <div
-        class="insights-view"
-        :class="themeStore.isDark ? 'theme-dark' : 'theme-light'"
-    >
+    <div class="insights-view">
         <div class="insights-shell">
             <header class="page-header">
-                <span class="page-route">核心可解释推荐页 /recommend</span>
+                <h1 class="page-title">🎯 个性化推荐</h1>
+                <p class="page-subtitle">基于知识图谱的可解释推荐结果</p>
             </header>
 
             <template v-if="authStore.isLoggedIn">
                 <section class="dna-panel">
-                    <h2>用户兴趣基因</h2>
+                    <h2 class="panel-label">用户兴趣基因</h2>
                     <div class="dna-tags">
-                        <span
-                            v-for="tag in dnaTags"
-                            :key="tag"
-                            class="dna-tag"
-                        >
+                        <span v-for="tag in dnaTags" :key="tag" class="dna-tag">
                             {{ tag }}
                         </span>
                     </div>
@@ -170,11 +171,8 @@ function openRecommendationDetail(item) {
                     :title="recommendError"
                 />
 
-                <section
-                    class="evidence-panel"
-                    v-loading="recommendLoading"
-                >
-                    <h2>可解释证据</h2>
+                <section class="evidence-panel" v-loading="recommendLoading">
+                    <h2 class="panel-label">可解释证据</h2>
 
                     <article
                         v-for="item in displayItems"
@@ -184,15 +182,24 @@ function openRecommendationDetail(item) {
                         <div class="visual-layer">
                             <div class="poster-frame">
                                 <img
-                                    :src="proxyImage(item.movie.cover) || defaultCover"
+                                    :src="
+                                        proxyImage(item.movie.cover) ||
+                                        defaultCover
+                                    "
                                     :alt="item.movie.title"
-                                    @error="(e) => (e.target.src = defaultCover)"
+                                    @error="
+                                        (e) => (e.target.src = defaultCover)
+                                    "
                                 />
                             </div>
                             <div class="visual-copy">
                                 <h3>{{ item.movie.title }}</h3>
                                 <div class="rating-line">
-                                    {{ item.movie.rating ? `${item.movie.rating.toFixed(1)}/10` : "暂无评分" }}
+                                    {{
+                                        item.movie.rating
+                                            ? `${item.movie.rating.toFixed(1)}/10`
+                                            : "暂无评分"
+                                    }}
                                 </div>
                             </div>
                         </div>
@@ -216,13 +223,22 @@ function openRecommendationDetail(item) {
                                     >
                                         <div
                                             class="path-dot"
-                                            :class="{ active: index === item.pathSteps.length - 1 }"
+                                            :class="{
+                                                active:
+                                                    index ===
+                                                    item.pathSteps.length - 1,
+                                            }"
                                         />
                                         <div
-                                            v-if="index !== item.pathSteps.length - 1"
+                                            v-if="
+                                                index !==
+                                                item.pathSteps.length - 1
+                                            "
                                             class="path-line"
                                         />
-                                        <span class="path-label">{{ step }}</span>
+                                        <span class="path-label">{{
+                                            step
+                                        }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -286,9 +302,11 @@ function openRecommendationDetail(item) {
                 </section>
             </template>
 
-            <section v-else class="guest-panel">
+            <section v-else class="guest-panel card">
                 <h2>登录后查看可解释推荐</h2>
-                <p>推荐页会展示真实的用户兴趣基因、推荐逻辑、路径证据和知识图谱解释。</p>
+                <p>
+                    推荐页会展示真实的用户兴趣基因、推荐逻辑、路径证据和知识图谱解释。
+                </p>
             </section>
         </div>
 
@@ -303,21 +321,7 @@ function openRecommendationDetail(item) {
 <style scoped lang="scss">
 .insights-view {
     min-height: 100%;
-    padding: 20px 0 40px;
-}
-
-.theme-dark {
-    background:
-        radial-gradient(circle at top center, rgba(93, 136, 168, 0.18), transparent 22%),
-        linear-gradient(180deg, #0a0f18 0%, #0d1119 100%);
-    color: #eef2f7;
-}
-
-.theme-light {
-    background:
-        radial-gradient(circle at top center, rgba(93, 136, 168, 0.08), transparent 24%),
-        linear-gradient(180deg, #f4f4f2 0%, #eeefec 100%);
-    color: #17202b;
+    padding: var(--space-xl) 0 var(--space-2xl);
 }
 
 .insights-shell {
@@ -326,134 +330,127 @@ function openRecommendationDetail(item) {
 }
 
 .page-header {
-    padding: 12px 8px 18px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-    margin-bottom: 18px;
+    padding-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: var(--space-xl);
 }
 
-.page-route,
-.dna-panel h2,
-.evidence-panel h2,
-.visual-copy h3 {
-    font-family: "Iowan Old Style", "Times New Roman", serif;
+.page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-xs);
 }
 
-.page-route {
-    font-size: 1.15rem;
+.page-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.panel-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
 }
 
 .dna-panel,
 .evidence-panel,
 .guest-panel {
-    margin-bottom: 18px;
+    margin-bottom: var(--space-lg);
+}
+
+.dna-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
 }
 
 .dna-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px;
-    margin: 14px 0;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
 }
 
 .dna-tag {
-    padding: 0.85rem 1.5rem;
-    border-radius: 14px;
-    font-size: 1rem;
-    font-family: "Iowan Old Style", "Times New Roman", serif;
+    padding: 0.4rem 0.9rem;
+    border-radius: var(--radius-md);
+    font-size: 0.88rem;
+    font-weight: 500;
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+    border: 1px solid rgba(0, 181, 29, 0.2);
+    transition: all var(--transition-fast);
+
+    &:hover {
+        background: var(--color-accent);
+        color: #fff;
+    }
 }
 
-.theme-dark .dna-tag {
-    border: 1px solid rgba(173, 220, 235, 0.62);
-    background: linear-gradient(180deg, rgba(11, 19, 31, 0.86), rgba(18, 28, 39, 0.9));
-    color: #f3f4f6;
-    box-shadow:
-        inset 0 0 0 1px rgba(212, 248, 255, 0.08),
-        0 0 24px rgba(151, 211, 229, 0.1);
-}
-
-.theme-light .dna-tag {
-    border: 1px solid rgba(84, 116, 132, 0.34);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(236, 240, 243, 0.96));
-    color: #15202b;
-    box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.64),
-        0 8px 18px rgba(72, 88, 102, 0.08);
-}
-
-.dna-logic,
-.guest-panel p,
-.logic-block p {
+.dna-logic {
     line-height: 1.7;
-}
-
-.theme-dark .dna-logic,
-.theme-dark .guest-panel p,
-.theme-dark .logic-block p,
-.theme-dark .logic-note {
-    color: #d3d8e1;
-}
-
-.theme-light .dna-logic,
-.theme-light .guest-panel p,
-.theme-light .logic-block p,
-.theme-light .logic-note {
-    color: #485467;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
 }
 
 .page-alert {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
 }
 
 .insight-card {
     display: grid;
     grid-template-columns: 290px minmax(0, 1fr) 220px;
     gap: 0;
-    margin-top: 14px;
-    border-radius: 16px;
+    margin-top: var(--space-md);
+    border-radius: var(--radius-lg);
     overflow: hidden;
-}
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-normal);
 
-.theme-dark .insight-card {
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.92));
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
-}
-
-.theme-light .insight-card {
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 250, 0.98));
-    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+    &:hover {
+        border-color: var(--border-color-light);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-2px);
+    }
 }
 
 .visual-layer,
 .logic-layer,
 .signal-layer {
-    padding: 18px;
+    padding: var(--space-md);
 }
 
 .visual-layer {
     display: grid;
     grid-template-columns: 118px minmax(0, 1fr);
-    gap: 16px;
+    gap: var(--space-md);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
 }
 
 .logic-layer {
-    border-left: 1px solid rgba(148, 163, 184, 0.12);
-    border-right: 1px solid rgba(148, 163, 184, 0.12);
+    border-right: 1px solid var(--border-color);
 }
 
 .poster-frame {
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    background: #0f172a;
+    background: var(--bg-primary);
     aspect-ratio: 2 / 3;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--shadow-md);
 
     img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        display: block;
     }
 }
 
@@ -464,41 +461,60 @@ function openRecommendationDetail(item) {
 
     h3 {
         margin: 0;
-        font-size: 1.15rem;
-        line-height: 1.15;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.4;
     }
 }
 
 .rating-line {
-    font-size: 1.9rem;
-    font-family: "Iowan Old Style", "Times New Roman", serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--color-rating);
 }
 
 .logic-title,
 .signal-title {
     display: block;
-    margin-bottom: 10px;
-    font-family: "Iowan Old Style", "Times New Roman", serif;
+    margin-bottom: var(--space-sm);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.logic-block p {
+    line-height: 1.7;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.logic-note {
+    font-size: 0.9rem;
+    color: var(--text-muted);
 }
 
 .logic-block + .logic-block,
 .signal-tags,
 .signal-rows {
-    margin-top: 16px;
+    margin-top: var(--space-md);
 }
 
 .path-rail {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    margin-top: 12px;
+    margin-top: var(--space-sm);
     overflow-x: auto;
 }
 
 .path-step {
     position: relative;
-    min-width: 132px;
-    padding-top: 18px;
+    min-width: 120px;
+    padding-top: 20px;
     text-align: center;
     flex: 1 0 0;
 }
@@ -507,126 +523,113 @@ function openRecommendationDetail(item) {
     position: absolute;
     top: 0;
     left: 50%;
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     transform: translateX(-50%);
-}
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color-light);
+    transition: all var(--transition-fast);
 
-.theme-dark .path-dot {
-    background: rgba(148, 163, 184, 0.18);
-    border: 1px solid rgba(148, 163, 184, 0.42);
-}
-
-.theme-light .path-dot {
-    background: rgba(148, 163, 184, 0.16);
-    border: 1px solid rgba(100, 116, 139, 0.28);
-}
-
-.theme-dark .path-dot.active {
-    background: #c6f0ff;
-    box-shadow: 0 0 18px rgba(190, 239, 255, 0.42);
-}
-
-.theme-light .path-dot.active {
-    background: #3e6c83;
-    box-shadow: 0 0 14px rgba(62, 108, 131, 0.18);
+    &.active {
+        background: var(--color-accent);
+        border-color: var(--color-accent);
+        box-shadow: 0 0 10px var(--color-accent-bg);
+    }
 }
 
 .path-line {
     position: absolute;
-    top: 8px;
-    left: calc(50% + 9px);
-    width: calc(100% - 18px);
+    top: 6px;
+    left: calc(50% + 7px);
+    width: calc(100% - 14px);
     height: 2px;
-}
-
-.theme-dark .path-line {
-    background: linear-gradient(90deg, rgba(120, 144, 156, 0.55), rgba(196, 240, 255, 0.65));
-}
-
-.theme-light .path-line {
-    background: linear-gradient(90deg, rgba(148, 163, 184, 0.45), rgba(62, 108, 131, 0.48));
+    background: var(--border-color-light);
 }
 
 .path-label {
     display: block;
     line-height: 1.4;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 .score-line {
-    font-family: "Iowan Old Style", "Times New Roman", serif;
-    font-size: 1.35rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-sm);
 }
 
 .signal-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-xs);
 }
 
 .signal-tag {
-    padding: 0.35rem 0.7rem;
+    padding: 0.28rem 0.65rem;
     border-radius: 999px;
-    font-size: 0.84rem;
-}
-
-.theme-dark .signal-tag {
-    background: rgba(148, 163, 184, 0.12);
-    color: #dbe4f0;
-}
-
-.theme-light .signal-tag {
-    background: rgba(148, 163, 184, 0.1);
-    color: #334155;
+    font-size: 0.8rem;
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+    border: 1px solid rgba(0, 181, 29, 0.2);
 }
 
 .signal-rows {
     display: grid;
-    gap: 10px;
+    gap: var(--space-sm);
 }
 
 .signal-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-sm);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+
+    strong {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
 }
 
 .graph-button {
-    margin-top: 20px;
+    margin-top: var(--space-md);
     width: 100%;
-    padding: 0.72rem 1rem;
-    border-radius: 12px;
+    padding: 0.6rem 1rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
-}
+    font-size: 0.9rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color-light);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    transition: all var(--transition-fast);
 
-.theme-dark .graph-button {
-    border: 1px solid rgba(227, 243, 252, 0.38);
-    background: rgba(15, 23, 42, 0.6);
-    color: #eef2f7;
-}
-
-.theme-light .graph-button {
-    border: 1px solid rgba(62, 108, 131, 0.24);
-    background: rgba(255, 255, 255, 0.82);
-    color: #1f2937;
+    &:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-accent-bg);
+    }
 }
 
 .guest-panel {
-    padding: 28px;
-    border-radius: 18px;
-}
+    padding: var(--space-xl);
+    text-align: center;
 
-.theme-dark .guest-panel {
-    background: rgba(17, 24, 39, 0.92);
-    border: 1px solid rgba(148, 163, 184, 0.16);
-}
+    h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: var(--space-sm);
+    }
 
-.theme-light .guest-panel {
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    p {
+        color: var(--text-secondary);
+        line-height: 1.7;
+    }
 }
 
 @media (max-width: 1180px) {
@@ -636,7 +639,7 @@ function openRecommendationDetail(item) {
 
     .signal-layer {
         grid-column: 1 / -1;
-        border-top: 1px solid rgba(148, 163, 184, 0.12);
+        border-top: 1px solid var(--border-color);
     }
 }
 
@@ -649,21 +652,21 @@ function openRecommendationDetail(item) {
         grid-template-columns: 1fr;
     }
 
-    .logic-layer {
-        border-left: none;
+    .visual-layer {
         border-right: none;
-        border-top: 1px solid rgba(148, 163, 184, 0.12);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        border-bottom: 1px solid var(--border-color);
+        grid-template-columns: 104px minmax(0, 1fr);
     }
 
-    .visual-layer {
-        grid-template-columns: 104px minmax(0, 1fr);
+    .logic-layer {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
     }
 }
 
 @media (max-width: 640px) {
-    .page-route {
-        font-size: 1rem;
+    .page-title {
+        font-size: 1.4rem;
     }
 
     .dna-tag {
@@ -676,11 +679,11 @@ function openRecommendationDetail(item) {
     }
 
     .poster-frame {
-        max-width: 180px;
+        max-width: 160px;
     }
 
     .path-step {
-        min-width: 120px;
+        min-width: 100px;
     }
 }
 </style>

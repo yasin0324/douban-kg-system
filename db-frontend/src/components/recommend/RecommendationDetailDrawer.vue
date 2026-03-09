@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 import KnowledgeGraph from "@/components/graph/KnowledgeGraph.vue";
 import { fetchRecommendationExplanation } from "@/composables/useRecommendations";
-import { useThemeStore } from "@/stores/theme";
 import { proxyImage } from "@/utils/image";
 
 const props = defineProps({
@@ -21,7 +20,6 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue"]);
-const themeStore = useThemeStore();
 
 const defaultCover =
     "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzBjMTExYiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjQyIiBmaWxsPSIjMzM0MTU1IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==";
@@ -78,8 +76,7 @@ const loadExplanation = async () => {
         cacheKey.value = nextKey;
     } catch (err) {
         explainPayload.value = null;
-        explainError.value =
-            err.response?.data?.detail || "知识路径加载失败";
+        explainError.value = err.response?.data?.detail || "知识路径加载失败";
     } finally {
         explainLoading.value = false;
     }
@@ -102,11 +99,7 @@ watch(
         size="min(94vw, 1080px)"
     >
         <template #header>
-            <div
-                v-if="currentMovie"
-                class="drawer-header"
-                :class="themeStore.isDark ? 'theme-dark' : 'theme-light'"
-            >
+            <div v-if="currentMovie" class="drawer-header">
                 <div class="poster-shell">
                     <img
                         :src="proxyImage(currentMovie.cover) || defaultCover"
@@ -122,11 +115,7 @@ watch(
             </div>
         </template>
 
-        <div
-            v-if="currentMovie"
-            class="drawer-body"
-            :class="themeStore.isDark ? 'theme-dark' : 'theme-light'"
-        >
+        <div v-if="currentMovie" class="drawer-body">
             <section class="drawer-panel">
                 <span class="panel-kicker">推荐逻辑</span>
                 <p class="panel-copy">{{ headline }}</p>
@@ -141,7 +130,9 @@ watch(
                         :key="`${path.representative_mid}-${path.relation_type}`"
                         class="path-card"
                     >
-                        <strong>{{ path.template || path.relation_label }}</strong>
+                        <strong>{{
+                            path.template || path.relation_label
+                        }}</strong>
                         <p>
                             {{ path.representative_title }} ·
                             {{ (path.matched_entities || []).join(" / ") }}
@@ -166,10 +157,7 @@ watch(
                 />
             </section>
 
-            <section
-                v-if="matchedEntities.length"
-                class="drawer-panel"
-            >
+            <section v-if="matchedEntities.length" class="drawer-panel">
                 <span class="panel-kicker">命中实体</span>
                 <div class="entity-groups">
                     <div
@@ -201,10 +189,7 @@ watch(
                     正在载入知识路径...
                 </div>
 
-                <div
-                    v-else-if="graphNodes.length"
-                    class="graph-shell"
-                >
+                <div v-else-if="graphNodes.length" class="graph-shell">
                     <KnowledgeGraph
                         :nodes="graphNodes"
                         :edges="graphEdges"
@@ -214,12 +199,7 @@ watch(
                     />
                 </div>
 
-                <div
-                    v-else
-                    class="graph-placeholder"
-                >
-                    暂无图谱证据
-                </div>
+                <div v-else class="graph-placeholder">暂无图谱证据</div>
             </section>
 
             <el-alert
@@ -238,14 +218,14 @@ watch(
 .drawer-header {
     display: grid;
     grid-template-columns: 180px minmax(0, 1fr);
-    gap: 20px;
+    gap: var(--space-lg);
     width: 100%;
 }
 
 .poster-shell {
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    background: #0f172a;
+    background: var(--bg-primary);
     min-height: 240px;
 
     img {
@@ -258,24 +238,16 @@ watch(
 .header-copy {
     display: grid;
     align-content: center;
-    gap: 10px;
+    gap: var(--space-sm);
 }
 
 .header-kicker,
 .panel-kicker {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-}
-
-.theme-dark .header-kicker,
-.theme-dark .panel-kicker {
-    color: #8bb8c8;
-}
-
-.theme-light .header-kicker,
-.theme-light .panel-kicker {
-    color: #46687a;
+    font-weight: 600;
+    color: var(--text-muted);
 }
 
 .header-copy h2,
@@ -286,117 +258,101 @@ watch(
 }
 
 .header-copy h2 {
-    font-size: 2rem;
-    font-family: "Iowan Old Style", "Times New Roman", serif;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.header-copy p {
+    color: var(--text-secondary);
+    line-height: 1.7;
 }
 
 .drawer-body {
     display: grid;
-    gap: 16px;
+    gap: var(--space-md);
 }
 
 .drawer-panel {
-    padding: 20px;
-    border-radius: 18px;
-}
-
-.theme-dark .drawer-panel {
-    background: #111827;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-}
-
-.theme-light .drawer-panel {
-    background: #ffffff;
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    padding: var(--space-lg);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
 }
 
 .path-list,
 .entity-groups {
     display: grid;
-    gap: 12px;
-    margin-top: 12px;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
 }
 
 .path-card {
-    padding: 14px 16px;
-    border-radius: 14px;
-}
-
-.theme-dark .path-card {
-    background: rgba(148, 163, 184, 0.08);
-}
-
-.theme-light .path-card {
-    background: rgba(148, 163, 184, 0.08);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
 }
 
 .path-card strong {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
-.theme-dark .path-card strong,
-.theme-dark .header-copy p,
-.theme-dark .panel-copy,
-.theme-dark .path-card p,
-.theme-dark .graph-placeholder {
-    color: #c8d0dc;
-}
-
-.theme-light .path-card strong,
-.theme-light .header-copy p,
-.theme-light .panel-copy,
-.theme-light .path-card p,
-.theme-light .graph-placeholder {
-    color: #475569;
-}
-
-.header-copy p,
 .panel-copy,
 .path-card p,
 .graph-placeholder {
     line-height: 1.7;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 .fallback-path {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 12px;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
 }
 
 .fallback-chip,
 .entity-tag {
     display: inline-flex;
     align-items: center;
-    padding: 0.45rem 0.8rem;
+    padding: 0.35rem 0.75rem;
     border-radius: 999px;
+    font-size: 0.85rem;
+    border: 1px solid var(--border-color-light);
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    transition: all var(--transition-fast);
+
+    &:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-accent-bg);
+    }
 }
 
-.theme-dark .fallback-chip,
-.theme-dark .entity-tag {
-    border: 1px solid rgba(148, 163, 184, 0.24);
-    color: #dbe4f0;
-    background: rgba(148, 163, 184, 0.08);
-}
-
-.theme-light .fallback-chip,
-.theme-light .entity-tag {
-    border: 1px solid rgba(148, 163, 184, 0.24);
-    color: #334155;
-    background: rgba(148, 163, 184, 0.08);
+.entity-group strong {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .entity-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
 }
 
 .graph-shell,
 .graph-placeholder {
-    margin-top: 14px;
+    margin-top: var(--space-sm);
 }
 
 .graph-placeholder {
@@ -404,15 +360,10 @@ watch(
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 16px;
-}
-
-.theme-dark .graph-placeholder {
-    border: 1px dashed rgba(148, 163, 184, 0.24);
-}
-
-.theme-light .graph-placeholder {
-    border: 1px dashed rgba(148, 163, 184, 0.24);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--border-color-light);
+    color: var(--text-muted);
+    font-size: 0.9rem;
 }
 
 .drawer-alert {
@@ -425,7 +376,7 @@ watch(
     }
 
     .poster-shell {
-        max-width: 220px;
+        max-width: 200px;
     }
 }
 </style>
