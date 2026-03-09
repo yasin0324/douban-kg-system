@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # Cache
     CACHE_TTL_SECONDS: int = 300
+    RECOMMEND_USER_PROFILE_CACHE_TTL_SECONDS: int = 120
+    RECOMMEND_USER_PROFILE_CACHE_MAXSIZE: int = 256
+    RECOMMEND_MOVIE_CACHE_TTL_SECONDS: int = 600
+    RECOMMEND_MOVIE_CACHE_MAXSIZE: int = 4096
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

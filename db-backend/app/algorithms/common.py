@@ -4,6 +4,11 @@
 from collections import Counter
 from typing import Any, Dict, Iterable, List
 
+from app.recommendation_cache import (
+    get_movie_graph_profile_cache,
+    set_movie_graph_profile_cache,
+)
+
 
 def split_multi_value(value: str | None):
     if not value:
@@ -83,6 +88,10 @@ def fetch_movie_graph_profile_map(driver, movie_ids, timeout_ms: int | None = No
     if not movie_ids:
         return {}
 
+    cached_profiles, missing_movie_ids = get_movie_graph_profile_cache(movie_ids)
+    if not missing_movie_ids:
+        return cached_profiles
+
     query = """
     MATCH (m:Movie)
     WHERE m.mid IN $movie_ids
@@ -108,7 +117,7 @@ def fetch_movie_graph_profile_map(driver, movie_ids, timeout_ms: int | None = No
             session,
             query,
             timeout_ms=timeout_ms,
-            movie_ids=movie_ids,
+            movie_ids=missing_movie_ids,
         )
 
     profile_map: Dict[str, Dict[str, Any]] = {}
@@ -133,7 +142,10 @@ def fetch_movie_graph_profile_map(driver, movie_ids, timeout_ms: int | None = No
             "actor_ids": {item["pid"] for item in actors if item.get("pid")},
             "actor_names": [item["name"] for item in actors if item.get("name")],
         }
-    return profile_map
+    set_movie_graph_profile_cache(profile_map)
+    merged = dict(cached_profiles)
+    merged.update(profile_map)
+    return merged
 
 
 def build_seed_profile(feature_map, seed_ids):

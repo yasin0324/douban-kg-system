@@ -37,6 +37,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATASET_ROOT = BACKEND_ROOT / "tmp" / "cfkg" / "datasets"
 DEFAULT_MODEL_ROOT = BACKEND_ROOT / "output" / "models" / "cfkg"
 DEFAULT_MODEL_PATH = DEFAULT_MODEL_ROOT / "latest.pt"
+DEFAULT_RERANKER_ROOT = DEFAULT_MODEL_ROOT / "reranker"
+DEFAULT_RERANKER_PATH = DEFAULT_RERANKER_ROOT / "latest.json"
 LATEST_POINTER_NAME = "latest.txt"
 
 
@@ -100,4 +102,11 @@ def resolve_model_path(model_path: str | Path | None = None) -> Path:
     if model_path is None:
         return DEFAULT_MODEL_PATH
     path = Path(model_path)
+    return path if path.is_absolute() else (BACKEND_ROOT / path).resolve()
+
+
+def resolve_reranker_path(reranker_path: str | Path | None = None) -> Path:
+    if reranker_path is None:
+        return DEFAULT_RERANKER_PATH
+    path = Path(reranker_path)
     return path if path.is_absolute() else (BACKEND_ROOT / path).resolve()

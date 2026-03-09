@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.algorithms.cfkg.inference import prewarm_cfkg_model
 from app.config import settings
 from app.db.mysql import init_pool, close_pool
 from app.db.neo4j import Neo4jConnection
@@ -24,6 +25,11 @@ async def lifespan(app: FastAPI):
     init_pool()
     logger.info("正在初始化 Neo4j 驱动...")
     Neo4jConnection.get_driver()
+    logger.info("正在预热 CFKG 模型...")
+    try:
+        await prewarm_cfkg_model()
+    except Exception:
+        logger.warning("CFKG 模型预热异常，继续启动服务", exc_info=True)
     logger.info("数据库连接初始化完成")
     yield
     logger.info("正在关闭数据库连接...")
@@ -84,4 +90,3 @@ app.include_router(graph.router)
 app.include_router(stats.router)
 app.include_router(proxy.router)
 app.include_router(recommend.router)
-

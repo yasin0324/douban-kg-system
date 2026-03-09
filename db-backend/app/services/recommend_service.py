@@ -4,6 +4,7 @@
 from collections import Counter, defaultdict
 import logging
 import random
+import time
 from typing import Any, Dict, List
 
 from fastapi import HTTPException
@@ -22,6 +23,12 @@ from app.algorithms.graph_content import get_graph_content_recommendations
 from app.algorithms.graph_ppr import get_graph_ppr_recommendations
 from app.algorithms.hybrid_manager import manager as hybrid_manager
 from app.db.neo4j import Neo4jConnection
+from app.recommendation_cache import (
+    get_movie_brief_cache,
+    get_user_profile_cache,
+    set_movie_brief_cache,
+    set_user_profile_cache,
+)
 from app.services import user_service
 
 logger = logging.getLogger(__name__)
@@ -145,7 +152,19 @@ def _fetch_movie_brief_map(movie_ids: List[str], timeout_ms: int | None = None) 
     if not requested_ids:
         return {}
 
-    return _fetch_movie_brief_map_from_neo4j(requested_ids, timeout_ms=timeout_ms)
+    cached_map, missing_ids = get_movie_brief_cache(requested_ids)
+    if not missing_ids:
+        return cached_map
+
+    fetched_map = _fetch_movie_brief_map_from_neo4j(missing_ids, timeout_ms=timeout_ms)
+    set_movie_brief_cache(fetched_map)
+    merged = dict(cached_map)
+    merged.update(fetched_map)
+    return {
+        movie_id: merged[movie_id]
+        for movie_id in requested_ids
+        if movie_id in merged
+    }
 
 
 def _fetch_movie_brief_map_from_neo4j(
@@ -221,11 +240,24 @@ def _fetch_movie_brief_map_safe(
     if not requested_ids:
         return {}
 
+    cached_map, missing_ids = get_movie_brief_cache(requested_ids)
+    if not missing_ids:
+        return cached_map
+
     try:
-        return _fetch_movie_brief_map_from_neo4j(requested_ids, timeout_ms=timeout_ms)
+        fetched_map = _fetch_movie_brief_map_from_neo4j(missing_ids, timeout_ms=timeout_ms)
     except Exception:
         logger.warning("Neo4j movie brief query failed, falling back to MySQL", exc_info=True)
-        return _fetch_movie_brief_map_from_mysql(conn, requested_ids)
+        fetched_map = _fetch_movie_brief_map_from_mysql(conn, missing_ids)
+
+    set_movie_brief_cache(fetched_map)
+    merged = dict(cached_map)
+    merged.update(fetched_map)
+    return {
+        movie_id: merged[movie_id]
+        for movie_id in requested_ids
+        if movie_id in merged
+    }
 
 
 def _collect_profile_highlights(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -259,6 +291,10 @@ def _collect_profile_highlights(profile: Dict[str, Any]) -> List[Dict[str, Any]]
 
 
 def _build_user_profile(conn, user_id: int) -> Dict[str, Any]:
+    cached_profile = get_user_profile_cache(user_id)
+    if cached_profile is not None:
+        return cached_profile
+
     raw_profile = user_service.build_user_recommendation_profile(conn, user_id)
     movie_ids = dedupe_preserve_order(
         raw_profile["positive_movie_ids"]
@@ -279,6 +315,7 @@ def _build_user_profile(conn, user_id: int) -> Dict[str, Any]:
         **weighted_profile,
     }
     profile["profile_highlights"] = _collect_profile_highlights(profile)
+    set_user_profile_cache(user_id, profile)
     return profile
 
 
@@ -565,8 +602,11 @@ async def build_personal_recommendation_payload(
     exclude_movie_ids: List[str] | None = None,
     reroll_token: str | None = None,
 ) -> Dict[str, Any]:
+    request_started_at = time.perf_counter()
     algorithm = _normalize_requested_algorithm(algorithm)
+    profile_started_at = time.perf_counter()
     user_profile = _build_user_profile(conn, user_id)
+    profile_build_ms = (time.perf_counter() - profile_started_at) * 1000
     cold_start = bool(user_profile["summary"]["cold_start"])
     hard_excludes = dedupe_preserve_order(user_profile["hard_exclude_movie_ids"])
     reroll_excludes = dedupe_preserve_order(exclude_movie_ids)
@@ -576,6 +616,7 @@ async def build_personal_recommendation_payload(
     candidate_limit = min(max(limit * 4, 80), 220)
     raw_items: List[Dict[str, Any]] = []
 
+    dispatch_started_at = time.perf_counter()
     if not fallback_used:
         raw_items = await _dispatch_personal_algorithm(
             algorithm=algorithm,
@@ -594,6 +635,7 @@ async def build_personal_recommendation_payload(
                 conn=conn,
             )
             raw_items = _merge_unique_items(raw_items, fallback_items)
+    algorithm_dispatch_ms = (time.perf_counter() - dispatch_started_at) * 1000
 
     if fallback_used:
         raw_items = _get_fallback_recommendations(
@@ -604,7 +646,9 @@ async def build_personal_recommendation_payload(
         )
 
     movie_ids = [item["movie_id"] for item in raw_items]
+    brief_started_at = time.perf_counter()
     brief_map = _fetch_movie_brief_map_safe(conn, movie_ids, timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS)
+    brief_fetch_ms = (time.perf_counter() - brief_started_at) * 1000
     normalized_items = _normalize_recommendation_items(
         raw_items,
         brief_map,
@@ -614,6 +658,25 @@ async def build_personal_recommendation_payload(
         normalized_items,
         limit=limit,
         reroll_token=reroll_token,
+    )
+    total_ms = (time.perf_counter() - request_started_at) * 1000
+
+    logger.info(
+        (
+            "recommend.personal timing user_id=%s algorithm=%s profile_build_ms=%.1f "
+            "algorithm_dispatch_ms=%.1f brief_fetch_ms=%.1f total_ms=%.1f "
+            "fallback_used=%s cold_start=%s candidate_count=%s response_count=%s"
+        ),
+        user_id,
+        algorithm,
+        profile_build_ms,
+        algorithm_dispatch_ms,
+        brief_fetch_ms,
+        total_ms,
+        fallback_used,
+        cold_start,
+        len(raw_items),
+        len(ordered_items),
     )
 
     return {
@@ -632,15 +695,20 @@ def build_recommendation_explain_payload(
     target_mid: str,
     algorithm: str = "cfkg",
 ) -> Dict[str, Any]:
+    request_started_at = time.perf_counter()
     algorithm = _normalize_requested_algorithm(algorithm)
+    profile_started_at = time.perf_counter()
     user_profile = _build_user_profile(conn, user_id)
+    profile_build_ms = (time.perf_counter() - profile_started_at) * 1000
     representative_ids = dedupe_preserve_order(
         user_profile.get("representative_movie_ids") or [],
     )[:4]
+    brief_started_at = time.perf_counter()
     brief_map = _fetch_movie_brief_map(
         [target_mid] + representative_ids,
         timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS,
     )
+    brief_fetch_ms = (time.perf_counter() - brief_started_at) * 1000
     if target_mid not in brief_map:
         raise HTTPException(status_code=404, detail="目标电影不存在")
 
@@ -691,7 +759,9 @@ def build_recommendation_explain_payload(
         }
 
     records = []
+    explain_query_ms = 0.0
     if valid_representative_ids:
+        explain_started_at = time.perf_counter()
         driver = Neo4jConnection.get_driver()
         with driver.session() as session:
             records = run_query(
@@ -701,6 +771,7 @@ def build_recommendation_explain_payload(
                 target_mid=target_mid,
                 representative_ids=valid_representative_ids,
             )
+        explain_query_ms = (time.perf_counter() - explain_started_at) * 1000
 
     for record in records:
         shared_label = record.get("shared_label")
@@ -761,6 +832,24 @@ def build_recommendation_explain_payload(
             "type": RELATION_LABELS.get(rel_type, rel_type),
             "items": sorted(items)[:6],
         })
+
+    total_ms = (time.perf_counter() - request_started_at) * 1000
+    logger.info(
+        (
+            "recommend.explain timing user_id=%s algorithm=%s target_mid=%s "
+            "profile_build_ms=%.1f brief_fetch_ms=%.1f explain_query_ms=%.1f total_ms=%.1f "
+            "has_graph_evidence=%s representative_movie_count=%s"
+        ),
+        user_id,
+        algorithm,
+        target_mid,
+        profile_build_ms,
+        brief_fetch_ms,
+        explain_query_ms,
+        total_ms,
+        bool(representative_reason_groups),
+        len(valid_representative_ids),
+    )
 
     return {
         "algorithm": algorithm,

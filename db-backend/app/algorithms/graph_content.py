@@ -17,33 +17,106 @@ from app.db.neo4j import Neo4jConnection
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 800
+CONTENT_BRANCH_CANDIDATE_MAX = 100
+CONTENT_GENRE_FEATURE_LIMIT = 6
+CONTENT_DIRECTOR_FEATURE_LIMIT = 4
+CONTENT_ACTOR_FEATURE_LIMIT = 6
+GENERIC_CONTENT_GENRES = {
+    "剧情",
+    "喜剧",
+    "动作",
+    "爱情",
+    "动画",
+    "家庭",
+    "短片",
+    "纪录片",
+}
 
 CONTENT_QUERY = """
-MATCH (target:Movie)
-WHERE NOT target.mid IN $seen_movie_ids
-OPTIONAL MATCH (target)-[:HAS_GENRE]->(g:Genre)
-WHERE g.name IN $genre_names
-WITH target, collect(DISTINCT g.name) AS matched_genres
-OPTIONAL MATCH (target)<-[:DIRECTED]-(d:Person)
-WHERE d.pid IN $director_ids
-WITH target,
-     matched_genres,
-     collect(DISTINCT {
-       pid: d.pid,
-       name: coalesce(d.name_zh, d.name)
-     }) AS matched_directors
-OPTIONAL MATCH (target)<-[:ACTED_IN]-(a:Person)
-WHERE a.pid IN $actor_ids
-WITH target,
-     matched_genres,
-     matched_directors,
-     collect(DISTINCT {
-       pid: a.pid,
-       name: coalesce(a.name_zh, a.name)
-     })[..10] AS matched_actors
+WITH $seen_movie_ids AS seen_movie_ids,
+     $genre_names AS genre_names,
+     $director_ids AS director_ids,
+     $actor_ids AS actor_ids
+CALL {
+    WITH seen_movie_ids, genre_names, director_ids, actor_ids
+    UNWIND genre_names AS genre_name
+    MATCH (g:Genre {name: genre_name})<-[:HAS_GENRE]-(target:Movie)
+    WHERE NOT target.mid IN seen_movie_ids
+    WITH target, collect(DISTINCT genre_name) AS matched_genres
+    ORDER BY size(matched_genres) DESC,
+             coalesce(target.rating, 0.0) DESC,
+             target.mid ASC
+    LIMIT $branch_limit
+    RETURN target.mid AS movie_id,
+           coalesce(target.title, target.name) AS title,
+           matched_genres,
+           [] AS matched_directors,
+           [] AS matched_actors
+    UNION ALL
+    WITH seen_movie_ids, genre_names, director_ids, actor_ids
+    UNWIND director_ids AS director_id
+    MATCH (director:Person {pid: director_id})-[:DIRECTED]->(target:Movie)
+    WHERE NOT target.mid IN seen_movie_ids
+    WITH target, collect(DISTINCT {
+        pid: director.pid,
+        name: coalesce(director.name_zh, director.name)
+    }) AS matched_directors
+    ORDER BY size(matched_directors) DESC,
+             coalesce(target.rating, 0.0) DESC,
+             target.mid ASC
+    LIMIT $branch_limit
+    RETURN target.mid AS movie_id,
+           coalesce(target.title, target.name) AS title,
+           [] AS matched_genres,
+           matched_directors,
+           [] AS matched_actors
+    UNION ALL
+    WITH seen_movie_ids, genre_names, director_ids, actor_ids
+    UNWIND actor_ids AS actor_id
+    MATCH (actor:Person {pid: actor_id})-[:ACTED_IN]->(target:Movie)
+    WHERE NOT target.mid IN seen_movie_ids
+    WITH target, collect(DISTINCT {
+        pid: actor.pid,
+        name: coalesce(actor.name_zh, actor.name)
+    })[..10] AS matched_actors
+    ORDER BY size(matched_actors) DESC,
+             coalesce(target.rating, 0.0) DESC,
+             target.mid ASC
+    LIMIT $branch_limit
+    RETURN target.mid AS movie_id,
+           coalesce(target.title, target.name) AS title,
+           [] AS matched_genres,
+           [] AS matched_directors,
+           matched_actors
+}
+WITH movie_id,
+     title,
+     reduce(flattened = [], items IN collect(matched_genres) | flattened + items) AS raw_genres,
+     reduce(flattened = [], items IN collect(matched_directors) | flattened + items) AS raw_directors,
+     reduce(flattened = [], items IN collect(matched_actors) | flattened + items) AS raw_actors
+WITH movie_id,
+     title,
+     reduce(unique = [], genre IN raw_genres |
+        CASE
+            WHEN genre IS NULL OR genre IN unique THEN unique
+            ELSE unique + genre
+        END
+     ) AS matched_genres,
+     reduce(unique = [], director IN raw_directors |
+        CASE
+            WHEN director.pid IS NULL OR any(item IN unique WHERE item.pid = director.pid) THEN unique
+            ELSE unique + director
+        END
+     ) AS matched_directors,
+     reduce(unique = [], actor IN raw_actors |
+        CASE
+            WHEN actor.pid IS NULL OR any(item IN unique WHERE item.pid = actor.pid) THEN unique
+            ELSE unique + actor
+        END
+     )[..10] AS matched_actors
 WHERE size(matched_genres) + size(matched_directors) + size(matched_actors) > 0
-RETURN target.mid AS movie_id,
-       target.title AS title,
+RETURN movie_id,
+       title,
        matched_genres,
        matched_directors,
        matched_actors
@@ -116,10 +189,21 @@ def _resolve_feature_context(
         }
 
     positive_features = user_profile.get("positive_features", {})
+    ordered_genres = top_weighted_items(positive_features.get("genres", {}), 10)
+    prioritized_genres = (
+        [genre for genre in ordered_genres if genre not in GENERIC_CONTENT_GENRES]
+        + [genre for genre in ordered_genres if genre in GENERIC_CONTENT_GENRES]
+    )[:CONTENT_GENRE_FEATURE_LIMIT]
     return {
-        "genre_names": top_weighted_items(positive_features.get("genres", {}), 10),
-        "director_ids": top_weighted_items(positive_features.get("directors", {}), 8),
-        "actor_ids": top_weighted_items(positive_features.get("actors", {}), 14),
+        "genre_names": prioritized_genres,
+        "director_ids": top_weighted_items(
+            positive_features.get("directors", {}),
+            CONTENT_DIRECTOR_FEATURE_LIMIT,
+        ),
+        "actor_ids": top_weighted_items(
+            positive_features.get("actors", {}),
+            CONTENT_ACTOR_FEATURE_LIMIT,
+        ),
         "context_movie_ids": dedupe_preserve_order(
             user_profile.get("context_movie_ids")
             or user_profile.get("positive_movie_ids")
@@ -264,6 +348,7 @@ def _fetch_graph_content_candidate_records(
 
     seen_ids = dedupe_preserve_order(seen_movie_ids)
     driver = Neo4jConnection.get_driver()
+    branch_limit = min(max(limit, 40), CONTENT_BRANCH_CANDIDATE_MAX)
 
     with driver.session() as session:
         try:
@@ -275,6 +360,7 @@ def _fetch_graph_content_candidate_records(
                 genre_names=feature_context["genre_names"],
                 director_ids=feature_context["director_ids"],
                 actor_ids=feature_context["actor_ids"],
+                branch_limit=branch_limit,
                 limit=limit,
             )
         except Exception as exc:

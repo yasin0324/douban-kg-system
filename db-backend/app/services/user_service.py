@@ -4,6 +4,7 @@
 from typing import Any, Dict, List, Optional
 import logging
 from app.db.neo4j import Neo4jConnection
+from app.recommendation_cache import invalidate_user_profile_cache
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def add_preference(conn, user_id: int, mid: str, pref_type: str) -> dict:
             (user_id, mid, pref_type),
         )
         conn.commit()
+        invalidate_user_profile_cache(user_id)
         cursor.execute(
             "SELECT id, mid, pref_type, created_at FROM user_movie_prefs WHERE user_id = %s AND mid = %s",
             (user_id, mid),
@@ -46,6 +48,8 @@ def remove_preference(conn, user_id: int, mid: str) -> bool:
             (user_id, mid),
         )
         conn.commit()
+        if cursor.rowcount > 0:
+            invalidate_user_profile_cache(user_id)
         return cursor.rowcount > 0
 
 
@@ -122,6 +126,7 @@ def add_rating(conn, user_id: int, mid: str, rating: float, comment_short: str =
             (user_id, mid, rating, comment_short),
         )
         conn.commit()
+        invalidate_user_profile_cache(user_id)
         
         # === Dual Write to Neo4j ===
         try:
@@ -155,6 +160,7 @@ def remove_rating(conn, user_id: int, mid: str) -> bool:
         deleted = cursor.rowcount > 0
 
     if deleted:
+        invalidate_user_profile_cache(user_id)
         # 删除评分时同步清理 Neo4j 关系，避免推荐系统持续把该电影当作“已看过”
         try:
             driver = Neo4jConnection.get_driver()

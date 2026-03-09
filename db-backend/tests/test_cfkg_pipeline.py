@@ -2,6 +2,7 @@ import json
 import asyncio
 from pathlib import Path
 import random
+import math
 
 from app.algorithms.cfkg.dataset import load_exported_dataset
 from app.algorithms.cfkg.inference import (
@@ -9,6 +10,15 @@ from app.algorithms.cfkg.inference import (
     _load_model_bundle,
     _rank_candidate_pool,
     _score_user_candidates,
+    _MODEL_CACHE,
+    prewarm_cfkg_model,
+)
+from app.algorithms.cfkg.reranker import (
+    build_reranker_feature_map,
+    load_reranker_bundle,
+    save_reranker_artifact,
+    score_reranker_features,
+    train_reranker_model,
 )
 from app.algorithms.cfkg.training import (
     TrainingConfig,
@@ -245,21 +255,220 @@ def test_collect_recall_candidates_prefers_cf_and_uses_content_to_fill(monkeypat
 
     monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_cf_recall_candidates", fake_cf_recall)
     monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_content_recall_candidates", fake_content_recall)
+    stage_metrics = {}
 
     items = asyncio.run(
         _collect_recall_candidates(
             user_id=1,
-            user_profile=None,
+            user_profile={
+                "positive_features": {
+                    "genres": {"科幻": 2.4, "悬疑": 1.7},
+                    "directors": {},
+                    "actors": {},
+                }
+            },
             seed_movie_ids=["m_seed"],
             seen_movie_ids=["m_seen"],
-            limit=2,
+            limit=20,
             timeout_ms=800,
+            stage_metrics=stage_metrics,
         )
     )
 
     assert [item["movie_id"] for item in items[:3]] == ["m1", "m2", "m3"]
     assert items[0]["source"] == "graph_cf"
     assert items[2]["source"] == "graph_content"
+    assert stage_metrics["content_triggered"] is True
+    assert stage_metrics["content_candidate_count"] == 2
+
+
+def test_collect_recall_candidates_skips_content_when_cf_is_sufficient(monkeypatch):
+    async def fake_cf_recall(**kwargs):
+        return [
+            {"movie_id": f"m{index}", "score": 1.0, "recall_score": 1.0, "source": "graph_cf", "source_algorithms": ["graph_cf"]}
+            for index in range(45)
+        ]
+
+    async def fake_content_recall(**kwargs):
+        raise AssertionError("content recall should not run when cf recall is already sufficient")
+
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_cf_recall_candidates", fake_cf_recall)
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_content_recall_candidates", fake_content_recall)
+    stage_metrics = {}
+
+    items = asyncio.run(
+        _collect_recall_candidates(
+            user_id=1,
+            user_profile={
+                "positive_features": {
+                    "genres": {"科幻": 2.0, "悬疑": 1.0},
+                    "directors": {},
+                    "actors": {},
+                }
+            },
+            seed_movie_ids=["m_seed"],
+            seen_movie_ids=[],
+            limit=20,
+            timeout_ms=800,
+            stage_metrics=stage_metrics,
+        )
+    )
+
+    assert len(items) == 45
+    assert stage_metrics["content_triggered"] is False
+    assert stage_metrics["content_skip_reason"] == "cf_sufficient"
+
+
+def test_collect_recall_candidates_skips_content_when_profile_signal_is_weak(monkeypatch):
+    async def fake_cf_recall(**kwargs):
+        return [
+            {"movie_id": "m1", "score": 0.9, "recall_score": 0.9, "source": "graph_cf", "source_algorithms": ["graph_cf"]},
+            {"movie_id": "m2", "score": 0.7, "recall_score": 0.7, "source": "graph_cf", "source_algorithms": ["graph_cf"]},
+        ]
+
+    async def fake_content_recall(**kwargs):
+        raise AssertionError("content recall should not run when profile signal is weak")
+
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_cf_recall_candidates", fake_cf_recall)
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_content_recall_candidates", fake_content_recall)
+    stage_metrics = {}
+
+    items = asyncio.run(
+        _collect_recall_candidates(
+            user_id=1,
+            user_profile={
+                "positive_features": {
+                    "genres": {"科幻": 2.0},
+                    "directors": {},
+                    "actors": {},
+                }
+            },
+            seed_movie_ids=["m_seed"],
+            seen_movie_ids=[],
+            limit=20,
+            timeout_ms=800,
+            stage_metrics=stage_metrics,
+        )
+    )
+
+    assert [item["movie_id"] for item in items] == ["m1", "m2"]
+    assert stage_metrics["content_triggered"] is False
+    assert stage_metrics["content_skip_reason"] == "weak_profile"
+
+
+def test_collect_recall_candidates_skips_content_when_gap_is_small(monkeypatch):
+    async def fake_cf_recall(**kwargs):
+        return [
+            {"movie_id": f"m{index}", "score": 1.0, "recall_score": 1.0, "source": "graph_cf", "source_algorithms": ["graph_cf"]}
+            for index in range(30)
+        ]
+
+    async def fake_content_recall(**kwargs):
+        raise AssertionError("content recall should not run when the gap is below the threshold")
+
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_cf_recall_candidates", fake_cf_recall)
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_content_recall_candidates", fake_content_recall)
+    stage_metrics = {}
+
+    items = asyncio.run(
+        _collect_recall_candidates(
+            user_id=1,
+            user_profile={
+                "positive_features": {
+                    "genres": {"科幻": 2.4, "悬疑": 1.7},
+                    "directors": {},
+                    "actors": {},
+                }
+            },
+            seed_movie_ids=["m_seed"],
+            seen_movie_ids=[],
+            limit=16,
+            timeout_ms=800,
+            stage_metrics=stage_metrics,
+        )
+    )
+
+    assert len(items) == 30
+    assert stage_metrics["content_triggered"] is False
+    assert stage_metrics["content_skip_reason"] == "small_gap"
+
+
+def test_collect_recall_candidates_timeout_keeps_cf_candidates(monkeypatch):
+    async def fake_cf_recall(**kwargs):
+        return [
+            {"movie_id": "m1", "score": 0.9, "recall_score": 0.9, "source": "graph_cf", "source_algorithms": ["graph_cf"]},
+            {"movie_id": "m2", "score": 0.7, "recall_score": 0.7, "source": "graph_cf", "source_algorithms": ["graph_cf"]},
+        ]
+
+    async def fake_content_recall(**kwargs):
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_cf_recall_candidates", fake_cf_recall)
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_content_recall_candidates", fake_content_recall)
+    stage_metrics = {}
+
+    items = asyncio.run(
+        _collect_recall_candidates(
+            user_id=1,
+            user_profile={
+                "positive_features": {
+                    "genres": {"科幻": 2.4, "悬疑": 1.7},
+                    "directors": {},
+                    "actors": {},
+                }
+            },
+            seed_movie_ids=["m_seed"],
+            seen_movie_ids=[],
+            limit=20,
+            timeout_ms=800,
+            stage_metrics=stage_metrics,
+        )
+    )
+
+    assert [item["movie_id"] for item in items] == ["m1", "m2"]
+    assert stage_metrics["content_triggered"] is True
+    assert stage_metrics["content_timed_out"] is True
+    assert stage_metrics["content_skip_reason"] == "timeout"
+
+
+def test_content_query_uses_legacy_compatible_subquery_syntax():
+    from app.algorithms import graph_content
+
+    assert "CALL {" in graph_content.CONTENT_QUERY
+    assert "CALL (" not in graph_content.CONTENT_QUERY
+
+
+def test_prewarm_cfkg_model_populates_bundle_cache(tmp_path):
+    dataset_dir = tmp_path / "toy_dataset"
+    model_dir = tmp_path / "cfkg_model"
+    write_toy_cfkg_dataset(dataset_dir)
+
+    result = train_cfkg_model(
+        TrainingConfig(
+            dataset_dir=str(dataset_dir),
+            output_dir=model_dir,
+            embedding_dim=16,
+            epochs=8,
+            batch_size=2,
+            learning_rate=5e-3,
+            margin=1.0,
+            hard_negative_weight=0.5,
+            seed=23,
+            device="cpu",
+        )
+    )
+
+    warmed = asyncio.run(prewarm_cfkg_model(result["model_path"]))
+
+    assert warmed is True
+    assert _MODEL_CACHE["bundle"] is not None
+    assert _MODEL_CACHE["path"] == str(result["model_path"])
+
+
+def test_prewarm_cfkg_model_handles_missing_model():
+    warmed = asyncio.run(prewarm_cfkg_model("output/models/cfkg/does-not-exist.pt"))
+
+    assert warmed is False
 
 
 def test_rank_candidate_pool_combines_recall_cfkg_and_profile(monkeypatch):
@@ -309,6 +518,10 @@ def test_rank_candidate_pool_combines_recall_cfkg_and_profile(monkeypatch):
         "app.algorithms.cfkg.inference.Neo4jConnection.get_driver",
         lambda: object(),
     )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference.load_reranker_bundle",
+        lambda: None,
+    )
 
     ranked = _rank_candidate_pool(
         bundle=bundle,
@@ -328,6 +541,158 @@ def test_rank_candidate_pool_combines_recall_cfkg_and_profile(monkeypatch):
     assert ranked[0]["score_breakdown"]["profile"] == 0.09
     assert ranked[1]["score_breakdown"]["graph_cf"] == 0.0
     assert ranked[1]["score_breakdown"]["cfkg"] == 0.35
+
+
+def test_reranker_artifact_round_trip_scores_positive_higher(tmp_path):
+    positive_feature = build_reranker_feature_map(
+        recall_score=0.8,
+        cfkg_score=0.9,
+        profile_score=0.6,
+        recall_sources=["graph_cf", "graph_content"],
+        negative_signals=[],
+    )
+    negative_feature = build_reranker_feature_map(
+        recall_score=0.1,
+        cfkg_score=0.2,
+        profile_score=0.0,
+        recall_sources=["graph_content"],
+        negative_signals=["skip_actor"],
+    )
+    feature_rows = [positive_feature, negative_feature, positive_feature, negative_feature]
+    labels = [1, 0, 1, 0]
+
+    artifact = train_reranker_model(
+        feature_rows,
+        labels,
+        iterations=300,
+        learning_rate=0.1,
+        l2=0.001,
+    )
+    output_path = tmp_path / "reranker.json"
+    saved_path = save_reranker_artifact(artifact, output_path)
+    bundle = load_reranker_bundle(saved_path)
+
+    positive_score, positive_contrib = score_reranker_features(bundle, positive_feature)
+    negative_score, negative_contrib = score_reranker_features(bundle, negative_feature)
+
+    assert Path(saved_path).exists()
+    assert bundle["metrics"]["training_row_count"] == 4
+    assert positive_score > negative_score
+    assert math.isfinite(positive_contrib["cfkg_score"])
+    assert math.isfinite(negative_contrib["negative_signal_count"])
+
+
+def test_reranker_scoring_supports_older_feature_sets(tmp_path):
+    artifact = {
+        "feature_names": ["recall_score", "cfkg_score", "profile_score"],
+        "weights": [1.2, 0.8, 0.4],
+        "bias": -0.2,
+        "means": [0.0, 0.0, 0.0],
+        "scales": [1.0, 1.0, 1.0],
+        "metrics": {"training_row_count": 1},
+    }
+    output_path = tmp_path / "legacy-reranker.json"
+    saved_path = save_reranker_artifact(artifact, output_path)
+    bundle = load_reranker_bundle(saved_path)
+
+    score, contribution_map = score_reranker_features(
+        bundle,
+        build_reranker_feature_map(
+            recall_score=0.7,
+            cfkg_score=0.8,
+            profile_score=0.6,
+            recall_sources=["graph_cf"],
+            negative_signals=[],
+        ),
+    )
+
+    assert score > 0.5
+    assert set(contribution_map) == {"recall_score", "cfkg_score", "profile_score"}
+
+
+def test_rank_candidate_pool_uses_learned_reranker_when_available(monkeypatch):
+    bundle = {
+        "entity_key_to_id": {"user:1": 0},
+        "relation_name_to_id": {"interact": 0},
+        "movie_entity_ids": [1, 2],
+        "movie_entity_id_to_mid": {1: "m1", 2: "m2"},
+        "entity_id_to_label": {1: "Movie 1", 2: "Movie 2"},
+        "model": object(),
+    }
+    candidate_items = [
+        {
+            "movie_id": "m1",
+            "title": "Movie 1",
+            "recall_score": 0.1,
+            "source": "graph_cf",
+            "source_algorithms": ["graph_cf"],
+            "reasons": ["cf recall"],
+        },
+        {
+            "movie_id": "m2",
+            "title": "Movie 2",
+            "recall_score": 1.0,
+            "source": "graph_content",
+            "source_algorithms": ["graph_content"],
+            "reasons": ["content recall"],
+        },
+    ]
+
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference._score_user_candidates",
+        lambda **kwargs: [
+            {"movie_id": "m1", "title": "Movie 1", "score": 0.9},
+            {"movie_id": "m2", "title": "Movie 2", "score": 0.1},
+        ],
+    )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference.fetch_movie_graph_profile_map",
+        lambda driver, movie_ids, timeout_ms=None: {},
+    )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference.score_movie_against_user_profile",
+        lambda movie_profile, user_profile: (0.0, [], []),
+    )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference.Neo4jConnection.get_driver",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference.load_reranker_bundle",
+        lambda: {"path": "memory://reranker"},
+    )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.inference.score_reranker_features",
+        lambda bundle, feature_map: (
+            feature_map["cfkg_score"],
+            {
+                "recall_score": 0.0,
+                "cfkg_score": feature_map["cfkg_score"],
+                "profile_score": 0.0,
+                "source_count": 0.0,
+                "has_cf_source": 0.0,
+                "has_content_source": 0.0,
+                "has_ppr_source": 0.0,
+                "negative_signal_count": 0.0,
+            },
+        ),
+    )
+
+    ranked = _rank_candidate_pool(
+        bundle=bundle,
+        user_id=1,
+        candidate_items=candidate_items,
+        seen_movie_ids=[],
+        user_profile={"positive_features": {"genres": {"科幻": 1.0}}},
+        seed_movie_ids=["m_seed"],
+        timeout_ms=800,
+        ranking_mode="pipeline",
+        limit=5,
+    )
+
+    assert [item["movie_id"] for item in ranked] == ["m1", "m2"]
+    assert ranked[0]["score_breakdown"]["cfkg"] == 1.0
+    assert "profile" not in ranked[0]["score_breakdown"]
 
 
 def test_cfkg_explain_payload_adds_meta_path_template(monkeypatch):
