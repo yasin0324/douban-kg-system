@@ -630,17 +630,22 @@ assert requests.get(f"{base_url}/api/graph/movie/1292052?depth=1&node_limit=150&
 - [x] 实现基于图内容的推荐算法（类型/导演/演员命中 + 画像重排）
 - [x] 实现图协同过滤（CF）分支，并纳入正负反馈约束
 - [x] 实现混合推荐策略（PPR + Content + CF + 动态门控）
+- [x] 实现传统论文基线 `ItemCF / TF-IDF`
+- [x] 完成 `CFKG` 默认主链路与知识图谱嵌入推理接入
 - [x] 完成推荐 API 接口联调与冷启动/重刷机制
 - [x] 完成首页推荐预览、推荐中心、解释抽屉前端页面
-- [x] 完成推荐系统测试与全链路构建验证
+- [x] 完成推荐系统测试、离线评估脚本与报告输出
 
 #### 3.30 交付物
 
 - 推荐技术文档（`documents/kg_technical_doc.md`）
+- 论文 2.5 节提纲稿（推荐系统设计与实现）
+- 离线评估脚本与报告（`db-backend/scripts/evaluate_recommendations.py`、`db-backend/reports/`）
 - PPR 实现（`db-backend/app/algorithms/graph_ppr.py`）
 - 图内容推荐实现（`db-backend/app/algorithms/graph_content.py`）
 - 图协同过滤实现（`db-backend/app/algorithms/graph_cf.py`）
 - 混合推荐调度器（`db-backend/app/algorithms/hybrid_manager.py`）
+- `ItemCF` 与 `TF-IDF` 基线实现（`db-backend/app/algorithms/item_cf.py`、`db-backend/app/algorithms/tfidf_content.py`）
 - 推荐服务与 API（`db-backend/app/services/recommend_service.py`、`db-backend/app/routers/recommend.py`）
 - 推荐页与首页预览（`db-frontend/src/views/RecommendView.vue`、`db-frontend/src/views/HomeView.vue`）
 
@@ -648,11 +653,13 @@ assert requests.get(f"{base_url}/api/graph/movie/1292052?depth=1&node_limit=150&
 
 **功能标准：**
 
-- PPR、Content、CF、Hybrid 四种算法可独立运行
+- `ItemCF / TF-IDF / CF / Content / PPR / Hybrid / CFKG` 七种算法可用于实验对照
+- 首页与推荐页继续保持 `CFKG` 作为默认主推荐入口
 - 推荐 API 支持算法切换
 - 首页与推荐页能展示真实个性化结果并支持重新生成
 - 推荐结果可在前端页面正常展示
 - 推荐解释抽屉可展示画像理由、图谱证据小图和算法指标
+- 离线评估脚本可输出 JSON 与 Markdown 报告
 
 **可观察标准：**
 
@@ -672,11 +679,11 @@ assert requests.get(f"{base_url}/api/graph/movie/1292052?depth=1&node_limit=150&
 
 ```python
 resp = requests.get(
-    f"{base_url}/api/recommend/personal?algorithm=hybrid&limit=10",
+    f"{base_url}/api/recommend/personal?algorithm=cfkg&limit=10",
     headers={"Authorization": f"Bearer {token}"},
 )
 assert resp.status_code == 200
-assert resp.json()["algorithm"] == "hybrid"
+assert resp.json()["algorithm"] == "cfkg"
 assert "items" in resp.json()
 ```
 
@@ -695,7 +702,7 @@ assert "items" in resp.json()
 - ✅ 成功采集1000+部电影的完整数据
 - ✅ 知识图谱包含至少7000个节点和15000条边
 - ✅ 先完成非推荐主链路打通（前后端+图谱可视化+数据连通）
-- ✅ 实现核心推荐算法（PPR、内容、CF、混合），统一由用户画像驱动
+- ✅ 实现核心推荐算法（ItemCF、TF-IDF、PPR、内容、CF、混合、CFKG），统一纳入实验框架
 - ✅ 推荐算法支持多种策略选择与自动降级
 - ✅ FastAPI后端接口完整可用
 - ✅ Vue3前端界面完整可用

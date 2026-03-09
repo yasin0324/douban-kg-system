@@ -22,6 +22,11 @@ from app.algorithms.graph_cf import get_graph_cf_recommendations
 from app.algorithms.graph_content import get_graph_content_recommendations
 from app.algorithms.graph_ppr import get_graph_ppr_recommendations
 from app.algorithms.hybrid_manager import manager as hybrid_manager
+from app.algorithms.item_cf import build_itemcf_explain_signals, get_itemcf_recommendations
+from app.algorithms.tfidf_content import (
+    build_tfidf_explain_signals,
+    get_tfidf_recommendations,
+)
 from app.db.neo4j import Neo4jConnection
 from app.recommendation_cache import (
     get_movie_brief_cache,
@@ -40,6 +45,8 @@ SOURCE_NAME_MAP = {
     "graph_cf": "cf",
     "graph_content": "content",
     "graph_ppr": "ppr",
+    "itemcf": "itemcf",
+    "tfidf": "tfidf",
     "cfkg": "cfkg",
     "cf": "cf",
     "content": "content",
@@ -56,12 +63,16 @@ SIGNAL_LABELS = {
     "content": "图谱内容相似信号",
     "ppr": "图谱游走信号",
     "hybrid": "混合推荐融合信号",
+    "itemcf": "ItemCF 协同信号",
+    "tfidf": "TF-IDF 内容信号",
 }
 META_PATH_TEMPLATE_LABELS = {
     "HAS_GENRE": "User -> Movie -> Genre -> Movie",
     "DIRECTED": "User -> Movie -> Director -> Movie",
     "ACTED_IN": "User -> Movie -> Actor -> Movie",
 }
+BASELINE_NO_FALLBACK_ALGORITHMS = {"itemcf", "tfidf"}
+VALID_ALGORITHMS = {"cfkg", "cf", "content", "ppr", "hybrid", "itemcf", "tfidf"}
 MOVIE_BRIEF_QUERY = """
 UNWIND $movie_ids AS requested_id
 MATCH (m:Movie {mid: requested_id})
@@ -320,12 +331,29 @@ def _build_user_profile(conn, user_id: int) -> Dict[str, Any]:
 
 
 async def _dispatch_personal_algorithm(
+    conn,
     algorithm: str,
     user_id: int,
     user_profile: Dict[str, Any],
     seen_movie_ids: List[str],
     limit: int,
 ) -> List[Dict[str, Any]]:
+    if algorithm == "itemcf":
+        return await get_itemcf_recommendations(
+            conn=conn,
+            user_id=user_id,
+            user_profile=user_profile,
+            seen_movie_ids=seen_movie_ids,
+            limit=limit,
+        )
+    if algorithm == "tfidf":
+        return await get_tfidf_recommendations(
+            conn=conn,
+            user_id=user_id,
+            user_profile=user_profile,
+            seen_movie_ids=seen_movie_ids,
+            limit=limit,
+        )
     if algorithm == "cfkg":
         return await get_cfkg_recommendations(
             user_id=user_id,
@@ -589,9 +617,219 @@ def _normalize_requested_algorithm(algorithm: str | None) -> str:
     if not algorithm:
         return "cfkg"
     normalized = str(algorithm).lower().strip()
-    if normalized == "hybrid":
-        return "cfkg"
+    if normalized == "tf-idf":
+        normalized = "tfidf"
+    if normalized not in VALID_ALGORITHMS:
+        raise HTTPException(status_code=400, detail="不支持的算法类型")
     return normalized
+
+
+def _build_movie_node(movie: Dict[str, Any], node_id: str | None = None) -> Dict[str, Any]:
+    return {
+        "id": node_id or f"movie_{movie['mid']}",
+        "label": movie["title"],
+        "type": "Movie",
+        "properties": {
+            "rating": movie.get("rating"),
+            "year": movie.get("year"),
+            "cover": movie.get("cover"),
+        },
+    }
+
+
+def _build_itemcf_explain_payload(
+    target_brief: Dict[str, Any],
+    brief_map: Dict[str, Dict[str, Any]],
+    user_profile: Dict[str, Any],
+    profile_reasons: List[str],
+    negative_signals: List[str],
+    signal_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    support_movies = signal_data.get("support_movies") or []
+    signal_node_id = "signal_itemcf"
+    nodes_map = {
+        f"movie_{target_brief['mid']}": _build_movie_node(target_brief),
+        signal_node_id: {
+            "id": signal_node_id,
+            "label": SIGNAL_LABELS["itemcf"],
+            "type": "Signal",
+            "properties": None,
+        },
+    }
+    edges = []
+    reason_paths = []
+    support_titles = []
+    collaborative_signals = []
+
+    for support in support_movies:
+        movie_id = support["movie_id"]
+        support_brief = brief_map.get(movie_id, {"mid": movie_id, "title": support.get("title") or movie_id})
+        nodes_map[f"movie_{movie_id}"] = _build_movie_node(
+            {
+                "mid": movie_id,
+                "title": support_brief.get("title") or movie_id,
+                "rating": support_brief.get("rating"),
+                "year": support_brief.get("year"),
+                "cover": support_brief.get("cover"),
+            }
+        )
+        edges.append({"source": f"movie_{movie_id}", "target": signal_node_id, "type": "ITEMCF_SUPPORT"})
+        support_titles.append(support_brief.get("title") or movie_id)
+        collaborative_signals.append(f"共同正向反馈用户 {int(support.get('overlap_count') or 0)} 人")
+        reason_paths.append({
+            "representative_mid": movie_id,
+            "representative_title": support_brief.get("title") or movie_id,
+            "relation_type": "ITEMCF_SIMILARITY",
+            "relation_label": "协同过滤相似电影",
+            "template": "History Movie -> Similar Users -> Movie",
+            "matched_entities": [
+                f"相似度 {float(support.get('similarity') or 0.0):.3f}",
+                f"共同正向反馈用户 {int(support.get('overlap_count') or 0)} 人",
+            ],
+        })
+
+    edges.append({"source": signal_node_id, "target": f"movie_{target_brief['mid']}", "type": "ITEMCF_SIGNAL"})
+    matched_entities = []
+    if support_titles:
+        matched_entities.append({
+            "type": "支持历史电影",
+            "items": dedupe_preserve_order(support_titles),
+        })
+    if collaborative_signals:
+        matched_entities.append({
+            "type": "协同过滤信号",
+            "items": dedupe_preserve_order(collaborative_signals),
+        })
+
+    return {
+        "algorithm": "itemcf",
+        "target_movie": target_brief,
+        "representative_movies": [
+            brief_map.get(support["movie_id"], {"mid": support["movie_id"], "title": support.get("title") or support["movie_id"]})
+            for support in support_movies
+        ],
+        "profile_highlights": user_profile["profile_highlights"],
+        "profile_reasons": profile_reasons[:3],
+        "negative_signals": negative_signals[:2],
+        "nodes": list(nodes_map.values()),
+        "edges": edges,
+        "reason_paths": reason_paths,
+        "matched_entities": matched_entities,
+        "meta": {
+            "has_graph_evidence": False,
+            "representative_movie_count": len(support_movies),
+            "cold_start": bool(user_profile["summary"]["cold_start"]),
+        },
+    }
+
+
+def _build_tfidf_explain_payload(
+    target_brief: Dict[str, Any],
+    brief_map: Dict[str, Dict[str, Any]],
+    user_profile: Dict[str, Any],
+    profile_reasons: List[str],
+    negative_signals: List[str],
+    signal_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    support_movies = signal_data.get("support_movies") or []
+    matched_terms = signal_data.get("matched_terms") or []
+    signal_node_id = "signal_tfidf"
+    nodes_map = {
+        f"movie_{target_brief['mid']}": _build_movie_node(target_brief),
+        signal_node_id: {
+            "id": signal_node_id,
+            "label": SIGNAL_LABELS["tfidf"],
+            "type": "Signal",
+            "properties": None,
+        },
+    }
+    edges = []
+    reason_paths = []
+    support_titles = []
+
+    for term in matched_terms[:4]:
+        feature_node_id = f"feature_{term}"
+        nodes_map[feature_node_id] = {
+            "id": feature_node_id,
+            "label": term,
+            "type": "Feature",
+            "properties": None,
+        }
+        edges.append({"source": feature_node_id, "target": f"movie_{target_brief['mid']}", "type": "TFIDF_MATCH"})
+        edges.append({"source": signal_node_id, "target": feature_node_id, "type": "TFIDF_SIGNAL"})
+
+    for support in support_movies:
+        movie_id = support["movie_id"]
+        support_brief = brief_map.get(movie_id, {"mid": movie_id, "title": support.get("title") or movie_id})
+        nodes_map[f"movie_{movie_id}"] = _build_movie_node(
+            {
+                "mid": movie_id,
+                "title": support_brief.get("title") or movie_id,
+                "rating": support_brief.get("rating"),
+                "year": support_brief.get("year"),
+                "cover": support_brief.get("cover"),
+            }
+        )
+        support_titles.append(support_brief.get("title") or movie_id)
+        support_term_items = support.get("matched_terms") or matched_terms[:3]
+        if support_term_items:
+            for term in support_term_items[:3]:
+                feature_node_id = f"feature_{term}"
+                if feature_node_id not in nodes_map:
+                    nodes_map[feature_node_id] = {
+                        "id": feature_node_id,
+                        "label": term,
+                        "type": "Feature",
+                        "properties": None,
+                    }
+                    edges.append({"source": feature_node_id, "target": f"movie_{target_brief['mid']}", "type": "TFIDF_MATCH"})
+                edges.append({"source": f"movie_{movie_id}", "target": feature_node_id, "type": "TFIDF_SUPPORT"})
+        else:
+            edges.append({"source": f"movie_{movie_id}", "target": signal_node_id, "type": "TFIDF_SUPPORT"})
+        reason_paths.append({
+            "representative_mid": movie_id,
+            "representative_title": support_brief.get("title") or movie_id,
+            "relation_type": "TFIDF_MATCH",
+            "relation_label": "文本特征相似",
+            "template": "History Movie -> Shared Terms -> Movie",
+            "matched_entities": support_term_items[:4],
+        })
+
+    if not support_movies:
+        edges.append({"source": signal_node_id, "target": f"movie_{target_brief['mid']}", "type": "TFIDF_SIGNAL"})
+
+    matched_entities = []
+    if matched_terms:
+        matched_entities.append({
+            "type": "文本/内容特征",
+            "items": matched_terms[:6],
+        })
+    if support_titles:
+        matched_entities.append({
+            "type": "支持历史电影",
+            "items": dedupe_preserve_order(support_titles),
+        })
+
+    return {
+        "algorithm": "tfidf",
+        "target_movie": target_brief,
+        "representative_movies": [
+            brief_map.get(support["movie_id"], {"mid": support["movie_id"], "title": support.get("title") or support["movie_id"]})
+            for support in support_movies
+        ],
+        "profile_highlights": user_profile["profile_highlights"],
+        "profile_reasons": profile_reasons[:3],
+        "negative_signals": negative_signals[:2],
+        "nodes": list(nodes_map.values()),
+        "edges": edges,
+        "reason_paths": reason_paths,
+        "matched_entities": matched_entities,
+        "meta": {
+            "has_graph_evidence": False,
+            "representative_movie_count": len(support_movies),
+            "cold_start": bool(user_profile["summary"]["cold_start"]),
+        },
+    }
 
 
 async def build_personal_recommendation_payload(
@@ -613,12 +851,14 @@ async def build_personal_recommendation_payload(
     seen_movie_ids = dedupe_preserve_order(hard_excludes + reroll_excludes)
 
     fallback_used = cold_start and algorithm == "cfkg"
+    baseline_empty_result = False
     candidate_limit = min(max(limit * 4, 80), 220)
     raw_items: List[Dict[str, Any]] = []
 
     dispatch_started_at = time.perf_counter()
     if not fallback_used:
         raw_items = await _dispatch_personal_algorithm(
+            conn=conn,
             algorithm=algorithm,
             user_id=user_id,
             user_profile=user_profile,
@@ -626,7 +866,11 @@ async def build_personal_recommendation_payload(
             limit=candidate_limit,
         )
         if not raw_items:
-            fallback_used = True
+            if algorithm in BASELINE_NO_FALLBACK_ALGORITHMS:
+                baseline_empty_result = True
+                cold_start = True
+            else:
+                fallback_used = True
         elif cold_start and algorithm != "cfkg" and len(raw_items) < max(4, limit // 2):
             fallback_items = _get_fallback_recommendations(
                 algorithm=algorithm,
@@ -665,7 +909,7 @@ async def build_personal_recommendation_payload(
         (
             "recommend.personal timing user_id=%s algorithm=%s profile_build_ms=%.1f "
             "algorithm_dispatch_ms=%.1f brief_fetch_ms=%.1f total_ms=%.1f "
-            "fallback_used=%s cold_start=%s candidate_count=%s response_count=%s"
+            "fallback_used=%s cold_start=%s baseline_empty_result=%s candidate_count=%s response_count=%s"
         ),
         user_id,
         algorithm,
@@ -675,14 +919,16 @@ async def build_personal_recommendation_payload(
         total_ms,
         fallback_used,
         cold_start,
+        baseline_empty_result,
         len(raw_items),
         len(ordered_items),
     )
+    user_profile["summary"]["cold_start"] = cold_start
 
     return {
         "algorithm": algorithm,
         "cold_start": cold_start,
-        "generation_mode": "cold_start" if fallback_used else "profile",
+        "generation_mode": "cold_start" if fallback_used or baseline_empty_result else "profile",
         "profile_summary": user_profile["summary"],
         "profile_highlights": user_profile["profile_highlights"],
         "items": ordered_items,
@@ -723,6 +969,54 @@ def build_recommendation_explain_payload(
         _, profile_reasons, negative_signals = score_movie_against_user_profile(
             target_profile,
             user_profile,
+        )
+
+    if algorithm == "itemcf":
+        signal_data = build_itemcf_explain_signals(
+            conn=conn,
+            user_profile=user_profile,
+            target_mid=target_mid,
+        )
+        support_movie_ids = [item["movie_id"] for item in signal_data.get("support_movies") or []]
+        if support_movie_ids:
+            brief_map.update(
+                _fetch_movie_brief_map_safe(
+                    conn,
+                    support_movie_ids,
+                    timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS,
+                )
+            )
+        return _build_itemcf_explain_payload(
+            target_brief=brief_map[target_mid],
+            brief_map=brief_map,
+            user_profile=user_profile,
+            profile_reasons=profile_reasons,
+            negative_signals=negative_signals,
+            signal_data=signal_data,
+        )
+
+    if algorithm == "tfidf":
+        signal_data = build_tfidf_explain_signals(
+            conn=conn,
+            user_profile=user_profile,
+            target_mid=target_mid,
+        )
+        support_movie_ids = [item["movie_id"] for item in signal_data.get("support_movies") or []]
+        if support_movie_ids:
+            brief_map.update(
+                _fetch_movie_brief_map_safe(
+                    conn,
+                    support_movie_ids,
+                    timeout_ms=DEFAULT_EXPLAIN_TIMEOUT_MS,
+                )
+            )
+        return _build_tfidf_explain_payload(
+            target_brief=brief_map[target_mid],
+            brief_map=brief_map,
+            user_profile=user_profile,
+            profile_reasons=profile_reasons,
+            negative_signals=negative_signals,
+            signal_data=signal_data,
         )
 
     valid_representative_ids = [

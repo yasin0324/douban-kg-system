@@ -455,13 +455,16 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
 
 | 方法 | 路径                                                   | 说明                         | 认证     |
 | ---- | ------------------------------------------------------ | ---------------------------- | -------- |
-| GET  | `/api/recommend/personal?algorithm=hybrid&limit=10`    | **基于用户偏好的个性化推荐** | **需要** |
+| GET  | `/api/recommend/personal?algorithm=cfkg&limit=10`      | **基于用户偏好的个性化推荐** | **需要** |
 | GET  | `/api/recommend/explain?target_mid={mid}&algorithm=cf` | 推荐结果解释图               | **需要** |
 
 **`algorithm` 参数可选值**：
 
 | 值        | 算法                  | 论文中的学术名称        | 原理简述                                       |
 | --------- | --------------------- | ----------------------- | ---------------------------------------------- |
+| `cfkg`    | CFKG                  | Collaborative Filtering with Knowledge Graph | 以图协同召回 + 知识图谱嵌入排序构成默认主链路 |
+| `itemcf`  | ItemCF                | Item-based Collaborative Filtering | 只基于用户正向行为共现关系的传统协同过滤基线 |
+| `tfidf`   | TF-IDF                | TF-IDF Content-Based Filtering | 只基于电影文本/元数据相似度的纯内容基线 |
 | `ppr`     | Personalized PageRank | 个性化 PageRank         | 以用户画像派生的正向电影上下文为起点在图上随机游走 |
 | `content` | 图内容推荐            | Graph Content-Based Filtering | 根据图谱中的类型、导演、演员等实体命中召回并重排 |
 | `cf`      | 图协同过滤推荐        | Graph Collaborative Filtering | 基于 `User-RATED-Movie` 评分图寻找相似用户邻域 |
@@ -472,7 +475,9 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
 - `limit` 默认 `10`，最大 `50`
 - `exclude_movie_ids`：仅在“重新生成”时使用，尽量避开上一批结果
 - `reroll_token`：重新生成请求的随机标识，用于后端受控探索重排
-- 个性化推荐在用户行为不足时，自动降级为各算法风格化 fallback 或 `hybrid` 统一冷启动推荐
+- 个性化推荐默认链路为 `cfkg`
+- 图谱算法在用户行为不足时，可自动降级为各自风格化 fallback 或 `cfkg` 统一冷启动推荐
+- `itemcf` / `tfidf` 作为论文对照基线，不做偷偷切换；若信号不足则直接返回空结果并标记冷启动
 
 **个性化推荐的核心逻辑**（`/api/recommend/personal`）：
 
@@ -490,7 +495,10 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
     - 正负向电影上下文
     - 类型 / 导演 / 演员 / 地区 / 语言偏好
     - 代表兴趣电影
-4. 四种算法均以画像作为入口运行：
+4. 七种算法均以画像或画像派生特征作为入口运行：
+    - **CFKG**：图协同召回 + 知识图谱嵌入排序，作为默认线上主链路
+    - **ItemCF**：只使用物品共现关系，作为传统行为基线
+    - **TF-IDF**：只使用文本/元数据相似度，作为传统内容基线
     - **PPR**：从画像派生的正向电影上下文启动局部图游走
     - **Content**：按图谱实体命中召回，再结合画像重排
     - **CF**：在 Neo4j 评分图中构建近邻，结合弱负反馈降权
@@ -501,11 +509,11 @@ CREATE INDEX idx_movies_score ON movies(douban_score);
     - 不排除仅想看电影
 6. 解释接口不再要求前端传种子电影，而是后端自动选择少量代表兴趣电影用于抽屉解释
 
-**响应示例** (`GET /api/recommend/personal?algorithm=hybrid&limit=5`)：
+**响应示例** (`GET /api/recommend/personal?algorithm=cfkg&limit=5`)：
 
 ```json
 {
-    "algorithm": "hybrid",
+    "algorithm": "cfkg",
     "cold_start": false,
     "generation_mode": "profile",
     "profile_summary": {
@@ -746,7 +754,7 @@ async def lifespan(app: FastAPI):
 
 | 子阶段          | 工期   | 目标           | 关键交付                                        |
 | --------------- | ------ | -------------- | ----------------------------------------------- |
-| F. 推荐算法实现 | 3~4 天 | 推荐功能可用   | PPR、Content、CF、Hybrid、推荐服务层            |
+| F. 推荐算法实现 | 3~4 天 | 推荐功能可用   | ItemCF、TF-IDF、PPR、Content、CF、Hybrid、CFKG、推荐服务层 |
 | G. 个性化与缓存 | 1~2 天 | 个性化推荐稳定 | `recommend/personal`、CF 相似度缓存、冷启动降级 |
 | H. 评估与压测   | 1 天   | 可量化验收     | 离线指标脚本、性能压测报告、参数调优记录        |
 
@@ -886,7 +894,11 @@ CACHE_TTL_SECONDS=300
 
 推荐模块除了延迟，还需要质量验收：
 
-- **离线指标**：`Precision@10`、`Recall@10`、`NDCG@10`、覆盖率、多样性
-- **切分方式**：按用户或时间切分训练/验证集，避免数据泄漏
+- **离线指标**：`Precision@10`、`Recall@10`、`NDCG@10`、覆盖率（Coverage）、用户覆盖率（User Coverage）、多样性（Diversity）
+- **切分方式**：按用户时间序列切分历史窗口与未来窗口，避免数据泄漏
 - **在线指标（可选）**：点击率（CTR）、收藏率、停留时长
-- **版本对比**：固定评估集，对比 `ppr/content/cf/hybrid` 四种算法并记录权重配置
+- **版本对比**：固定评估集，对比 `itemcf/tfidf/cf/content/ppr/hybrid/cfkg` 七种算法
+- **评估协议**：历史窗口使用评分、喜欢、想看构建画像；未来窗口仅将 `rating >= 4.0` 与 `like` 视为主相关真值
+- **产出文件**：
+  - `db-backend/reports/recommendation_eval_latest.json`
+  - `db-backend/reports/recommendation_eval_latest.md`

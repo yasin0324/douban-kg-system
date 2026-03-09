@@ -357,7 +357,7 @@ db-frontend/
 - ✅ 对接 `GET /api/recommend/personal`，支持 `algorithm / limit / exclude_movie_ids / reroll_token`
 - ✅ 对接 `GET /api/recommend/explain`，用于解释抽屉的证据小图与画像解释
 - ✅ 首页与推荐页统一采用“用户画像驱动”口径，不展示主界面的显式依据电影
-- ✅ 推荐页支持四算法切换：`hybrid / cf / content / ppr`
+- ✅ 首页与推荐页当前固定使用 `CFKG` 默认主链路；多算法参数保留在后端接口层供实验与调试
 - ✅ 推荐卡片支持轻量反馈：`喜欢 / 想看 / 去评分`
 - ✅ 解释抽屉支持三层信息：推荐理由、关系可视化、算法指标
 - ✅ 浏览器端实现“30 分钟内、按算法独立”的推荐重刷历史，仅在“重新生成”时避让上一批结果

@@ -213,21 +213,11 @@ def _get_or_create_behavior(movie_behaviors: Dict[str, Dict[str, Any]], mid: str
     return movie_behaviors[mid]
 
 
-def _build_recommendation_movie_behaviors(conn, user_id: int) -> Dict[str, Dict[str, Any]]:
+def _build_recommendation_movie_behaviors_from_rows(
+    rating_rows: List[Dict[str, Any]] | None,
+    pref_rows: List[Dict[str, Any]] | None,
+) -> Dict[str, Dict[str, Any]]:
     movie_behaviors: Dict[str, Dict[str, Any]] = {}
-
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "SELECT mid, rating FROM user_movie_ratings WHERE user_id = %s",
-            (user_id,),
-        )
-        rating_rows = cursor.fetchall()
-
-        cursor.execute(
-            "SELECT mid, pref_type FROM user_movie_prefs WHERE user_id = %s",
-            (user_id,),
-        )
-        pref_rows = cursor.fetchall()
 
     for row in rating_rows:
         mid = row["mid"]
@@ -275,8 +265,40 @@ def _build_recommendation_movie_behaviors(conn, user_id: int) -> Dict[str, Dict[
     return movie_behaviors
 
 
-def build_user_recommendation_profile(conn, user_id: int) -> Dict[str, Any]:
-    movie_behaviors = _build_recommendation_movie_behaviors(conn, user_id)
+def _build_recommendation_movie_behaviors(conn, user_id: int) -> Dict[str, Dict[str, Any]]:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT mid, rating FROM user_movie_ratings WHERE user_id = %s",
+            (user_id,),
+        )
+        rating_rows = cursor.fetchall()
+
+        cursor.execute(
+            "SELECT mid, pref_type FROM user_movie_prefs WHERE user_id = %s",
+            (user_id,),
+        )
+        pref_rows = cursor.fetchall()
+
+    return _build_recommendation_movie_behaviors_from_rows(
+        rating_rows=rating_rows,
+        pref_rows=pref_rows,
+    )
+
+
+def build_user_recommendation_profile_from_rows(
+    rating_rows: List[Dict[str, Any]] | None,
+    pref_rows: List[Dict[str, Any]] | None,
+) -> Dict[str, Any]:
+    movie_behaviors = _build_recommendation_movie_behaviors_from_rows(
+        rating_rows=rating_rows or [],
+        pref_rows=pref_rows or [],
+    )
+    return _build_recommendation_profile_from_behaviors(movie_behaviors)
+
+
+def _build_recommendation_profile_from_behaviors(
+    movie_behaviors: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
     ordered_behaviors = sorted(
         movie_behaviors.values(),
         key=lambda item: (
@@ -349,6 +371,11 @@ def build_user_recommendation_profile(conn, user_id: int) -> Dict[str, Any]:
         "hard_exclude_movie_ids": hard_exclude_movie_ids,
         "summary": summary,
     }
+
+
+def build_user_recommendation_profile(conn, user_id: int) -> Dict[str, Any]:
+    movie_behaviors = _build_recommendation_movie_behaviors(conn, user_id)
+    return _build_recommendation_profile_from_behaviors(movie_behaviors)
 
 
 def get_recommendation_excluded_movie_ids(conn, user_id: int, limit: int | None = None) -> List[str]:

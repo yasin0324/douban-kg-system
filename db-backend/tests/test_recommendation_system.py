@@ -370,6 +370,54 @@ def test_recommend_route_defaults_to_cfkg(monkeypatch):
     assert captured["user_id"] == 5
 
 
+def test_recommend_route_supports_itemcf(monkeypatch):
+    app = FastAPI()
+    app.include_router(recommend.router)
+
+    def override_current_user():
+        return {"id": 13}
+
+    def override_conn():
+        yield object()
+
+    captured = {}
+
+    async def fake_payload(**kwargs):
+        captured.update(kwargs)
+        return {
+            "algorithm": "itemcf",
+            "cold_start": False,
+            "generation_mode": "profile",
+            "profile_summary": {"rating_count": 5, "likes": 2, "wants": 1},
+            "profile_highlights": [],
+            "items": [{
+                "movie": {"mid": "m8", "title": "Movie 8"},
+                "score": 0.66,
+                "reasons": ["与《Movie 1》的正向用户群高度重合"],
+                "source_algorithms": ["itemcf"],
+                "score_breakdown": {"itemcf": 0.66},
+            }],
+        }
+
+    app.dependency_overrides[recommend.get_current_user] = override_current_user
+    app.dependency_overrides[recommend.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        recommend.recommend_service,
+        "build_personal_recommendation_payload",
+        fake_payload,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/recommend/personal?algorithm=itemcf&limit=3")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["algorithm"] == "itemcf"
+    assert payload["items"][0]["score_breakdown"] == {"itemcf": 0.66}
+    assert captured["algorithm"] == "itemcf"
+    assert captured["user_id"] == 13
+
+
 def test_recommend_explain_route_returns_graph_payload(monkeypatch):
     app = FastAPI()
     app.include_router(recommend.router)
@@ -419,6 +467,60 @@ def test_recommend_explain_route_returns_graph_payload(monkeypatch):
     assert captured["target_mid"] == "m9"
     assert captured["algorithm"] == "cf"
     assert captured["conn"] is not None
+
+
+def test_recommend_explain_route_supports_tfidf(monkeypatch):
+    app = FastAPI()
+    app.include_router(recommend.router)
+
+    def override_current_user():
+        return {"id": 33}
+
+    def override_conn():
+        yield object()
+
+    captured = {}
+
+    def fake_explain(**kwargs):
+        captured.update(kwargs)
+        return {
+            "algorithm": "tfidf",
+            "target_movie": {"mid": "m3", "title": "Movie 3"},
+            "representative_movies": [{"mid": "m1", "title": "Movie 1"}],
+            "profile_highlights": [{"type": "genre", "label": "科幻"}],
+            "profile_reasons": ["偏好类型 科幻"],
+            "negative_signals": [],
+            "nodes": [{"id": "movie_m3", "label": "Movie 3", "type": "Movie"}],
+            "edges": [{"source": "feature_科幻", "target": "movie_m3", "type": "TFIDF_MATCH"}],
+            "reason_paths": [{
+                "representative_mid": "m1",
+                "representative_title": "Movie 1",
+                "relation_type": "TFIDF_MATCH",
+                "relation_label": "文本特征相似",
+                "template": "History Movie -> Shared Terms -> Movie",
+                "matched_entities": ["类型:科幻", "导演:诺兰"],
+            }],
+            "matched_entities": [{"type": "文本/内容特征", "items": ["类型:科幻", "导演:诺兰"]}],
+            "meta": {"has_graph_evidence": False, "representative_movie_count": 1},
+        }
+
+    app.dependency_overrides[recommend.get_current_user] = override_current_user
+    app.dependency_overrides[recommend.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        recommend.recommend_service,
+        "build_recommendation_explain_payload",
+        fake_explain,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/recommend/explain?target_mid=m3&algorithm=tfidf")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["algorithm"] == "tfidf"
+    assert payload["reason_paths"][0]["template"] == "History Movie -> Shared Terms -> Movie"
+    assert captured["algorithm"] == "tfidf"
+    assert captured["user_id"] == 33
 
 
 def test_recommend_explain_route_supports_cfkg(monkeypatch):

@@ -22,6 +22,8 @@ export const ALGORITHM_OPTIONS = [
 ];
 
 export const ALGORITHM_LABELS = {
+    itemcf: "ItemCF",
+    tfidf: "TF-IDF",
     hybrid: "混合推荐",
     ...Object.fromEntries(ALGORITHM_OPTIONS.map((item) => [item.value, item.label])),
 };
@@ -29,6 +31,8 @@ export const ALGORITHM_LABELS = {
 export const SOURCE_ALGORITHM_LABELS = {
     cfkg: "CFKG",
     hybrid: "混合推荐",
+    itemcf: "ItemCF",
+    tfidf: "TF-IDF",
     cf: "图协同过滤",
     content: "图内容推荐",
     ppr: "PPR",
@@ -38,6 +42,8 @@ export const SOURCE_ALGORITHM_LABELS = {
 export const SOURCE_ALGORITHM_COLORS = {
     cfkg: "linear-gradient(90deg, #00b51d, #3dd56d)",
     hybrid: "linear-gradient(90deg, #4f46e5, #7c3aed)",
+    itemcf: "linear-gradient(90deg, #0f172a, #475569)",
+    tfidf: "linear-gradient(90deg, #7c2d12, #ea580c)",
     cf: "linear-gradient(90deg, #0f766e, #14b8a6)",
     content: "linear-gradient(90deg, #ca8a04, #f59e0b)",
     ppr: "linear-gradient(90deg, #2563eb, #60a5fa)",

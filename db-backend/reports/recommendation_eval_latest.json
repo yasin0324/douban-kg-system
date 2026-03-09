@@ -1,0 +1,7 @@
+{
+  "status": "pending_real_run",
+  "protocol_name": "profile_based_time_split",
+  "note": "Run db-backend/scripts/evaluate_recommendations.py on the real database to regenerate this file.",
+  "generated_at": null,
+  "summary": {}
+}
