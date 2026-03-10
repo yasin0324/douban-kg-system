@@ -4,15 +4,15 @@ from fastapi.testclient import TestClient
 
 from app import dependencies
 from app.routers import users
-from app.services import admin_service, person_service
+from app.services import admin_service, person_service, user_service
 
 
 class FakeCursor:
-    def __init__(self, fetchone_results=None, fetchall_results=None):
+    def __init__(self, fetchone_results=None, fetchall_results=None, rowcount=0):
         self.fetchone_results = list(fetchone_results or [])
         self.fetchall_results = list(fetchall_results or [])
         self.queries = []
-        self.rowcount = 0
+        self.rowcount = rowcount
 
     def execute(self, sql, params=None):
         self.queries.append((sql, params))
@@ -111,3 +111,46 @@ def test_get_rating_returns_empty_payload_when_user_has_not_rated(monkeypatch):
         "comment_short": None,
         "rated_at": None,
     }
+
+
+def test_add_preference_commits_without_recommendation_side_effects():
+    cursor = FakeCursor(fetchone_results=[{"id": 1, "mid": "m1", "pref_type": "like", "created_at": "2026-03-10"}])
+    conn = FakeConn(cursor)
+
+    payload = user_service.add_preference(conn, user_id=7, mid="m1", pref_type="like")
+
+    assert conn.commit_called == 1
+    assert payload["pref_type"] == "like"
+    assert any("INSERT INTO user_movie_prefs" in sql for sql, _ in cursor.queries)
+
+
+def test_remove_preference_returns_true_without_recommendation_side_effects():
+    cursor = FakeCursor(rowcount=1)
+    conn = FakeConn(cursor)
+
+    ok = user_service.remove_preference(conn, user_id=7, mid="m1")
+
+    assert ok is True
+    assert conn.commit_called == 1
+
+
+def test_add_rating_commits_without_neo4j_or_recommendation_side_effects(monkeypatch):
+    monkeypatch.setattr(user_service, "check_movie_released", lambda conn, mid: None)
+    cursor = FakeCursor(fetchone_results=[{"id": 1, "mid": "m1", "rating": 4.5, "comment_short": None, "rated_at": "2026-03-10"}])
+    conn = FakeConn(cursor)
+
+    payload = user_service.add_rating(conn, user_id=7, mid="m1", rating=4.5)
+
+    assert conn.commit_called == 1
+    assert payload["rating"] == 4.5
+    assert any("INSERT INTO user_movie_ratings" in sql for sql, _ in cursor.queries)
+
+
+def test_remove_rating_returns_true_without_neo4j_or_recommendation_side_effects():
+    cursor = FakeCursor(rowcount=1)
+    conn = FakeConn(cursor)
+
+    ok = user_service.remove_rating(conn, user_id=7, mid="m1")
+
+    assert ok is True
+    assert conn.commit_called == 1

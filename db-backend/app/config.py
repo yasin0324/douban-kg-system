@@ -35,13 +35,6 @@ class Settings(BaseSettings):
     JWT_ACCESS_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_EXPIRE_DAYS: int = 7
 
-    # Cache
-    CACHE_TTL_SECONDS: int = 300
-    RECOMMEND_USER_PROFILE_CACHE_TTL_SECONDS: int = 120
-    RECOMMEND_USER_PROFILE_CACHE_MAXSIZE: int = 256
-    RECOMMEND_MOVIE_CACHE_TTL_SECONDS: int = 600
-    RECOMMEND_MOVIE_CACHE_MAXSIZE: int = 4096
-
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):

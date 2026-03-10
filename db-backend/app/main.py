@@ -1,16 +1,15 @@
 """
 FastAPI 应用入口 — 注册路由、中间件、生命周期管理
 """
-import time
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.algorithms.cfkg.inference import prewarm_cfkg_model
 from app.config import settings
-from app.db.mysql import init_pool, close_pool
+from app.db.mysql import close_pool, init_pool
 from app.db.neo4j import Neo4jConnection
 
 logger = logging.getLogger("uvicorn.error")
@@ -25,11 +24,6 @@ async def lifespan(app: FastAPI):
     init_pool()
     logger.info("正在初始化 Neo4j 驱动...")
     Neo4jConnection.get_driver()
-    logger.info("正在预热 CFKG 模型...")
-    try:
-        await prewarm_cfkg_model()
-    except Exception:
-        logger.warning("CFKG 模型预热异常，继续启动服务", exc_info=True)
     logger.info("数据库连接初始化完成")
     yield
     logger.info("正在关闭数据库连接...")
@@ -42,7 +36,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="豆瓣知识图谱 API",
-    description="基于 Neo4j 知识图谱的豆瓣电影查询、推荐与管理系统",
+    description="基于 Neo4j 知识图谱的豆瓣电影查询与管理系统",
     version="0.1.0",
     lifespan=lifespan,
 )
