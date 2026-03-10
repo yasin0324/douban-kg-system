@@ -356,6 +356,7 @@ async def _dispatch_personal_algorithm(
         )
     if algorithm == "cfkg":
         return await get_cfkg_recommendations(
+            conn=conn,
             user_id=user_id,
             user_profile=user_profile,
             seen_movie_ids=seen_movie_ids,
@@ -384,6 +385,7 @@ async def _dispatch_personal_algorithm(
         )
     if algorithm == "hybrid":
         return await hybrid_manager.get_hybrid_recommendations(
+            conn=conn,
             user_id=user_id,
             user_profile=user_profile,
             seen_movie_ids=seen_movie_ids,

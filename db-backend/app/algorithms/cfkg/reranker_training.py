@@ -5,9 +5,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.algorithms.common import (
+    build_weighted_user_profile,
+    dedupe_preserve_order,
+    fetch_movie_graph_profile_map,
+)
 from app.algorithms.cfkg.artifacts import DEFAULT_RERANKER_PATH
 from app.algorithms.cfkg.inference import (
     DEFAULT_TIMEOUT_MS,
@@ -21,6 +27,7 @@ from app.algorithms.cfkg.reranker import (
 )
 from app.db.mysql import close_pool, get_connection, init_pool
 from app.db.neo4j import Neo4jConnection
+from app.services import user_service
 
 POSITIVE_RATING = 4.0
 
@@ -36,41 +43,132 @@ class RerankerTrainingConfig:
     l2: float = 0.01
 
 
-def _dedupe_movie_ids(movie_ids):
-    seen = set()
-    items = []
-    for movie_id in movie_ids:
-        if movie_id in seen:
-            continue
-        seen.add(movie_id)
-        items.append(movie_id)
-    return items
+def _coerce_sort_time(value: Any, fallback_index: int) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if value:
+        text = str(value).strip()
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    return datetime(1970, 1, 1) + timedelta(seconds=fallback_index)
 
 
-def _build_time_split_case(rows):
-    holdout_index = None
-    for index, row in enumerate(rows):
-        if float(row["rating"]) >= POSITIVE_RATING:
-            holdout_index = index
-
-    if holdout_index is None or holdout_index == 0:
-        return None
-
-    history_rows = rows[:holdout_index]
-    positive_seed_ids = _dedupe_movie_ids(
-        [row["mid"] for row in history_rows if float(row["rating"]) >= POSITIVE_RATING]
+def _build_profile_from_history(
+    history_rating_rows: list[dict[str, Any]],
+    history_pref_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    raw_profile = user_service.build_user_recommendation_profile_from_rows(
+        rating_rows=history_rating_rows,
+        pref_rows=history_pref_rows,
     )
-    seed_movie_ids = list(reversed(positive_seed_ids[-5:]))
-    if not seed_movie_ids:
+    movie_ids = dedupe_preserve_order(
+        raw_profile["positive_movie_ids"]
+        + raw_profile["negative_movie_ids"]
+        + raw_profile["representative_movie_ids"]
+    )
+    movie_profile_map = fetch_movie_graph_profile_map(
+        Neo4jConnection.get_driver(),
+        movie_ids,
+        timeout_ms=1000,
+    )
+    weighted_profile = build_weighted_user_profile(
+        movie_profile_map,
+        raw_profile["movie_feedback"],
+    )
+    return {
+        **raw_profile,
+        **weighted_profile,
+    }
+
+
+def _build_time_split_case(
+    rating_rows: list[dict[str, Any]],
+    pref_rows: list[dict[str, Any]] | None = None,
+):
+    events: list[dict[str, Any]] = []
+    for index, row in enumerate(rating_rows):
+        events.append({
+            "kind": "rating",
+            "sort_time": _coerce_sort_time(
+                row.get("updated_at") or row.get("rated_at"),
+                index,
+            ),
+            "row": row,
+            "is_relevant": float(row.get("rating") or 0.0) >= POSITIVE_RATING,
+            "movie_id": str(row["mid"]),
+        })
+    base_index = len(events)
+    for index, row in enumerate(pref_rows or []):
+        events.append({
+            "kind": "pref",
+            "sort_time": _coerce_sort_time(
+                row.get("updated_at") or row.get("created_at"),
+                base_index + index,
+            ),
+            "row": row,
+            "is_relevant": row.get("pref_type") == "like",
+            "movie_id": str(row["mid"]),
+        })
+
+    if len(events) < 4:
         return None
 
-    holdout_row = rows[holdout_index]
-    seen_movie_ids = _dedupe_movie_ids([row["mid"] for row in history_rows])
+    events.sort(key=lambda item: (item["sort_time"], item["kind"], item["movie_id"]))
+    preferred_split = max(1, min(len(events) - 1, int(len(events) * 0.8)))
+
+    split_index = None
+    candidate_indices = list(range(preferred_split, len(events))) + list(
+        range(preferred_split - 1, 0, -1)
+    )
+    for index in candidate_indices:
+        history_events = events[:index]
+        future_events = events[index:]
+        if len(history_events) < 2:
+            continue
+        if any(event["is_relevant"] for event in future_events):
+            split_index = index
+            break
+
+    if split_index is None:
+        return None
+
+    history_events = events[:split_index]
+    future_events = events[split_index:]
+    history_rating_rows = [event["row"] for event in history_events if event["kind"] == "rating"]
+    history_pref_rows = [event["row"] for event in history_events if event["kind"] == "pref"]
+    future_positive_movie_ids = dedupe_preserve_order(
+        event["movie_id"]
+        for event in future_events
+        if event["is_relevant"]
+    )
+    if not future_positive_movie_ids:
+        return None
+
+    user_profile = _build_profile_from_history(
+        history_rating_rows=history_rating_rows,
+        history_pref_rows=history_pref_rows,
+    )
+    context_movie_ids = dedupe_preserve_order(
+        user_profile.get("context_movie_ids")
+        or user_profile.get("positive_movie_ids")
+        or []
+    )
+    if not context_movie_ids:
+        return None
+
+    seed_movie_ids = dedupe_preserve_order(
+        (user_profile.get("representative_movie_ids") or [])[:5]
+        + context_movie_ids[:5]
+    )[:5]
+    seen_movie_ids = dedupe_preserve_order(user_profile.get("hard_exclude_movie_ids") or [])
     return {
-        "user_id": rows[0]["user_id"],
-        "holdout_movie_id": holdout_row["mid"],
+        "user_id": rating_rows[0]["user_id"] if rating_rows else pref_rows[0]["user_id"],
+        "holdout_movie_id": future_positive_movie_ids[0],
         "seed_movie_ids": seed_movie_ids,
         "seen_movie_ids": seen_movie_ids,
+        "user_profile": user_profile,
     }
 
 
@@ -95,6 +193,18 @@ def _fetch_user_rating_rows(conn, user_id: int):
         return cursor.fetchall()
 
 
+def _fetch_user_pref_rows(conn, user_id: int):
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT id, user_id, mid, pref_type, created_at, updated_at "
+            "FROM user_movie_prefs "
+            "WHERE user_id = %s "
+            "ORDER BY COALESCE(updated_at, created_at) ASC, created_at ASC, id ASC",
+            (user_id,),
+        )
+        return cursor.fetchall()
+
+
 async def train_cfkg_reranker(config: RerankerTrainingConfig) -> dict[str, Any]:
     bundle = await asyncio.to_thread(_load_model_bundle, None)
     if bundle is None:
@@ -110,13 +220,17 @@ async def train_cfkg_reranker(config: RerankerTrainingConfig) -> dict[str, Any]:
         skipped_missing_positive = 0
 
         for user_id in _fetch_candidate_user_ids(conn, limit=config.user_limit):
-            case = _build_time_split_case(_fetch_user_rating_rows(conn, user_id))
+            case = _build_time_split_case(
+                _fetch_user_rating_rows(conn, user_id),
+                _fetch_user_pref_rows(conn, user_id),
+            )
             if not case:
                 continue
             cases += 1
             recall_candidates = await _collect_recall_candidates(
+                conn=conn,
                 user_id=case["user_id"],
-                user_profile=None,
+                user_profile=case["user_profile"],
                 seed_movie_ids=case["seed_movie_ids"],
                 seen_movie_ids=case["seen_movie_ids"],
                 limit=config.recommendation_limit,
@@ -132,7 +246,7 @@ async def train_cfkg_reranker(config: RerankerTrainingConfig) -> dict[str, Any]:
                 case["user_id"],
                 recall_candidates,
                 case["seen_movie_ids"],
-                None,
+                case["user_profile"],
                 case["seed_movie_ids"],
                 config.timeout_ms,
                 "pipeline",
@@ -160,6 +274,7 @@ async def train_cfkg_reranker(config: RerankerTrainingConfig) -> dict[str, Any]:
                         len([source for source in item.get("source_algorithms", []) if source != "cfkg"])
                     ),
                     "has_cf_source": 1.0 if "graph_cf" in item.get("source_algorithms", []) else 0.0,
+                    "has_itemcf_source": 1.0 if "itemcf" in item.get("source_algorithms", []) else 0.0,
                     "has_content_source": 1.0 if "graph_content" in item.get("source_algorithms", []) else 0.0,
                     "has_ppr_source": 1.0 if "graph_ppr" in item.get("source_algorithms", []) else 0.0,
                     "genre_overlap_count": float(item.get("genre_overlap_count", 0.0)),

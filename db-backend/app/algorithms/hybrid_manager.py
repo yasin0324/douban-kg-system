@@ -11,6 +11,7 @@ from typing import List, Dict, Any
 from app.algorithms.graph_content import get_graph_content_recommendations
 from app.algorithms.graph_cf import get_graph_cf_recommendations
 from app.algorithms.graph_ppr import get_graph_ppr_recommendations
+from app.algorithms.item_cf import get_itemcf_recommendations
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +20,30 @@ class HybridRecommendationManager:
     """混合推荐调度器单例"""
     
     def __init__(self, weights: Dict[str, float] | None = None, branch_timeouts_ms: Dict[str, int] | None = None):
-        self.weights = weights or {
+        default_weights = {
             "graph_ppr": 0.05,
-            "graph_content": 0.1,
-            "graph_cf": 0.85,
+            "graph_content": 0.10,
+            "itemcf": 0.25,
+            "graph_cf": 0.60,
         }
-        self.branch_timeouts_ms = branch_timeouts_ms or {
+        default_branch_timeouts_ms = {
             "graph_ppr": 1200,
             "graph_content": 800,
+            "itemcf": 1000,
             "graph_cf": 800,
+        }
+        self.weights = {
+            **default_weights,
+            **(weights or {}),
+        }
+        self.branch_timeouts_ms = {
+            **default_branch_timeouts_ms,
+            **(branch_timeouts_ms or {}),
         }
         self.min_candidates = {
             "graph_ppr": 3,
             "graph_content": 3,
+            "itemcf": 1,
             "graph_cf": 1,
         }
         
@@ -74,12 +86,25 @@ class HybridRecommendationManager:
             if len(branch_results.get(name, [])) >= self.min_candidates[name]:
                 active_weights[name] = weight
 
-        if "graph_cf" in active_weights and len(branch_results.get("graph_cf", [])) >= 10:
-            active_weights["graph_cf"] *= 1.15
+        behavior_candidate_ids = {
+            item["movie_id"]
+            for name in ("graph_cf", "itemcf")
+            for item in branch_results.get(name, [])
+        }
+
+        if "graph_cf" in active_weights and "itemcf" in active_weights:
+            active_weights["graph_cf"] *= 1.05
+            active_weights["itemcf"] *= 1.12
+
+        if behavior_candidate_ids and len(behavior_candidate_ids) >= 10:
+            if "graph_cf" in active_weights:
+                active_weights["graph_cf"] *= 1.08
+            if "itemcf" in active_weights:
+                active_weights["itemcf"] *= 1.10
             if "graph_content" in active_weights:
-                active_weights["graph_content"] *= 0.75
+                active_weights["graph_content"] *= 0.78
             if "graph_ppr" in active_weights:
-                active_weights["graph_ppr"] *= 0.5
+                active_weights["graph_ppr"] *= 0.62
 
         total_weight = sum(active_weights.values())
         if total_weight <= 0:
@@ -95,6 +120,7 @@ class HybridRecommendationManager:
         seen_movie_ids: List[str] | None = None,
         exclude_mock_users: bool = True,
         limit: int = 20,
+        conn=None,
     ) -> List[Dict[str, Any]]:
         """主入口，提供带超时降级与动态门控的混合推荐。"""
         tasks = {
@@ -135,6 +161,19 @@ class HybridRecommendationManager:
                 ),
             )),
         }
+        if conn is not None:
+            tasks["itemcf"] = asyncio.create_task(self._call_branch(
+                "itemcf",
+                get_itemcf_recommendations(
+                    conn=conn,
+                    user_id=user_id,
+                    user_profile=user_profile,
+                    seed_movie_ids=seed_movie_ids,
+                    seen_movie_ids=seen_movie_ids,
+                    limit=limit * 2,
+                    timeout_ms=self.branch_timeouts_ms["itemcf"],
+                ),
+            ))
         branch_values = await asyncio.gather(*tasks.values())
         branch_results = dict(zip(tasks.keys(), branch_values))
 
@@ -147,11 +186,12 @@ class HybridRecommendationManager:
             for name, results in branch_results.items()
             if name in active_weights
         }
-        cf_candidate_ids = {
+        behavior_candidate_ids = {
             item["movie_id"]
-            for item in normalized_results.get("graph_cf", [])
+            for name in ("graph_cf", "itemcf")
+            for item in normalized_results.get(name, [])
         }
-        cf_dominant = bool(cf_candidate_ids) and len(cf_candidate_ids) >= max(10, limit // 2)
+        behavior_dominant = bool(behavior_candidate_ids) and len(behavior_candidate_ids) >= max(10, limit // 2)
 
         movie_dict: Dict[str, Dict[str, Any]] = {}
         
@@ -194,20 +234,22 @@ class HybridRecommendationManager:
                     movie_dict[mid]["reasons"].add(reason)
                     
         for branch_name, weight in active_weights.items():
-            if branch_name == "graph_cf":
+                if branch_name in {"graph_cf", "itemcf"}:
+                    _merge(
+                        normalized_results[branch_name],
+                        weight,
+                        backbone_bonus=(
+                            0.24 if branch_name == "graph_cf" else 0.18
+                        ) if behavior_dominant else 0.0,
+                    )
+                    continue
+
                 _merge(
                     normalized_results[branch_name],
                     weight,
-                    backbone_bonus=0.3 if cf_dominant else 0.0,
+                    restrict_to_ids=behavior_candidate_ids if behavior_dominant else None,
+                    out_of_pool_scale=0.22 if behavior_dominant else 1.0,
                 )
-                continue
-
-            _merge(
-                normalized_results[branch_name],
-                weight,
-                restrict_to_ids=cf_candidate_ids if cf_dominant else None,
-                out_of_pool_scale=0.15 if cf_dominant else 1.0,
-            )
         
         hybrid_list = list(movie_dict.values())
         for m in hybrid_list:

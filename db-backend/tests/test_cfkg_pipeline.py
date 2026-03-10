@@ -6,6 +6,7 @@ import math
 
 from app.algorithms.cfkg.dataset import load_exported_dataset
 from app.algorithms.cfkg.inference import (
+    _combine_recall_support_scores,
     _collect_recall_candidates,
     _load_model_bundle,
     _rank_candidate_pool,
@@ -20,6 +21,7 @@ from app.algorithms.cfkg.reranker import (
     score_reranker_features,
     train_reranker_model,
 )
+from app.algorithms.cfkg.reranker_training import _build_time_split_case
 from app.algorithms.cfkg.training import (
     TrainingConfig,
     _sample_negative_movie,
@@ -354,6 +356,101 @@ def test_collect_recall_candidates_skips_content_when_profile_signal_is_weak(mon
     assert [item["movie_id"] for item in items] == ["m1", "m2"]
     assert stage_metrics["content_triggered"] is False
     assert stage_metrics["content_skip_reason"] == "weak_profile"
+
+
+def test_collect_recall_candidates_merges_itemcf_when_conn_available(monkeypatch):
+    async def fake_cf_recall(**kwargs):
+        return [
+            {"movie_id": "m1", "score": 0.9, "recall_score": 0.9, "source": "graph_cf", "source_algorithms": ["graph_cf"]},
+            {"movie_id": "m2", "score": 0.7, "recall_score": 0.7, "source": "graph_cf", "source_algorithms": ["graph_cf"]},
+        ]
+
+    async def fake_itemcf(**kwargs):
+        return [
+            {"movie_id": "m2", "score": 0.8, "recall_score": 0.8, "source": "itemcf", "source_algorithms": ["itemcf"]},
+            {"movie_id": "m3", "score": 0.6, "recall_score": 0.6, "source": "itemcf", "source_algorithms": ["itemcf"]},
+        ]
+
+    async def fake_content_recall(**kwargs):
+        raise AssertionError("content recall should not run when profile signal is weak")
+
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_cf_recall_candidates", fake_cf_recall)
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_itemcf_recommendations", fake_itemcf)
+    monkeypatch.setattr("app.algorithms.cfkg.inference.get_graph_content_recall_candidates", fake_content_recall)
+    stage_metrics = {}
+
+    items = asyncio.run(
+        _collect_recall_candidates(
+            conn=object(),
+            user_id=1,
+            user_profile={
+                "positive_features": {
+                    "genres": {"科幻": 2.0},
+                    "directors": {},
+                    "actors": {},
+                }
+            },
+            seed_movie_ids=["m_seed"],
+            seen_movie_ids=[],
+            limit=20,
+            timeout_ms=800,
+            stage_metrics=stage_metrics,
+        )
+    )
+
+    assert [item["movie_id"] for item in items] == ["m1", "m2", "m3"]
+    assert items[1]["source_algorithms"] == ["graph_cf", "itemcf"]
+    assert stage_metrics["itemcf_candidate_count"] == 2
+    assert stage_metrics["content_skip_reason"] == "weak_profile"
+
+
+def test_combine_recall_support_scores_rewards_multi_source_support():
+    combined = _combine_recall_support_scores([0.7, 0.6])
+
+    assert combined > 0.7
+    assert combined < 1.0
+    assert _combine_recall_support_scores([0.0, 0.0]) == 0.0
+
+
+def test_reranker_feature_map_marks_itemcf_source():
+    feature_map = build_reranker_feature_map(
+        recall_score=0.8,
+        cfkg_score=0.6,
+        profile_score=0.2,
+        recall_sources=["graph_cf", "itemcf"],
+        negative_signals=[],
+    )
+
+    assert feature_map["has_cf_source"] == 1.0
+    assert feature_map["has_itemcf_source"] == 1.0
+    assert feature_map["source_count"] == 2.0
+
+
+def test_reranker_training_time_split_case_includes_pref_history(monkeypatch):
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.reranker_training.fetch_movie_graph_profile_map",
+        lambda driver, movie_ids, timeout_ms=None: {},
+    )
+    monkeypatch.setattr(
+        "app.algorithms.cfkg.reranker_training.Neo4jConnection.get_driver",
+        lambda: object(),
+    )
+
+    case = _build_time_split_case(
+        rating_rows=[
+            {"id": 1, "user_id": 9, "mid": "m1", "rating": 4.5, "rated_at": "2025-01-01T10:00:00", "updated_at": "2025-01-01T10:00:00"},
+            {"id": 2, "user_id": 9, "mid": "m2", "rating": 2.0, "rated_at": "2025-01-02T10:00:00", "updated_at": "2025-01-02T10:00:00"},
+            {"id": 3, "user_id": 9, "mid": "m4", "rating": 4.0, "rated_at": "2025-01-04T10:00:00", "updated_at": "2025-01-04T10:00:00"},
+        ],
+        pref_rows=[
+            {"id": 1, "user_id": 9, "mid": "m3", "pref_type": "want_to_watch", "created_at": "2025-01-03T10:00:00", "updated_at": "2025-01-03T10:00:00"},
+        ],
+    )
+
+    assert case is not None
+    assert case["holdout_movie_id"] == "m4"
+    assert "m1" in case["seed_movie_ids"]
+    assert "m3" in case["user_profile"]["movie_feedback"]
 
 
 def test_collect_recall_candidates_skips_content_when_gap_is_small(monkeypatch):

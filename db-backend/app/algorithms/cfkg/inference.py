@@ -24,6 +24,7 @@ from app.algorithms.cfkg.reranker import (
 )
 from app.algorithms.graph_cf import get_graph_cf_recall_candidates
 from app.algorithms.graph_content import get_graph_content_recall_candidates
+from app.algorithms.item_cf import get_itemcf_recommendations
 from app.db.neo4j import Neo4jConnection
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,69 @@ def _has_sufficient_content_signal(user_profile: dict[str, Any] | None) -> bool:
     return len(genres) >= 2 or len(directors) >= 1 or len(actors) >= 2
 
 
+def _combine_recall_support_scores(scores: list[float]) -> float:
+    bounded_scores = [
+        min(max(float(score), 0.0), 1.0)
+        for score in scores
+        if float(score) > 0.0
+    ]
+    if not bounded_scores:
+        return 0.0
+    missing_probability = 1.0
+    for score in bounded_scores:
+        missing_probability *= (1.0 - score)
+    return 1.0 - missing_probability
+
+
+def _merge_recall_candidate_lists(
+    *candidate_lists: list[dict[str, Any]],
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    merged_items: dict[str, dict[str, Any]] = {}
+    ordered_ids: list[str] = []
+
+    for candidate_list in candidate_lists:
+        for item in candidate_list or []:
+            movie_id = str(item["movie_id"])
+            item_recall_score = float(item.get("recall_score", item.get("score", 0.0)))
+            if movie_id not in merged_items:
+                merged_items[movie_id] = {
+                    **item,
+                    "movie_id": movie_id,
+                    "recall_score": item_recall_score,
+                    "reasons": dedupe_preserve_order(list(item.get("reasons") or []))[:3],
+                    "source_algorithms": dedupe_preserve_order(
+                        list(item.get("source_algorithms") or [item.get("source", "graph_cf")])
+                    ),
+                }
+                ordered_ids.append(movie_id)
+                continue
+
+            merged = merged_items[movie_id]
+            merged["recall_score"] = _combine_recall_support_scores(
+                [
+                    float(merged.get("recall_score", merged.get("score", 0.0))),
+                    item_recall_score,
+                ]
+            )
+            merged["score"] = max(
+                float(merged.get("score", merged.get("recall_score", 0.0))),
+                float(item.get("score", item_recall_score)),
+            )
+            merged["reasons"] = dedupe_preserve_order(
+                list(merged.get("reasons") or []) + list(item.get("reasons") or [])
+            )[:3]
+            merged["source_algorithms"] = dedupe_preserve_order(
+                list(merged.get("source_algorithms") or [])
+                + list(item.get("source_algorithms") or [item.get("source", "graph_cf")])
+            )
+
+    merged_list = [merged_items[movie_id] for movie_id in ordered_ids]
+    if limit is not None:
+        return merged_list[:limit]
+    return merged_list
+
+
 def _score_user_candidates(
     bundle: dict[str, Any],
     user_id: int,
@@ -295,6 +359,7 @@ async def _collect_recall_candidates(
     limit: int,
     timeout_ms: int | None,
     stage_metrics: dict[str, Any] | None = None,
+    conn=None,
 ) -> list[dict[str, Any]]:
     recall_target = min(max(limit * 6, DEFAULT_RECALL_TARGET_MIN), DEFAULT_RECALL_TARGET_MAX)
     minimum_viable_candidates = max(limit * 2, 40)
@@ -312,8 +377,28 @@ async def _collect_recall_candidates(
         timeout_ms=max(timeout_ms or DEFAULT_TIMEOUT_MS, 1500),
     )
     metrics["cf_recall_ms"] = (time.perf_counter() - cf_started_at) * 1000
-    merged_candidates = list(cf_candidates)
-    metrics["cf_candidate_count"] = len(merged_candidates)
+    metrics["cf_candidate_count"] = len(cf_candidates)
+    metrics["itemcf_recall_ms"] = 0.0
+    metrics["itemcf_candidate_count"] = 0
+    itemcf_candidates: list[dict[str, Any]] = []
+    if conn is not None:
+        itemcf_started_at = time.perf_counter()
+        itemcf_candidates = await get_itemcf_recommendations(
+            conn=conn,
+            user_id=user_id,
+            user_profile=user_profile,
+            seed_movie_ids=seed_movie_ids,
+            seen_movie_ids=seen_ids,
+            limit=recall_target,
+            timeout_ms=max(timeout_ms or DEFAULT_TIMEOUT_MS, 1200),
+        )
+        metrics["itemcf_recall_ms"] = (time.perf_counter() - itemcf_started_at) * 1000
+        metrics["itemcf_candidate_count"] = len(itemcf_candidates)
+    merged_candidates = _merge_recall_candidate_lists(
+        cf_candidates,
+        itemcf_candidates,
+        limit=recall_target,
+    )
     metrics["content_triggered"] = False
     metrics["content_recall_ms"] = 0.0
     metrics["content_candidate_count"] = 0
@@ -364,15 +449,11 @@ async def _collect_recall_candidates(
         content_candidates = []
     metrics["content_recall_ms"] = (time.perf_counter() - content_started_at) * 1000
     metrics["content_candidate_count"] = len(content_candidates)
-    merged_movie_ids = {item["movie_id"] for item in merged_candidates}
-    for item in content_candidates:
-        if item["movie_id"] in merged_movie_ids:
-            continue
-        merged_candidates.append(item)
-        merged_movie_ids.add(item["movie_id"])
-        if len(merged_candidates) >= recall_target:
-            break
-    return merged_candidates[:recall_target]
+    return _merge_recall_candidate_lists(
+        merged_candidates,
+        content_candidates,
+        limit=recall_target,
+    )
 
 
 def _rank_candidate_pool(
@@ -537,6 +618,7 @@ def _rank_candidate_pool(
                         score_breakdown[source] = round(score_breakdown.get(source, 0.0) + recall_share, 6)
                 for source, feature_name in (
                     ("graph_cf", "has_cf_source"),
+                    ("itemcf", "has_itemcf_source"),
                     ("graph_content", "has_content_source"),
                     ("graph_ppr", "has_ppr_source"),
                 ):
@@ -598,6 +680,7 @@ async def get_cfkg_recommendations(
     model_path: str | Path | None = None,
     disable_profile_rerank: bool = False,
     ranking_mode: str | None = None,
+    conn=None,
 ) -> list[dict[str, Any]]:
     request_started_at = time.perf_counter()
     resolved_mode = ranking_mode or ("raw" if disable_profile_rerank else "pipeline")
@@ -616,6 +699,7 @@ async def get_cfkg_recommendations(
     seen_ids = dedupe_preserve_order(seen_movie_ids)
     stage_metrics: dict[str, Any] = {}
     recall_candidates = await _collect_recall_candidates(
+        conn=conn,
         user_id=user_id,
         user_profile=user_profile,
         seed_movie_ids=seed_movie_ids,

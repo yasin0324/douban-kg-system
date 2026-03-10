@@ -268,6 +268,47 @@ def test_hybrid_manager_reweights_when_branch_times_out(monkeypatch):
     assert items[1]["score_breakdown"] == {"graph_cf": 0.0}
 
 
+def test_hybrid_manager_merges_itemcf_when_conn_available(monkeypatch):
+    manager = hybrid_manager_module.HybridRecommendationManager()
+
+    async def fake_cf(**kwargs):
+        return [
+            {"movie_id": "m1", "title": "Movie 1", "score": 9.0, "reasons": ["cf"], "source": "graph_cf"},
+        ]
+
+    async def fake_itemcf(**kwargs):
+        return [
+            {"movie_id": "m1", "title": "Movie 1", "score": 6.0, "reasons": ["itemcf"], "source": "itemcf"},
+            {"movie_id": "m2", "title": "Movie 2", "score": 5.0, "reasons": ["itemcf"], "source": "itemcf"},
+        ]
+
+    async def fake_content(**kwargs):
+        return []
+
+    async def fake_ppr(**kwargs):
+        return []
+
+    monkeypatch.setattr(hybrid_manager_module, "get_graph_cf_recommendations", fake_cf)
+    monkeypatch.setattr(hybrid_manager_module, "get_itemcf_recommendations", fake_itemcf)
+    monkeypatch.setattr(hybrid_manager_module, "get_graph_content_recommendations", fake_content)
+    monkeypatch.setattr(hybrid_manager_module, "get_graph_ppr_recommendations", fake_ppr)
+
+    items = asyncio.run(
+        manager.get_hybrid_recommendations(
+            conn=object(),
+            user_id=1,
+            user_profile={"context_movie_ids": ["10", "20"]},
+            seen_movie_ids=["30"],
+            limit=5,
+        )
+    )
+
+    assert items[0]["movie_id"] == "m1"
+    assert items[0]["source_algorithms"] == ["graph_cf", "itemcf"]
+    assert "graph_cf" in items[0]["score_breakdown"]
+    assert "itemcf" in items[0]["score_breakdown"]
+
+
 def test_recommend_route_keeps_response_shape(monkeypatch):
     app = FastAPI()
     app.include_router(recommend.router)
