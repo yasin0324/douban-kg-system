@@ -1,0 +1,198 @@
+{
+  "protocol_version": 1,
+  "eval_method": "single_seed_sampled_leave_one_out (seed=42)",
+  "negative_sample_seeds": [
+    42
+  ],
+  "n_test_users": 161,
+  "results": {
+    "content": {
+      "display_name": "基于内容的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.0609,
+          "precision_std": 0.0,
+          "recall": 0.3043,
+          "recall_std": 0.0,
+          "ndcg": 0.1799,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.3043,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0441,
+          "precision_std": 0.0,
+          "recall": 0.441,
+          "recall_std": 0.0,
+          "ndcg": 0.2229,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.441,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.032,
+          "precision_std": 0.0,
+          "recall": 0.6398,
+          "recall_std": 0.0,
+          "ndcg": 0.2718,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.6398,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0232,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.8427,
+        "std": 0.0
+      },
+      "time_seconds": 30.73,
+      "avg_time_seconds": 0.1909,
+      "n_test_users": 161,
+      "negative_seed": 42
+    },
+    "item_cf": {
+      "display_name": "基于物品的协同过滤",
+      "metrics": {
+        "5": {
+          "precision": 0.164,
+          "precision_std": 0.0,
+          "recall": 0.8199,
+          "recall_std": 0.0,
+          "ndcg": 0.8084,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.8199,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0832,
+          "precision_std": 0.0,
+          "recall": 0.8323,
+          "recall_std": 0.0,
+          "ndcg": 0.8122,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.8323,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0429,
+          "precision_std": 0.0,
+          "recall": 0.8571,
+          "recall_std": 0.0,
+          "ndcg": 0.8186,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.8571,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0225,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.8946,
+        "std": 0.0
+      },
+      "time_seconds": 0.41,
+      "avg_time_seconds": 0.0026,
+      "n_test_users": 161,
+      "negative_seed": 42
+    },
+    "kg_path": {
+      "display_name": "基于知识图谱路径的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.0149,
+          "precision_std": 0.0,
+          "recall": 0.0745,
+          "recall_std": 0.0,
+          "ndcg": 0.0438,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.0745,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0199,
+          "precision_std": 0.0,
+          "recall": 0.1988,
+          "recall_std": 0.0,
+          "ndcg": 0.0824,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.1988,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0174,
+          "precision_std": 0.0,
+          "recall": 0.3478,
+          "recall_std": 0.0,
+          "ndcg": 0.1206,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.3478,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0225,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.8977,
+        "std": 0.0
+      },
+      "time_seconds": 0.99,
+      "avg_time_seconds": 0.0062,
+      "n_test_users": 161,
+      "negative_seed": 42
+    },
+    "kg_embed": {
+      "display_name": "基于知识图谱嵌入的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.0807,
+          "precision_std": 0.0,
+          "recall": 0.4037,
+          "recall_std": 0.0,
+          "ndcg": 0.2847,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.4037,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0584,
+          "precision_std": 0.0,
+          "recall": 0.5839,
+          "recall_std": 0.0,
+          "ndcg": 0.3437,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.5839,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0391,
+          "precision_std": 0.0,
+          "recall": 0.7826,
+          "recall_std": 0.0,
+          "ndcg": 0.3941,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.7826,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0231,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.8441,
+        "std": 0.0
+      },
+      "time_seconds": 75.86,
+      "avg_time_seconds": 0.4712,
+      "n_test_users": 161,
+      "negative_seed": 42
+    }
+  }
+}
