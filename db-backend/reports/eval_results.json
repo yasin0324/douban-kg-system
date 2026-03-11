@@ -6,25 +6,25 @@
       "display_name": "基于内容的推荐",
       "metrics": {
         "5": {
-          "precision": 0.0527,
-          "recall": 0.2637,
-          "ndcg": 0.1776,
-          "hit_rate": 0.2637
+          "precision": 0.0557,
+          "recall": 0.2786,
+          "ndcg": 0.1804,
+          "hit_rate": 0.2786
         },
         "10": {
-          "precision": 0.0403,
-          "recall": 0.403,
-          "ndcg": 0.2228,
-          "hit_rate": 0.403
+          "precision": 0.0398,
+          "recall": 0.398,
+          "ndcg": 0.2196,
+          "hit_rate": 0.398
         },
         "20": {
-          "precision": 0.0296,
-          "recall": 0.592,
-          "ndcg": 0.2693,
-          "hit_rate": 0.592
+          "precision": 0.0303,
+          "recall": 0.607,
+          "ndcg": 0.272,
+          "hit_rate": 0.607
         }
       },
-      "time_seconds": 45.13
+      "time_seconds": 48.48
     },
     "item_cf": {
       "display_name": "基于物品的协同过滤",
@@ -32,71 +32,71 @@
         "5": {
           "precision": 0.2,
           "recall": 1.0,
-          "ndcg": 1.0,
+          "ndcg": 0.9963,
           "hit_rate": 1.0
         },
         "10": {
           "precision": 0.1,
           "recall": 1.0,
-          "ndcg": 1.0,
+          "ndcg": 0.9963,
           "hit_rate": 1.0
         },
         "20": {
           "precision": 0.05,
           "recall": 1.0,
-          "ndcg": 1.0,
+          "ndcg": 0.9963,
           "hit_rate": 1.0
         }
       },
-      "time_seconds": 1.78
+      "time_seconds": 1.68
     },
     "kg_path": {
       "display_name": "基于知识图谱路径的推荐",
       "metrics": {
         "5": {
-          "precision": 0.197,
-          "recall": 0.9851,
-          "ndcg": 0.6498,
-          "hit_rate": 0.9851
+          "precision": 0.199,
+          "recall": 0.995,
+          "ndcg": 0.6888,
+          "hit_rate": 0.995
         },
         "10": {
           "precision": 0.1,
           "recall": 1.0,
-          "ndcg": 0.6551,
+          "ndcg": 0.6906,
           "hit_rate": 1.0
         },
         "20": {
           "precision": 0.05,
           "recall": 1.0,
-          "ndcg": 0.6551,
+          "ndcg": 0.6906,
           "hit_rate": 1.0
         }
       },
-      "time_seconds": 337.16
+      "time_seconds": 333.26
     },
     "kg_embed": {
       "display_name": "基于知识图谱嵌入的推荐",
       "metrics": {
         "5": {
-          "precision": 0.2,
-          "recall": 1.0,
-          "ndcg": 0.9982,
-          "hit_rate": 1.0
+          "precision": 0.0189,
+          "recall": 0.0945,
+          "ndcg": 0.0578,
+          "hit_rate": 0.0945
         },
         "10": {
-          "precision": 0.1,
-          "recall": 1.0,
-          "ndcg": 0.9982,
-          "hit_rate": 1.0
+          "precision": 0.0134,
+          "recall": 0.1343,
+          "ndcg": 0.0707,
+          "hit_rate": 0.1343
         },
         "20": {
-          "precision": 0.05,
-          "recall": 1.0,
-          "ndcg": 0.9982,
-          "hit_rate": 1.0
+          "precision": 0.0112,
+          "recall": 0.2239,
+          "ndcg": 0.0937,
+          "hit_rate": 0.2239
         }
       },
-      "time_seconds": 68.18
+      "time_seconds": 85.4
     }
   }
 }

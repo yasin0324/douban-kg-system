@@ -104,14 +104,11 @@ class KGEmbedRecommender(BaseRecommender):
                 triples.append((f"movie_{r['head']}", "HAS_GENRE", f"genre_{r['tail']}"))
                 movie_mids.add(r["head"])
 
-            # RATED 关系
-            result = session.run(
-                "MATCH (u:User)-[:RATED]->(m:Movie) "
-                "RETURN u.uid AS head, 'RATED' AS rel, m.mid AS tail"
-            )
-            for r in result:
-                triples.append((f"user_{r['head']}", "RATED", f"movie_{r['tail']}"))
-                movie_mids.add(r["tail"])
+            # 注意：不加入 RATED 关系
+            # 原因：评估时若某用户 RATED test_mid 的关系在训练集里，
+            # TransE 嵌入会把 user_vec 和 test_mid_vec 拉近，
+            # 导致评估数据泄露（test_mid 总是排前面）
+            # KG-Embed 只用电影结构关系(导演/演员/类型)学习电影语义
 
         logger.info(f"导出 {len(triples)} 条三元组, {len(movie_mids)} 部电影")
         return triples, movie_mids
@@ -282,64 +279,123 @@ class KGEmbedRecommender(BaseRecommender):
         finally:
             conn.close()
 
-        # 获取用户正向电影的嵌入向量
+        positive_mids = [str(m["mid"]) for m in positive_movies]
+        pos_weights_map = {str(m["mid"]): float(m["rating"]) / 5.0 for m in positive_movies}
+
+        # ── Step 1: 计算嵌入相似度 ──────────────────────────────────────────
         pos_embeddings = []
-        pos_weights = []
-        for m in positive_movies:
-            entity_key = f"movie_{m['mid']}"
+        pos_weight_vals = []
+        for mid in positive_mids:
+            entity_key = f"movie_{mid}"
             if entity_key in self._entity_to_idx:
                 idx = self._entity_to_idx[entity_key]
                 pos_embeddings.append(self._entity_embeddings[idx])
-                pos_weights.append(float(m["rating"]) / 5.0)
+                pos_weight_vals.append(pos_weights_map.get(mid, 0.5))
 
-        if not pos_embeddings:
-            return []
+        embed_scores: dict[str, float] = {}
+        if pos_embeddings:
+            pos_arr = np.array(pos_embeddings)
+            pos_w = np.array(pos_weight_vals)
+            pos_w = pos_w / pos_w.sum()
+            user_vec = np.average(pos_arr, axis=0, weights=pos_w)
+            u_norm = np.linalg.norm(user_vec)
+            if u_norm > 0:
+                user_vec = user_vec / u_norm
 
-        # 用户兴趣向量 = 高评电影嵌入的加权平均
-        pos_embeddings = np.array(pos_embeddings)
-        pos_weights = np.array(pos_weights)
-        pos_weights = pos_weights / pos_weights.sum()
-        user_vec = np.average(pos_embeddings, axis=0, weights=pos_weights)
+            for movie_mid in self._movie_mids:
+                if movie_mid in exclude_all:
+                    continue
+                entity_key = f"movie_{movie_mid}"
+                if entity_key not in self._entity_to_idx:
+                    continue
+                idx = self._entity_to_idx[entity_key]
+                movie_vec = self._entity_embeddings[idx]
+                movie_norm = np.linalg.norm(movie_vec)
+                if movie_norm == 0:
+                    continue
+                sim = float(np.dot(user_vec, movie_vec / movie_norm))
+                if sim > 0:
+                    embed_scores[movie_mid] = sim
 
-        # 归一化
-        norm = np.linalg.norm(user_vec)
-        if norm > 0:
-            user_vec = user_vec / norm
+        # ── Step 2: 计算实体重叠奖励（导演/演员偏好） ─────────────────────────
+        # 从用户 training movies 中统计喜欢的导演和演员
+        driver = Neo4jConnection.get_driver()
+        entity_preference: dict[str, float] = {}  # person_pid -> weight
 
-        # 计算与所有电影的余弦相似度
+        with driver.session() as session:
+            for seed_mid in positive_mids[:10]:  # 取前10部控制查询量
+                result = session.run(
+                    "MATCH (m:Movie {mid: $mid})<-[:DIRECTED|ACTED_IN]-(p:Person) "
+                    "RETURN p.pid AS pid",
+                    mid=seed_mid,
+                )
+                seed_weight = pos_weights_map.get(seed_mid, 0.5)
+                for r in result:
+                    key = str(r["pid"])
+                    entity_preference[key] = entity_preference.get(key, 0) + seed_weight
+
+        # 取偏好最强的 top-30 人物，查找他们关联的候选电影
+        top_persons = sorted(entity_preference, key=lambda k: -entity_preference[k])[:30]
+        entity_scores: dict[str, float] = {}
+
+        if top_persons:
+            with driver.session() as session:
+                result = session.run(
+                    "MATCH (p:Person)-[:DIRECTED|ACTED_IN]->(m:Movie) "
+                    "WHERE p.pid IN $pids "
+                    "RETURN m.mid AS mid, p.pid AS pid",
+                    pids=top_persons,
+                )
+                for r in result:
+                    mid = str(r["mid"])
+                    pid = str(r["pid"])
+                    if mid not in exclude_all:
+                        entity_scores[mid] = entity_scores.get(mid, 0) + entity_preference.get(pid, 0)
+
+        # ── Step 3: 归一化并融合两个分数 ────────────────────────────────────
+        # 归一化 embed_scores → [0, 1]
+        if embed_scores:
+            max_e = max(embed_scores.values())
+            min_e = min(embed_scores.values())
+            rng_e = max_e - min_e or 1e-8
+            embed_scores = {mid: (s - min_e) / rng_e for mid, s in embed_scores.items()}
+
+        # 归一化 entity_scores → [0, 1]
+        if entity_scores:
+            max_t = max(entity_scores.values())
+            entity_scores = {mid: s / max_t for mid, s in entity_scores.items()}
+
+        # 合并候选集（embedding 发现的 + entity 发现的）
+        all_candidate_mids = set(embed_scores) | set(entity_scores)
+
+        EMBED_WEIGHT = 0.6
+        ENTITY_WEIGHT = 0.4
+
         candidates = []
-        for movie_mid in self._movie_mids:
-            if movie_mid in exclude_all:
+        for mid in all_candidate_mids:
+            if mid in exclude_all:
                 continue
-            entity_key = f"movie_{movie_mid}"
-            if entity_key not in self._entity_to_idx:
-                continue
-            idx = self._entity_to_idx[entity_key]
-            movie_vec = self._entity_embeddings[idx]
-            movie_norm = np.linalg.norm(movie_vec)
-            if movie_norm == 0:
-                continue
-            sim = float(np.dot(user_vec, movie_vec / movie_norm))
-            if sim > 0:
+            e_score = embed_scores.get(mid, 0.0)
+            t_score = entity_scores.get(mid, 0.0)
+            final_score = EMBED_WEIGHT * e_score + ENTITY_WEIGHT * t_score
+
+            if final_score > 0:
+                # 生成推荐理由
+                if t_score > 0 and e_score > 0:
+                    reason = "基于知识图谱嵌入空间和实体关系（导演/演员）的综合推荐"
+                elif t_score > 0:
+                    reason = "基于你喜欢的导演/演员，在知识图谱中发现的相关电影"
+                else:
+                    reason = "基于知识图谱嵌入空间的语义相似性推荐"
+
                 candidates.append({
-                    "mid": movie_mid,
-                    "score": sim,
-                    "reason": "基于知识图谱嵌入空间的语义相似性推荐",
+                    "mid": mid,
+                    "score": round(final_score, 4),
+                    "reason": reason,
                 })
 
         if not candidates:
             return []
-
-        # 归一化分数到 [0, 1]
-        max_score = max(c["score"] for c in candidates)
-        min_score = min(c["score"] for c in candidates)
-        score_range = max_score - min_score
-        if score_range > 0:
-            for c in candidates:
-                c["score"] = round((c["score"] - min_score) / score_range, 4)
-        else:
-            for c in candidates:
-                c["score"] = 1.0
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
         return candidates[:n]
