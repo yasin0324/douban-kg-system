@@ -3,7 +3,15 @@
 """
 import time
 
-ALLOWED_REL_TYPES = {"DIRECTED", "ACTED_IN", "HAS_GENRE"}
+ALLOWED_REL_TYPES = {
+    "DIRECTED",
+    "ACTED_IN",
+    "HAS_GENRE",
+    "IN_REGION",
+    "IN_LANGUAGE",
+    "HAS_CONTENT_TYPE",
+    "IN_YEAR_BUCKET",
+}
 
 
 def _safe_run(session, query: str, timeout_ms: int | None = None, **params):

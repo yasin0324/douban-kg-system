@@ -6,8 +6,9 @@ FastAPI backend for the Douban knowledge-graph project.
 
 - Movie, person, graph, stats, auth, admin, and user-behavior APIs are active.
 - User behavior remains available: likes, want-to-watch, and ratings.
-- Recommendation algorithms, training scripts, evaluation reports, and GDS-based recommendation infrastructure have been removed.
-- `/api/recommend/personal` and `/api/recommend/explain` remain as legacy compatibility stubs so the existing frontend recommendation UI degrades to an empty state instead of failing.
+- Recommendation APIs are active again with `content`, `item_cf`, `kg_path`, and `kg_embed` algorithms.
+- Offline recommendation evaluation is available via `python -m app.algorithms.evaluator`.
+- `/api/recommend/personal`, `/api/recommend/explain`, and `/api/recommend/evaluate` are backed by the current recommendation implementation.
 
 ## Requirements
 
@@ -22,6 +23,7 @@ FastAPI backend for the Douban knowledge-graph project.
 cd db-backend
 uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uv run python -m app.algorithms.evaluator
 ```
 
 Health check:
@@ -41,5 +43,5 @@ mysql -u root -p douban < migrations/002_create_admin_tables.sql
 ## Notes
 
 - No Neo4j GDS plugin is required anymore.
-- No recommendation model warmup or recommendation dataset scripts remain in the backend.
-- Existing historical Neo4j `User` nodes or `RATED` edges are ignored by the current backend.
+- Recommendation embeddings are trained only from structural graph relations and intentionally ignore historical Neo4j `User` nodes or `RATED` edges.
+- The evaluator writes the main multi-seed report to `reports/eval_results.json` and the single-seed appendix report to `reports/eval_results_legacy.json`.

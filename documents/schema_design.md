@@ -50,6 +50,24 @@
   |Str|Str|Str|
   | `name` | String | 类型名称 (Unique) |
 
+### 1.4 Region / Language / ContentType / YearBucket
+
+为推荐实验补充的结构节点，全部从 `movies` 表现有字段派生，不引入外部数据源。
+
+- **Region**
+  - Label: `:Region`
+  - Primary Key: `name`
+- **Language**
+  - Label: `:Language`
+  - Primary Key: `name`
+- **ContentType**
+  - Label: `:ContentType`
+  - Primary Key: `name`
+- **YearBucket**
+  - Label: `:YearBucket`
+  - Primary Key: `name`
+  - Bucket 规则: `before_1990` / `1990s` / `2000s` / `2010s` / `2020s_plus`
+
 ---
 
 ## 2. 关系定义 (Relationships)
@@ -76,6 +94,13 @@
 - **End Node**: `:Genre`
 - **Type**: `:HAS_GENRE`
 
+### 2.4 扩展结构关系
+
+- `(:Movie)-[:IN_REGION]->(:Region)`
+- `(:Movie)-[:IN_LANGUAGE]->(:Language)`
+- `(:Movie)-[:HAS_CONTENT_TYPE]->(:ContentType)`
+- `(:Movie)-[:IN_YEAR_BUCKET]->(:YearBucket)`
+
 ---
 
 ## 3. 索引策略 (Indices & Constraints)
@@ -87,6 +112,10 @@
 CREATE CONSTRAINT FOR (m:Movie) REQUIRE m.mid IS UNIQUE;
 CREATE CONSTRAINT FOR (p:Person) REQUIRE p.pid IS UNIQUE;
 CREATE CONSTRAINT FOR (g:Genre) REQUIRE g.name IS UNIQUE;
+CREATE CONSTRAINT FOR (r:Region) REQUIRE r.name IS UNIQUE;
+CREATE CONSTRAINT FOR (l:Language) REQUIRE l.name IS UNIQUE;
+CREATE CONSTRAINT FOR (c:ContentType) REQUIRE c.name IS UNIQUE;
+CREATE CONSTRAINT FOR (y:YearBucket) REQUIRE y.name IS UNIQUE;
 
 // 辅助索引
 CREATE INDEX FOR (m:Movie) ON (m.title);
@@ -100,10 +129,12 @@ CREATE INDEX FOR (m:Movie) ON (m.rating);
 - **Movie 节点**: 10,000 个
 - **Person 节点**: 约 30,000 - 50,000 个 (假设平均每部电影关联 5-10 个影人，考虑重叠)
 - **Genre 节点**: 约 30 个 (固定集合)
+- **Region / Language / ContentType / YearBucket 节点**: 数量较小，通常远少于 Movie/Person
 - **Relationships**:
     - `ACTED_IN`: ~60,000 (平均 6 个演员)
     - `DIRECTED`: ~12,000 (平均 1.2 个导演)
     - `HAS_GENRE`: ~25,000 (平均 2.5 个类型)
+    - `IN_REGION` / `IN_LANGUAGE` / `HAS_CONTENT_TYPE` / `IN_YEAR_BUCKET`: 按电影元数据规模线性增长
     - **Total Edges**: ~100,000 条
 
 规模属于 **小型图谱**，单机 Neo4j (Docker 1GB RAM) 即可轻松承载。

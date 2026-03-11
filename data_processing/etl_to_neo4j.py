@@ -4,8 +4,9 @@
 ETL 脚本：从 MySQL 导入数据到 Neo4j 知识图谱
 
 按 schema_design.md 的定义，创建：
-- 节点：Movie, Person, Genre
-- 关系：DIRECTED, ACTED_IN, HAS_GENRE
+- 节点：Movie, Person, Genre, Region, Language, ContentType, YearBucket
+- 关系：DIRECTED, ACTED_IN, HAS_GENRE, IN_REGION, IN_LANGUAGE,
+       HAS_CONTENT_TYPE, IN_YEAR_BUCKET
 
 使用 UNWIND 批量导入优化性能。
 """
@@ -47,6 +48,24 @@ def get_neo4j_driver():
     return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
 
 
+def split_slash_values(raw):
+    return [item.strip() for item in str(raw or '').split('/') if item.strip()]
+
+
+def build_year_bucket(year):
+    if not year:
+        return None
+    if year < 1990:
+        return 'before_1990'
+    if year < 2000:
+        return '1990s'
+    if year < 2010:
+        return '2000s'
+    if year < 2020:
+        return '2010s'
+    return '2020s_plus'
+
+
 # ============== Phase 1: Constraints & Indexes ==============
 
 def create_constraints(driver):
@@ -57,6 +76,10 @@ def create_constraints(driver):
         "CREATE CONSTRAINT movie_mid IF NOT EXISTS FOR (m:Movie) REQUIRE m.mid IS UNIQUE",
         "CREATE CONSTRAINT person_pid IF NOT EXISTS FOR (p:Person) REQUIRE p.pid IS UNIQUE",
         "CREATE CONSTRAINT genre_name IF NOT EXISTS FOR (g:Genre) REQUIRE g.name IS UNIQUE",
+        "CREATE CONSTRAINT region_name IF NOT EXISTS FOR (r:Region) REQUIRE r.name IS UNIQUE",
+        "CREATE CONSTRAINT language_name IF NOT EXISTS FOR (l:Language) REQUIRE l.name IS UNIQUE",
+        "CREATE CONSTRAINT content_type_name IF NOT EXISTS FOR (c:ContentType) REQUIRE c.name IS UNIQUE",
+        "CREATE CONSTRAINT year_bucket_name IF NOT EXISTS FOR (y:YearBucket) REQUIRE y.name IS UNIQUE",
         "CREATE INDEX movie_title IF NOT EXISTS FOR (m:Movie) ON (m.title)",
         "CREATE INDEX movie_rating IF NOT EXISTS FOR (m:Movie) ON (m.rating)",
         "CREATE INDEX person_name IF NOT EXISTS FOR (p:Person) ON (p.name)",
@@ -97,6 +120,81 @@ def import_genres(driver, mysql_cursor):
 
     print(f"  ✅ 导入 {len(genre_list)} 个 Genre 节点")
     return len(genre_list)
+
+
+def import_regions(driver, mysql_cursor):
+    """导入 Region 节点"""
+    print("\n🌏 Phase 2B: 导入 Region 节点...")
+
+    mysql_cursor.execute("SELECT regions FROM movies WHERE regions IS NOT NULL AND regions != ''")
+    all_regions = set()
+    for row in mysql_cursor.fetchall():
+        all_regions.update(split_slash_values(row['regions']))
+
+    region_list = [{'name': region} for region in sorted(all_regions)]
+    with driver.session() as session:
+        session.run(
+            "UNWIND $items AS item MERGE (:Region {name: item.name})",
+            items=region_list,
+        )
+
+    print(f"  ✅ 导入 {len(region_list)} 个 Region 节点")
+    return len(region_list)
+
+
+def import_languages(driver, mysql_cursor):
+    """导入 Language 节点"""
+    print("\n🗣️  Phase 2C: 导入 Language 节点...")
+
+    mysql_cursor.execute("SELECT languages FROM movies WHERE languages IS NOT NULL AND languages != ''")
+    all_languages = set()
+    for row in mysql_cursor.fetchall():
+        all_languages.update(split_slash_values(row['languages']))
+
+    language_list = [{'name': language} for language in sorted(all_languages)]
+    with driver.session() as session:
+        session.run(
+            "UNWIND $items AS item MERGE (:Language {name: item.name})",
+            items=language_list,
+        )
+
+    print(f"  ✅ 导入 {len(language_list)} 个 Language 节点")
+    return len(language_list)
+
+
+def import_content_types(driver, mysql_cursor):
+    """导入 ContentType 节点"""
+    print("\n📺 Phase 2D: 导入 ContentType 节点...")
+
+    mysql_cursor.execute("SELECT DISTINCT type FROM movies WHERE type IS NOT NULL AND type != ''")
+    content_type_list = [{'name': row['type'].strip()} for row in mysql_cursor.fetchall() if row.get('type')]
+
+    with driver.session() as session:
+        session.run(
+            "UNWIND $items AS item MERGE (:ContentType {name: item.name})",
+            items=content_type_list,
+        )
+
+    print(f"  ✅ 导入 {len(content_type_list)} 个 ContentType 节点")
+    return len(content_type_list)
+
+
+def import_year_buckets(driver, mysql_cursor):
+    """导入 YearBucket 节点"""
+    print("\n📅 Phase 2E: 导入 YearBucket 节点...")
+
+    mysql_cursor.execute("SELECT DISTINCT year FROM movies WHERE year IS NOT NULL")
+    buckets = {build_year_bucket(row['year']) for row in mysql_cursor.fetchall()}
+    bucket_list = [{'name': bucket} for bucket in sorted(bucket for bucket in buckets if bucket)]
+
+    with driver.session() as session:
+        session.run(
+            "UNWIND $items AS item MERGE (:YearBucket {name: item.name})",
+            items=bucket_list,
+        )
+
+    print(f"  ✅ 导入 {len(bucket_list)} 个 YearBucket 节点")
+    return len(bucket_list)
 
 
 # ============== Phase 3: Movie Nodes ==============
@@ -408,6 +506,154 @@ def _insert_has_genre_batch(driver, batch):
         session.run(cypher, rels=batch)
 
 
+def import_in_region_relations(driver, mysql_cursor):
+    """创建 IN_REGION 关系 (Movie)-[:IN_REGION]->(Region)"""
+    print("\n🌏 Phase 8: 创建 IN_REGION 关系...")
+
+    mysql_cursor.execute("""
+        SELECT douban_id, regions FROM movies
+        WHERE regions IS NOT NULL AND regions != ''
+    """)
+
+    total_rels = 0
+    batch = []
+    rows = mysql_cursor.fetchall()
+    pbar = tqdm(total=len(rows), desc="  InRegion", unit="部")
+
+    for row in rows:
+        mid = str(row['douban_id'])
+        for region in split_slash_values(row['regions']):
+            batch.append({'mid': mid, 'name': region})
+
+        pbar.update(1)
+
+        if len(batch) >= BATCH_SIZE:
+            _insert_lookup_relation_batch(driver, batch, 'Region', 'name', 'IN_REGION')
+            total_rels += len(batch)
+            batch = []
+
+    if batch:
+        _insert_lookup_relation_batch(driver, batch, 'Region', 'name', 'IN_REGION')
+        total_rels += len(batch)
+
+    pbar.close()
+    print(f"  ✅ 创建 {total_rels:,} 条 IN_REGION 关系")
+    return total_rels
+
+
+def import_in_language_relations(driver, mysql_cursor):
+    """创建 IN_LANGUAGE 关系 (Movie)-[:IN_LANGUAGE]->(Language)"""
+    print("\n🗣️  Phase 9: 创建 IN_LANGUAGE 关系...")
+
+    mysql_cursor.execute("""
+        SELECT douban_id, languages FROM movies
+        WHERE languages IS NOT NULL AND languages != ''
+    """)
+
+    total_rels = 0
+    batch = []
+    rows = mysql_cursor.fetchall()
+    pbar = tqdm(total=len(rows), desc="  InLanguage", unit="部")
+
+    for row in rows:
+        mid = str(row['douban_id'])
+        for language in split_slash_values(row['languages']):
+            batch.append({'mid': mid, 'name': language})
+
+        pbar.update(1)
+
+        if len(batch) >= BATCH_SIZE:
+            _insert_lookup_relation_batch(driver, batch, 'Language', 'name', 'IN_LANGUAGE')
+            total_rels += len(batch)
+            batch = []
+
+    if batch:
+        _insert_lookup_relation_batch(driver, batch, 'Language', 'name', 'IN_LANGUAGE')
+        total_rels += len(batch)
+
+    pbar.close()
+    print(f"  ✅ 创建 {total_rels:,} 条 IN_LANGUAGE 关系")
+    return total_rels
+
+
+def import_has_content_type_relations(driver, mysql_cursor):
+    """创建 HAS_CONTENT_TYPE 关系 (Movie)-[:HAS_CONTENT_TYPE]->(ContentType)"""
+    print("\n📺 Phase 10: 创建 HAS_CONTENT_TYPE 关系...")
+
+    mysql_cursor.execute("""
+        SELECT douban_id, type FROM movies
+        WHERE type IS NOT NULL AND type != ''
+    """)
+
+    total_rels = 0
+    batch = []
+    rows = mysql_cursor.fetchall()
+    pbar = tqdm(total=len(rows), desc="  HasContentType", unit="部")
+
+    for row in rows:
+        batch.append({'mid': str(row['douban_id']), 'name': row['type'].strip()})
+        pbar.update(1)
+
+        if len(batch) >= BATCH_SIZE:
+            _insert_lookup_relation_batch(driver, batch, 'ContentType', 'name', 'HAS_CONTENT_TYPE')
+            total_rels += len(batch)
+            batch = []
+
+    if batch:
+        _insert_lookup_relation_batch(driver, batch, 'ContentType', 'name', 'HAS_CONTENT_TYPE')
+        total_rels += len(batch)
+
+    pbar.close()
+    print(f"  ✅ 创建 {total_rels:,} 条 HAS_CONTENT_TYPE 关系")
+    return total_rels
+
+
+def import_in_year_bucket_relations(driver, mysql_cursor):
+    """创建 IN_YEAR_BUCKET 关系 (Movie)-[:IN_YEAR_BUCKET]->(YearBucket)"""
+    print("\n📅 Phase 11: 创建 IN_YEAR_BUCKET 关系...")
+
+    mysql_cursor.execute("""
+        SELECT douban_id, year FROM movies
+        WHERE year IS NOT NULL
+    """)
+
+    total_rels = 0
+    batch = []
+    rows = mysql_cursor.fetchall()
+    pbar = tqdm(total=len(rows), desc="  InYearBucket", unit="部")
+
+    for row in rows:
+        bucket = build_year_bucket(row['year'])
+        if bucket:
+            batch.append({'mid': str(row['douban_id']), 'name': bucket})
+        pbar.update(1)
+
+        if len(batch) >= BATCH_SIZE:
+            _insert_lookup_relation_batch(driver, batch, 'YearBucket', 'name', 'IN_YEAR_BUCKET')
+            total_rels += len(batch)
+            batch = []
+
+    if batch:
+        _insert_lookup_relation_batch(driver, batch, 'YearBucket', 'name', 'IN_YEAR_BUCKET')
+        total_rels += len(batch)
+
+    pbar.close()
+    print(f"  ✅ 创建 {total_rels:,} 条 IN_YEAR_BUCKET 关系")
+    return total_rels
+
+
+def _insert_lookup_relation_batch(driver, batch, label, key_field, relation_type):
+    """批量创建 Movie 到 lookup 节点的关系"""
+    cypher = f"""
+    UNWIND $rels AS r
+    MATCH (m:Movie {{mid: r.mid}})
+    MATCH (n:{label} {{{key_field}: r.name}})
+    MERGE (m)-[:{relation_type}]->(n)
+    """
+    with driver.session() as session:
+        session.run(cypher, rels=batch)
+
+
 # ============== Verification ==============
 
 def verify_import(driver):
@@ -489,6 +735,18 @@ def main():
         create_constraints(neo4j_driver)
 
         import_genres(neo4j_driver, mysql_cursor)
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_regions(neo4j_driver, mysql_cursor)
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_languages(neo4j_driver, mysql_cursor)
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_content_types(neo4j_driver, mysql_cursor)
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_year_buckets(neo4j_driver, mysql_cursor)
 
         # Need new cursor for each large query
         mysql_cursor.close()
@@ -510,6 +768,22 @@ def main():
         mysql_cursor.close()
         mysql_cursor = mysql_conn.cursor()
         import_has_genre_relations(neo4j_driver, mysql_cursor)
+
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_in_region_relations(neo4j_driver, mysql_cursor)
+
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_in_language_relations(neo4j_driver, mysql_cursor)
+
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_has_content_type_relations(neo4j_driver, mysql_cursor)
+
+        mysql_cursor.close()
+        mysql_cursor = mysql_conn.cursor()
+        import_in_year_bucket_relations(neo4j_driver, mysql_cursor)
 
         verify_import(neo4j_driver)
 

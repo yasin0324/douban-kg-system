@@ -11,6 +11,22 @@ class BaseRecommender(ABC):
     name: str = "base"
     display_name: str = "基础推荐"
 
+    def set_params(self, **params):
+        """允许评估器在不重建实例的情况下切换参数。"""
+        if not params:
+            return
+        raise NotImplementedError(f"{self.__class__.__name__} 不支持动态参数更新")
+
+    @classmethod
+    def parameter_grid(cls) -> list[dict]:
+        """返回验证集调参搜索空间。默认不调参。"""
+        return [{}]
+
+    @classmethod
+    def ablation_configs(cls) -> dict[str, dict]:
+        """返回需要在报告中固定输出的消融配置。"""
+        return {}
+
     @abstractmethod
     def recommend(
         self,

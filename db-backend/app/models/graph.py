@@ -8,14 +8,14 @@ from pydantic import BaseModel
 class GraphNode(BaseModel):
     id: str
     label: str
-    type: str  # Movie / Person / Genre
+    type: str  # Movie / Person / Genre / Region / Language / ContentType / YearBucket
     properties: Optional[Dict[str, Any]] = None
 
 
 class GraphEdge(BaseModel):
     source: str
     target: str
-    type: str  # DIRECTED / ACTED_IN / HAS_GENRE
+    type: str  # DIRECTED / ACTED_IN / HAS_GENRE / IN_REGION / IN_LANGUAGE / HAS_CONTENT_TYPE / IN_YEAR_BUCKET
 
 
 class GraphMeta(BaseModel):
