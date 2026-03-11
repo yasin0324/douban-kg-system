@@ -1,0 +1,102 @@
+{
+  "n_test_users": 201,
+  "eval_method": "sampled_leave_one_out (1_positive + 99_negatives)",
+  "results": {
+    "content": {
+      "display_name": "基于内容的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.0527,
+          "recall": 0.2637,
+          "ndcg": 0.1776,
+          "hit_rate": 0.2637
+        },
+        "10": {
+          "precision": 0.0403,
+          "recall": 0.403,
+          "ndcg": 0.2228,
+          "hit_rate": 0.403
+        },
+        "20": {
+          "precision": 0.0296,
+          "recall": 0.592,
+          "ndcg": 0.2693,
+          "hit_rate": 0.592
+        }
+      },
+      "time_seconds": 45.13
+    },
+    "item_cf": {
+      "display_name": "基于物品的协同过滤",
+      "metrics": {
+        "5": {
+          "precision": 0.2,
+          "recall": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "10": {
+          "precision": 0.1,
+          "recall": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "20": {
+          "precision": 0.05,
+          "recall": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        }
+      },
+      "time_seconds": 1.78
+    },
+    "kg_path": {
+      "display_name": "基于知识图谱路径的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.197,
+          "recall": 0.9851,
+          "ndcg": 0.6498,
+          "hit_rate": 0.9851
+        },
+        "10": {
+          "precision": 0.1,
+          "recall": 1.0,
+          "ndcg": 0.6551,
+          "hit_rate": 1.0
+        },
+        "20": {
+          "precision": 0.05,
+          "recall": 1.0,
+          "ndcg": 0.6551,
+          "hit_rate": 1.0
+        }
+      },
+      "time_seconds": 337.16
+    },
+    "kg_embed": {
+      "display_name": "基于知识图谱嵌入的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.2,
+          "recall": 1.0,
+          "ndcg": 0.9982,
+          "hit_rate": 1.0
+        },
+        "10": {
+          "precision": 0.1,
+          "recall": 1.0,
+          "ndcg": 0.9982,
+          "hit_rate": 1.0
+        },
+        "20": {
+          "precision": 0.05,
+          "recall": 1.0,
+          "ndcg": 0.9982,
+          "hit_rate": 1.0
+        }
+      },
+      "time_seconds": 68.18
+    }
+  }
+}
