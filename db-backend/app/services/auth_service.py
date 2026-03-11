@@ -9,6 +9,7 @@ from jose import jwt
 from passlib.context import CryptContext
 
 from app.config import settings
+from app.db.neo4j import Neo4jConnection
 
 # bcrypt 上下文（passlib 兼容 bcrypt<5.0）
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -66,6 +67,22 @@ def register(conn, username: str, password: str, nickname: str = None, email: st
         )
         conn.commit()
         user_id = cursor.lastrowid
+
+    # 同步用户到 Neo4j 图数据库
+    try:
+        driver = Neo4jConnection.get_driver()
+        with driver.session() as session:
+            session.run("""
+                MERGE (u:User {id: $id})
+                SET u.username = $username,
+                    u.nickname = $nickname,
+                    u.email = $email,
+                    u.is_mock = false
+            """, id=user_id, username=username, nickname=nickname, email=email)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to sync new user to Neo4j: {e}")
+
     return {"id": user_id, "username": username, "nickname": nickname, "email": email}
 
 
