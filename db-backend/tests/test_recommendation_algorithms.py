@@ -143,3 +143,52 @@ def test_kg_path_scoring_matches_manual_accumulation():
     assert scored["candidate_scores"]["m2"] == pytest.approx((0.9 * 0.4) + (0.4 * 0.2))
     assert len(scored["candidate_reasons"]["m1"]) <= 3
     assert len(scored["candidate_reasons"]["m2"]) <= 3
+
+
+def test_kg_path_actor_order_limit_filters_candidates():
+    recommender = KGPathRecommender()
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._person_name_map = {"p1": "演员A"}
+    keep_profile = MovieGraphProfile(
+        mid="keep",
+        name="Keep",
+        actors={"p1"},
+        top_actors={"p1"},
+        actor_orders={"p1": 3},
+    )
+    drop_profile = MovieGraphProfile(
+        mid="drop",
+        name="Drop",
+        actors={"p1"},
+        top_actors={"p1"},
+        actor_orders={"p1": 5},
+    )
+
+    records = recommender._build_one_hop_records(
+        relation="actor",
+        seed_mid="seed",
+        seed_weight=1.0,
+        seed_entity_ids={"p1"},
+        inverted_index={"p1": {"seed", "keep", "drop"}},
+        per_seed_limit=10,
+        candidate_profiles={"keep": keep_profile, "drop": drop_profile},
+        actor_order_limit=3,
+    )
+
+    assert [record["mid"] for record in records] == ["keep"]
+
+
+def test_kg_path_select_genres_prefers_rare_entities():
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._relation_degrees = {
+        "genre": {
+            "剧情": 50000,
+            "悬疑": 4000,
+            "犯罪": 6000,
+        }
+    }
+    recommender = KGPathRecommender(genre_seed_entity_limit=2, genre_max_degree=15000)
+
+    selected = recommender._select_genres({"剧情", "悬疑", "犯罪"})
+
+    assert selected == {"悬疑", "犯罪"}

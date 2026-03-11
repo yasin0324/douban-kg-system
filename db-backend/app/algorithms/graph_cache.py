@@ -109,6 +109,7 @@ class MovieGraphProfile:
     directors: set[str] = field(default_factory=set)
     actors: set[str] = field(default_factory=set)
     top_actors: set[str] = field(default_factory=set)
+    actor_orders: dict[str, int] = field(default_factory=dict)
 
     def relation_entities(self, relation: str, *, actor_top_only: bool = False) -> set[str]:
         if relation == REL_DIRECTOR:
@@ -127,6 +128,15 @@ class MovieGraphProfile:
             return {self.year_bucket} if self.year_bucket else set()
         return set()
 
+    def actor_ids(self, order_limit: int | None = None) -> set[str]:
+        if order_limit is None:
+            return set(self.actors)
+        return {
+            pid
+            for pid, order in self.actor_orders.items()
+            if int(order) <= int(order_limit)
+        }
+
 
 class GraphMetadataCache:
     _lock = Lock()
@@ -134,6 +144,7 @@ class GraphMetadataCache:
     _movie_profiles: dict[str, MovieGraphProfile] = {}
     _movie_mids: list[str] = []
     _movie_name_map: dict[str, str] = {}
+    _person_name_map: dict[str, str] = {}
     _relation_inverted_index: dict[str, dict[str, set[str]]] = {}
     _relation_degrees: dict[str, dict[str, int]] = {}
     _triples_cache: dict[tuple[bool, bool], tuple[list[tuple[str, str, str]], set[str], dict[str, str], dict[str, tuple[str, str]]]] = {}
@@ -145,6 +156,7 @@ class GraphMetadataCache:
             cls._movie_profiles = {}
             cls._movie_mids = []
             cls._movie_name_map = {}
+            cls._person_name_map = {}
             cls._relation_inverted_index = {}
             cls._relation_degrees = {}
             cls._triples_cache = {}
@@ -173,6 +185,11 @@ class GraphMetadataCache:
     def movie_name_map(cls) -> dict[str, str]:
         cls.ensure_loaded()
         return cls._movie_name_map
+
+    @classmethod
+    def person_name(cls, pid: str) -> str:
+        cls.ensure_loaded()
+        return cls._person_name_map.get(pid, pid)
 
     @classmethod
     def inverted_index(cls, relation: str) -> dict[str, set[str]]:
@@ -295,19 +312,28 @@ class GraphMetadataCache:
     @classmethod
     def _load_people_and_genres_from_neo4j(cls):
         driver = Neo4jConnection.get_driver()
+        person_names: dict[str, str] = {}
         with driver.session() as session:
             directed_rows = session.run(
                 "MATCH (p:Person)-[:DIRECTED]->(m:Movie) "
-                "RETURN m.mid AS mid, collect(DISTINCT p.pid) AS pids"
+                "RETURN m.mid AS mid, collect(DISTINCT {pid: p.pid, name: p.name}) AS directors"
             )
             for row in directed_rows:
                 profile = cls._movie_profiles.get(str(row["mid"]))
                 if profile:
-                    profile.directors = {str(pid) for pid in row["pids"] if pid}
+                    director_ids = set()
+                    for director in row["directors"]:
+                        pid = str(director.get("pid"))
+                        if not pid:
+                            continue
+                        director_ids.add(pid)
+                        if director.get("name"):
+                            person_names[pid] = str(director["name"])
+                    profile.directors = director_ids
 
             acted_rows = session.run(
                 "MATCH (p:Person)-[rel:ACTED_IN]->(m:Movie) "
-                "RETURN m.mid AS mid, p.pid AS pid, coalesce(rel.order, 9999) AS ord "
+                "RETURN m.mid AS mid, p.pid AS pid, p.name AS name, coalesce(rel.order, 9999) AS ord "
                 "ORDER BY mid, ord ASC"
             )
             for row in acted_rows:
@@ -316,6 +342,12 @@ class GraphMetadataCache:
                     continue
                 pid = str(row["pid"])
                 profile.actors.add(pid)
+                profile.actor_orders[pid] = min(
+                    int(row["ord"]),
+                    profile.actor_orders.get(pid, 9999),
+                )
+                if row.get("name"):
+                    person_names[pid] = str(row["name"])
                 if int(row["ord"]) <= 5:
                     profile.top_actors.add(pid)
 
@@ -327,6 +359,8 @@ class GraphMetadataCache:
                 profile = cls._movie_profiles.get(str(row["mid"]))
                 if profile:
                     profile.genres = {str(name) for name in row["genres"] if name}
+
+        cls._person_name_map = person_names
 
     @classmethod
     def _build_relation_indexes(cls):
