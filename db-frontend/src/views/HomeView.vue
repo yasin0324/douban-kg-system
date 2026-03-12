@@ -8,12 +8,19 @@ import { statsApi } from "@/api/stats";
 import { useRecommendationFeed } from "@/composables/useRecommendations";
 import { useAuthStore } from "@/stores/auth";
 import { proxyImage } from "@/utils/image";
-import { formatSourceAlgorithmLabel } from "@/utils/recommendation";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const HOME_RECOMMEND_PRIMARY_ALGORITHM = "kg_embed";
+const HOME_RECOMMEND_FALLBACK_ALGORITHMS = [
+    "kg_embed",
+    "kg_path",
+    "item_cf",
+    "content",
+];
 
 const topMovies = ref([]);
+const fallbackRecommendMovies = ref([]);
 const overview = ref(null);
 const genres = ref([]);
 const loading = ref(true);
@@ -24,26 +31,63 @@ const pageSize = 24;
 const loadingMore = ref(false);
 const noMore = ref(false);
 const selectedRecommendation = ref(null);
+const selectedRecommendationAlgorithm = ref(HOME_RECOMMEND_PRIMARY_ALGORITHM);
 const recommendationDrawerVisible = ref(false);
+const activeHomeRecommendAlgorithm = ref(HOME_RECOMMEND_PRIMARY_ALGORITHM);
+const homeRecommendMode = ref(authStore.isLoggedIn ? "loading" : "idle");
 
 const {
     data: recommendData,
     loading: recommendLoading,
     loadRecommendations,
 } = useRecommendationFeed({
-    algorithm: "cfkg",
+    algorithm: HOME_RECOMMEND_PRIMARY_ALGORITHM,
     limit: 4,
 });
 
-const homeRecommendItems = computed(() =>
+const personalizedHomeRecommendItems = computed(() =>
     (recommendData.value?.items || []).slice(0, 4).map((item) => ({
         ...item,
-        overlay: item.source_algorithms?.length
-            ? formatSourceAlgorithmLabel(item.source_algorithms[0])
-            : "CFKG",
+        algorithm: activeHomeRecommendAlgorithm.value,
+        badgeText: item.score
+            ? (Number(item.score) * 100).toFixed(0)
+            : "",
         summary: item.reasons?.[0] || "暂无推荐说明",
     })),
 );
+
+const popularFallbackItems = computed(() =>
+    (fallbackRecommendMovies.value.length
+        ? fallbackRecommendMovies.value
+        : topMovies.value
+    )
+        .slice(0, 4)
+        .map((movie) => ({
+        sample: true,
+        algorithm: "popular",
+        movie: {
+            mid: movie.mid,
+            title: movie.title,
+            year: movie.year,
+            cover: movie.cover,
+            rating: movie.rating,
+            genres: movie.genres || [],
+        },
+        badgeText: "",
+        summary: "个性化推荐暂不可用，先看看当前高分热门电影。",
+        reasons: ["个性化推荐暂不可用，先看看当前高分热门电影。"],
+    })),
+);
+
+const homeRecommendItems = computed(() => {
+    if (personalizedHomeRecommendItems.value.length) {
+        return personalizedHomeRecommendItems.value;
+    }
+    if (authStore.isLoggedIn && homeRecommendMode.value === "popular") {
+        return popularFallbackItems.value;
+    }
+    return [];
+});
 
 onMounted(async () => {
     loading.value = true;
@@ -80,8 +124,11 @@ watch(
     () => authStore.isLoggedIn,
     async (loggedIn) => {
         if (loggedIn) {
+            homeRecommendMode.value = "loading";
             await loadHomeRecommendations();
+            return;
         }
+        homeRecommendMode.value = "idle";
     },
 );
 
@@ -90,15 +137,57 @@ onUnmounted(() => {
 });
 
 async function loadHomeRecommendations() {
+    homeRecommendMode.value = "loading";
+
+    for (const algorithm of HOME_RECOMMEND_FALLBACK_ALGORITHMS) {
+        try {
+            const payload = await loadRecommendations(
+                { algorithm, limit: 4 },
+                { silentError: true },
+            );
+            if (payload?.items?.length) {
+                activeHomeRecommendAlgorithm.value = payload.algorithm || algorithm;
+                homeRecommendMode.value = "personalized";
+                return;
+            }
+        } catch (err) {
+            console.error(`首页推荐算法 ${algorithm} 加载失败:`, err);
+        }
+    }
+
+    activeHomeRecommendAlgorithm.value = HOME_RECOMMEND_PRIMARY_ALGORITHM;
+    if (await ensurePopularFallbackMovies()) {
+        homeRecommendMode.value = "popular";
+        return;
+    }
+
+    homeRecommendMode.value = "idle";
+}
+
+async function ensurePopularFallbackMovies() {
+    if (fallbackRecommendMovies.value.length || topMovies.value.length) {
+        return true;
+    }
+
     try {
-        await loadRecommendations({ algorithm: "cfkg", limit: 4 });
+        const response = await moviesApi.getTop(4);
+        const items = Array.isArray(response.data)
+            ? response.data
+            : response.data?.items || [];
+        fallbackRecommendMovies.value = items;
+        return items.length > 0;
     } catch (err) {
-        console.error("首页推荐加载失败:", err);
+        console.error("首页热门保底加载失败:", err);
+        return false;
     }
 }
 
 function openRecommendationDetail(item) {
     selectedRecommendation.value = item;
+    selectedRecommendationAlgorithm.value =
+        item.algorithm && item.algorithm !== "popular"
+            ? item.algorithm
+            : activeHomeRecommendAlgorithm.value;
     recommendationDrawerVisible.value = true;
 }
 
@@ -242,7 +331,26 @@ const defaultCover =
                 </div>
 
                 <div
-                    v-if="authStore.isLoggedIn && homeRecommendItems.length"
+                    v-if="authStore.isLoggedIn && homeRecommendMode === 'loading'"
+                    class="home-recommend-grid loading-grid"
+                >
+                    <article
+                        v-for="index in 4"
+                        :key="index"
+                        class="home-recommend-card skeleton-card"
+                        aria-hidden="true"
+                    >
+                        <div class="home-poster-shell skeleton-poster"></div>
+                        <div class="home-copy skeleton-copy">
+                            <span class="skeleton-line skeleton-line-title"></span>
+                            <span class="skeleton-line skeleton-line-meta"></span>
+                            <span class="skeleton-line skeleton-line-text"></span>
+                            <span class="skeleton-line skeleton-line-text short"></span>
+                        </div>
+                    </article>
+                </div>
+                <div
+                    v-else-if="authStore.isLoggedIn && homeRecommendItems.length"
                     class="home-recommend-grid"
                     v-loading="recommendLoading"
                 >
@@ -260,8 +368,8 @@ const defaultCover =
                                 :alt="item.movie.title"
                                 @error="(e) => (e.target.src = defaultCover)"
                             />
-                            <span class="home-overlay">
-                                {{ item.overlay }}
+                            <span v-if="item.badgeText" class="home-score-badge">
+                                {{ item.badgeText }}
                             </span>
                         </div>
 
@@ -274,8 +382,7 @@ const defaultCover =
                         </div>
                     </article>
                 </div>
-
-                <div v-else class="recommend-empty card">
+                <div v-else-if="!authStore.isLoggedIn" class="recommend-empty card">
                     <p>登录后查看真实的个性化推荐结果与知识路径解释。</p>
                 </div>
             </section>
@@ -322,7 +429,7 @@ const defaultCover =
         <RecommendationDetailDrawer
             v-model="recommendationDrawerVisible"
             :item="selectedRecommendation"
-            algorithm="cfkg"
+            :algorithm="selectedRecommendationAlgorithm"
         />
     </div>
 </template>
@@ -436,6 +543,10 @@ const defaultCover =
     gap: var(--space-lg);
 }
 
+.loading-grid {
+    pointer-events: none;
+}
+
 .home-recommend-card {
     cursor: pointer;
     display: grid;
@@ -453,6 +564,10 @@ const defaultCover =
     }
 }
 
+.skeleton-card {
+    overflow: hidden;
+}
+
 .home-poster-shell {
     position: relative;
     padding: 12px;
@@ -468,16 +583,34 @@ const defaultCover =
     }
 }
 
-.home-overlay {
+.skeleton-poster {
+    aspect-ratio: 2 / 3;
+    border-radius: var(--radius-md);
+    background: linear-gradient(
+        90deg,
+        rgba(148, 163, 184, 0.14) 0%,
+        rgba(148, 163, 184, 0.28) 50%,
+        rgba(148, 163, 184, 0.14) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.2s linear infinite;
+}
+
+.home-score-badge {
     position: absolute;
     top: 18px;
     right: 18px;
-    padding: 0.28rem 0.65rem;
-    border-radius: 999px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
     background: var(--color-accent);
     color: #fff;
-    font-size: 0.76rem;
-    font-weight: 600;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .home-copy {
@@ -503,6 +636,41 @@ const defaultCover =
         -webkit-box-orient: vertical;
         line-clamp: 2;
         overflow: hidden;
+    }
+}
+
+.skeleton-copy {
+    gap: 10px;
+}
+
+.skeleton-line {
+    display: block;
+    height: 12px;
+    border-radius: 999px;
+    background: linear-gradient(
+        90deg,
+        rgba(148, 163, 184, 0.12) 0%,
+        rgba(148, 163, 184, 0.24) 50%,
+        rgba(148, 163, 184, 0.12) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.2s linear infinite;
+}
+
+.skeleton-line-title {
+    width: 82%;
+    height: 18px;
+}
+
+.skeleton-line-meta {
+    width: 28%;
+}
+
+.skeleton-line-text {
+    width: 92%;
+
+    &.short {
+        width: 64%;
     }
 }
 
@@ -560,6 +728,16 @@ const defaultCover =
 .fade-btn-enter-from,
 .fade-btn-leave-to {
     opacity: 0;
+}
+
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 @media (max-width: 1200px) {

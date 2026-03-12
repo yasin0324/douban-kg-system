@@ -11,7 +11,7 @@ export function useRecommendationFeed(defaultOptions = {}) {
         ...defaultOptions,
     });
 
-    const loadRecommendations = async (overrides = {}) => {
+    const loadRecommendations = async (overrides = {}, requestConfig = {}) => {
         loading.value = true;
         error.value = "";
 
@@ -30,7 +30,7 @@ export function useRecommendationFeed(defaultOptions = {}) {
         options.value = mergedOptions;
 
         try {
-            const response = await recommendApi.getPersonal(mergedOptions);
+            const response = await recommendApi.getPersonal(mergedOptions, requestConfig);
             data.value = response.data;
             return response.data;
         } catch (err) {
