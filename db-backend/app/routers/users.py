@@ -42,6 +42,13 @@ def check_preference(mid: str, user=Depends(get_current_user), conn=Depends(get_
     return user_service.check_preference(conn, user["id"], mid)
 
 
+# ---------- 行为汇总 ----------
+
+@router.get("/activity-summary", summary="用户行为汇总（冷启动判断）")
+def activity_summary(user=Depends(get_current_user), conn=Depends(get_mysql_conn)):
+    return user_service.get_activity_summary(conn, user["id"])
+
+
 # ---------- 评分 ----------
 
 @router.post("/ratings", summary="创建/更新评分")

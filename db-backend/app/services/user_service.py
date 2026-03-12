@@ -149,3 +149,49 @@ def get_rating(conn, user_id: int, mid: str) -> Optional[dict]:
             (user_id, mid),
         )
         return cursor.fetchone()
+
+
+COLD_START_THRESHOLD = 3
+
+
+def get_activity_summary(conn, user_id: int) -> dict:
+    """获取用户行为汇总，用于冷启动判断。
+
+    有效信号按「去重后的电影数」计算：同一电影若同时存在评分和偏好，只计 1 个信号。
+    """
+    with conn.cursor() as cursor:
+        # 评分电影 mid 集合
+        cursor.execute(
+            "SELECT mid FROM user_movie_ratings WHERE user_id = %s",
+            (user_id,),
+        )
+        rated_mids = {str(row["mid"]) for row in cursor.fetchall()}
+
+        # 偏好电影 mid 集合（按类型分组）
+        cursor.execute(
+            "SELECT mid, pref_type FROM user_movie_prefs WHERE user_id = %s",
+            (user_id,),
+        )
+        pref_rows = cursor.fetchall()
+
+    liked_mids = set()
+    want_mids = set()
+    for row in pref_rows:
+        mid = str(row["mid"])
+        if row["pref_type"] == "like":
+            liked_mids.add(mid)
+        elif row["pref_type"] == "want_to_watch":
+            want_mids.add(mid)
+
+    # 去重：所有涉及的唯一电影数
+    all_mids = rated_mids | liked_mids | want_mids
+    effective = len(all_mids)
+
+    return {
+        "liked_count": len(liked_mids),
+        "want_to_watch_count": len(want_mids),
+        "rating_count": len(rated_mids),
+        "effective_signal_count": effective,
+        "cold_start": effective < COLD_START_THRESHOLD,
+        "meets_personalization_threshold": effective >= COLD_START_THRESHOLD,
+    }

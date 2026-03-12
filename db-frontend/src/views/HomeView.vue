@@ -49,9 +49,7 @@ const personalizedHomeRecommendItems = computed(() =>
     (recommendData.value?.items || []).slice(0, 4).map((item) => ({
         ...item,
         algorithm: activeHomeRecommendAlgorithm.value,
-        badgeText: item.score
-            ? (Number(item.score) * 100).toFixed(0)
-            : "",
+        badgeText: item.score ? (Number(item.score) * 100).toFixed(0) : "",
         summary: item.reasons?.[0] || "暂无推荐说明",
     })),
 );
@@ -63,20 +61,20 @@ const popularFallbackItems = computed(() =>
     )
         .slice(0, 4)
         .map((movie) => ({
-        sample: true,
-        algorithm: "popular",
-        movie: {
-            mid: movie.mid,
-            title: movie.title,
-            year: movie.year,
-            cover: movie.cover,
-            rating: movie.rating,
-            genres: movie.genres || [],
-        },
-        badgeText: "",
-        summary: "个性化推荐暂不可用，先看看当前高分热门电影。",
-        reasons: ["个性化推荐暂不可用，先看看当前高分热门电影。"],
-    })),
+            sample: true,
+            algorithm: "popular",
+            movie: {
+                mid: movie.mid,
+                title: movie.title,
+                year: movie.year,
+                cover: movie.cover,
+                rating: movie.rating,
+                genres: movie.genres || [],
+            },
+            badgeText: "",
+            summary: "个性化推荐暂不可用，先看看当前高分热门电影。",
+            reasons: ["个性化推荐暂不可用，先看看当前高分热门电影。"],
+        })),
 );
 
 const homeRecommendItems = computed(() => {
@@ -146,7 +144,8 @@ async function loadHomeRecommendations() {
                 { silentError: true },
             );
             if (payload?.items?.length) {
-                activeHomeRecommendAlgorithm.value = payload.algorithm || algorithm;
+                activeHomeRecommendAlgorithm.value =
+                    payload.algorithm || algorithm;
                 homeRecommendMode.value = "personalized";
                 return;
             }
@@ -321,17 +320,19 @@ const defaultCover =
             <section class="recommend-section">
                 <div class="section-header">
                     <h2 class="section-title">🎯 为你推荐</h2>
-                    <button
-                        type="button"
-                        class="section-link"
+                    <el-button
+                        text
+                        type="primary"
                         @click="router.push('/recommend')"
                     >
                         进入推荐页 →
-                    </button>
+                    </el-button>
                 </div>
 
                 <div
-                    v-if="authStore.isLoggedIn && homeRecommendMode === 'loading'"
+                    v-if="
+                        authStore.isLoggedIn && homeRecommendMode === 'loading'
+                    "
                     class="home-recommend-grid loading-grid"
                 >
                     <article
@@ -342,15 +343,25 @@ const defaultCover =
                     >
                         <div class="home-poster-shell skeleton-poster"></div>
                         <div class="home-copy skeleton-copy">
-                            <span class="skeleton-line skeleton-line-title"></span>
-                            <span class="skeleton-line skeleton-line-meta"></span>
-                            <span class="skeleton-line skeleton-line-text"></span>
-                            <span class="skeleton-line skeleton-line-text short"></span>
+                            <span
+                                class="skeleton-line skeleton-line-title"
+                            ></span>
+                            <span
+                                class="skeleton-line skeleton-line-meta"
+                            ></span>
+                            <span
+                                class="skeleton-line skeleton-line-text"
+                            ></span>
+                            <span
+                                class="skeleton-line skeleton-line-text short"
+                            ></span>
                         </div>
                     </article>
                 </div>
                 <div
-                    v-else-if="authStore.isLoggedIn && homeRecommendItems.length"
+                    v-else-if="
+                        authStore.isLoggedIn && homeRecommendItems.length
+                    "
                     class="home-recommend-grid"
                     v-loading="recommendLoading"
                 >
@@ -368,7 +379,10 @@ const defaultCover =
                                 :alt="item.movie.title"
                                 @error="(e) => (e.target.src = defaultCover)"
                             />
-                            <span v-if="item.badgeText" class="home-score-badge">
+                            <span
+                                v-if="item.badgeText"
+                                class="home-score-badge"
+                            >
                                 {{ item.badgeText }}
                             </span>
                         </div>
@@ -382,7 +396,10 @@ const defaultCover =
                         </div>
                     </article>
                 </div>
-                <div v-else-if="!authStore.isLoggedIn" class="recommend-empty card">
+                <div
+                    v-else-if="!authStore.isLoggedIn"
+                    class="recommend-empty card"
+                >
                     <p>登录后查看真实的个性化推荐结果与知识路径解释。</p>
                 </div>
             </section>
@@ -503,20 +520,6 @@ const defaultCover =
     margin-bottom: var(--space-md);
 }
 
-.section-link {
-    border: none;
-    background: transparent;
-    color: var(--text-link);
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: color var(--transition-fast);
-
-    &:hover {
-        color: var(--color-accent);
-    }
-}
-
 .genre-tags {
     display: flex;
     flex-wrap: wrap;
@@ -624,6 +627,11 @@ const defaultCover =
         font-weight: 600;
         color: var(--text-primary);
         line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        line-clamp: 1;
+        overflow: hidden;
     }
 
     p {

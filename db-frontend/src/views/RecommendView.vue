@@ -1,9 +1,12 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import RecommendationDetailDrawer from "@/components/recommend/RecommendationDetailDrawer.vue";
 import { useRecommendationFeed } from "@/composables/useRecommendations";
 import { useAuthStore } from "@/stores/auth";
 import { proxyImage } from "@/utils/image";
+import api from "@/api/index";
+import { moviesApi } from "@/api/movies";
+import { usersApi } from "@/api/users";
 
 const authStore = useAuthStore();
 
@@ -23,7 +26,7 @@ const {
     loadRecommendations,
 } = useRecommendationFeed({
     algorithm: "kg_path",
-    limit: 12,
+    limit: 50,
 });
 
 const selectedRecommendation = ref(null);
@@ -38,13 +41,85 @@ const defaultCover =
 const displayItems = computed(() => recommendData.value?.items || []);
 
 const currentAlgoLabel = computed(() => {
-    const opt = algorithmOptions.find((o) => o.value === selectedAlgorithm.value);
+    const opt = algorithmOptions.find(
+        (o) => o.value === selectedAlgorithm.value,
+    );
     return opt ? opt.label : selectedAlgorithm.value;
 });
 
+// ────────────── 冷启动状态 ──────────────
+const COLD_START_THRESHOLD = 3;
+const coldStartMode = ref(false);
+const effectiveSignalCount = ref(0);
+const coldStartSkipped = ref(false);
+const topMovies = ref([]);
+const topMoviesLoading = ref(false);
+const interactedMids = ref(new Set()); // 本次会话中已交互的 mid（用于 UI 进度）
+
+// 分页 + 无限滚动
+const topPage = ref(1);
+const topPageSize = 24;
+const loadingMore = ref(false);
+const noMore = ref(false);
+const showBackTop = ref(false);
+
+// 评分弹层状态
+const ratingDialogVisible = ref(false);
+const ratingDialogMovie = ref(null);
+const ratingDialogValue = ref(0);
+const ratingSubmitting = ref(false);
+
+// 每张卡片上的 action 按钮 loading 状态
+const actionLoading = ref({});
+
 onMounted(async () => {
     await loadPage();
+    window.addEventListener("scroll", handleScroll);
 });
+
+onUnmounted(() => {
+    window.removeEventListener("scroll", handleScroll);
+});
+
+function resetColdStartState() {
+    coldStartMode.value = false;
+    coldStartSkipped.value = false;
+    effectiveSignalCount.value = 0;
+    interactedMids.value = new Set();
+    actionLoading.value = {};
+    ratingDialogVisible.value = false;
+    ratingDialogMovie.value = null;
+    ratingDialogValue.value = 0;
+    ratingSubmitting.value = false;
+}
+
+async function syncColdStartInteractions() {
+    try {
+        // 冷启动用户的唯一交互电影数 < 3，这里一次取够即可还原完整集合。
+        const [ratingsRes, prefsRes] = await Promise.all([
+            usersApi.getRatings({ page: 1, size: COLD_START_THRESHOLD }),
+            usersApi.getPreferences({ page: 1, size: COLD_START_THRESHOLD }),
+        ]);
+        const mids = new Set();
+
+        for (const item of ratingsRes.data?.items || []) {
+            if (item?.mid) {
+                mids.add(String(item.mid));
+            }
+        }
+        for (const item of prefsRes.data?.items || []) {
+            if (item?.mid) {
+                mids.add(String(item.mid));
+            }
+        }
+
+        interactedMids.value = mids;
+        effectiveSignalCount.value = mids.size;
+    } catch (err) {
+        console.error("冷启动交互同步失败:", err);
+        interactedMids.value = new Set();
+    }
+}
 
 watch(
     () => authStore.isLoggedIn,
@@ -55,26 +130,118 @@ watch(
         }
         selectedRecommendation.value = null;
         recommendationDrawerVisible.value = false;
+        resetColdStartState();
     },
 );
 
 async function loadPage() {
-    if (!authStore.isLoggedIn) {
-        return;
+    if (!authStore.isLoggedIn) return;
+    resetColdStartState();
+
+    try {
+        // 1. 先查行为汇总
+        const { data } = await api.get("/users/activity-summary");
+        effectiveSignalCount.value = data.effective_signal_count;
+
+        if (data.meets_personalization_threshold) {
+            // 有足够信号 → 正常推荐
+            coldStartMode.value = false;
+            await loadWithAlgorithm(selectedAlgorithm.value);
+        } else {
+            // 冷启动模式
+            coldStartMode.value = true;
+            await syncColdStartInteractions();
+            await loadTopMovies();
+        }
+    } catch (err) {
+        console.error("页面初始化失败:", err);
+        // 降级：尝试加载热门
+        coldStartMode.value = true;
+        await loadTopMovies();
     }
-    await loadWithAlgorithm(selectedAlgorithm.value);
+}
+
+async function loadTopMovies() {
+    topMoviesLoading.value = true;
+    topPage.value = 1;
+    noMore.value = false;
+    try {
+        const { data } = await moviesApi.filter({
+            page: 1,
+            size: topPageSize,
+            sort_by: "weighted",
+        });
+        topMovies.value = data.items || [];
+        if ((data.items || []).length < topPageSize) {
+            noMore.value = true;
+        }
+    } catch (err) {
+        console.error("热门电影加载失败:", err);
+        topMovies.value = [];
+    } finally {
+        topMoviesLoading.value = false;
+    }
+}
+
+async function loadMoreTopMovies() {
+    if (loadingMore.value || noMore.value) return;
+    loadingMore.value = true;
+    topPage.value += 1;
+    try {
+        const { data } = await moviesApi.filter({
+            page: topPage.value,
+            size: topPageSize,
+            sort_by: "weighted",
+        });
+        const items = data.items || [];
+        topMovies.value.push(...items);
+        if (items.length < topPageSize) {
+            noMore.value = true;
+        }
+    } catch (err) {
+        console.error("加载更多失败:", err);
+        topPage.value -= 1;
+    } finally {
+        loadingMore.value = false;
+    }
 }
 
 async function loadWithAlgorithm(algo) {
     try {
-        await loadRecommendations({
-            algorithm: algo,
-            limit: 12,
-        });
+        const payload = await loadRecommendations({ algorithm: algo, limit: 50 });
+        if (!payload?.items?.length && !topMovies.value.length) {
+            await loadTopMovies();
+        }
+        return payload;
     } catch (err) {
         console.error("推荐页加载失败:", err);
+        // 个性化推荐失败 → 回退到热门保底
+        if (!topMovies.value.length) {
+            await loadTopMovies();
+        }
+        return null;
     }
 }
+
+// ────────────── 滚动 ──────────────
+const handleScroll = () => {
+    showBackTop.value = window.scrollY > 600;
+
+    const scrollBottom =
+        document.documentElement.scrollHeight -
+        window.scrollY -
+        window.innerHeight;
+    if (scrollBottom < 300) {
+        // 冷启动 / 跳过 / 保底：分页加载更多热门
+        if (coldStartMode.value || showFallbackGrid.value) {
+            loadMoreTopMovies();
+        }
+    }
+};
+
+const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 async function onAlgorithmChange(algo) {
     selectedAlgorithm.value = algo;
@@ -98,6 +265,122 @@ function openRecommendationDetail(item) {
     selectedRecommendation.value = item;
     recommendationDrawerVisible.value = true;
 }
+
+// ────────────── 冷启动交互 ──────────────
+
+function getMovieMid(movie) {
+    return String(movie.mid || movie.douban_id);
+}
+
+function getMovieTitle(movie) {
+    return movie.title || movie.name || "未知电影";
+}
+
+function getMovieRating(movie) {
+    const r = movie.rating ?? movie.douban_score;
+    return r ? Number(r) : null;
+}
+
+function getMovieCover(movie) {
+    return proxyImage(movie.cover) || defaultCover;
+}
+
+async function handleLike(movie) {
+    const mid = getMovieMid(movie);
+    const key = `like_${mid}`;
+    if (actionLoading.value[key]) return;
+    actionLoading.value[key] = true;
+    try {
+        await api.post("/users/preferences", { mid, pref_type: "like" });
+        recordSignal(mid);
+    } catch (err) {
+        console.error("喜欢操作失败:", err);
+    } finally {
+        actionLoading.value[key] = false;
+    }
+}
+
+async function handleWantToWatch(movie) {
+    const mid = getMovieMid(movie);
+    const key = `want_${mid}`;
+    if (actionLoading.value[key]) return;
+    actionLoading.value[key] = true;
+    try {
+        await api.post("/users/preferences", {
+            mid,
+            pref_type: "want_to_watch",
+        });
+        recordSignal(mid);
+    } catch (err) {
+        console.error("想看操作失败:", err);
+    } finally {
+        actionLoading.value[key] = false;
+    }
+}
+
+function openRatingDialog(movie) {
+    ratingDialogMovie.value = movie;
+    ratingDialogValue.value = 0;
+    ratingDialogVisible.value = true;
+}
+
+async function submitRating() {
+    if (!ratingDialogMovie.value || ratingDialogValue.value <= 0) return;
+    const mid = getMovieMid(ratingDialogMovie.value);
+    ratingSubmitting.value = true;
+    try {
+        await api.post("/users/ratings", {
+            mid,
+            rating: ratingDialogValue.value,
+        });
+        ratingDialogVisible.value = false;
+        recordSignal(mid);
+    } catch (err) {
+        console.error("评分失败:", err);
+    } finally {
+        ratingSubmitting.value = false;
+    }
+}
+
+function recordSignal(mid) {
+    if (!interactedMids.value.has(mid)) {
+        interactedMids.value.add(mid);
+        effectiveSignalCount.value++;
+    }
+    // 达到门槛 → 自动切换到个性化推荐
+    if (effectiveSignalCount.value >= COLD_START_THRESHOLD) {
+        switchToPersonalized();
+    }
+}
+
+async function switchToPersonalized() {
+    coldStartMode.value = false;
+    await loadWithAlgorithm(selectedAlgorithm.value);
+
+    // 若个性化推荐也为空 → 保留热门保底
+    if (!displayItems.value.length && !recommendLoading.value) {
+        if (!topMovies.value.length) await loadTopMovies();
+    }
+}
+
+function skipColdStart() {
+    coldStartSkipped.value = true;
+}
+
+const showFallbackGrid = computed(
+    () =>
+        !coldStartMode.value &&
+        !recommendLoading.value &&
+        !displayItems.value.length &&
+        topMovies.value.length > 0,
+);
+
+const progressPercent = computed(() =>
+    Math.min((effectiveSignalCount.value / COLD_START_THRESHOLD) * 100, 100),
+);
+
+const isMovieInteracted = (movie) =>
+    interactedMids.value.has(getMovieMid(movie));
 </script>
 
 <template>
@@ -105,21 +388,29 @@ function openRecommendationDetail(item) {
         <div class="insights-shell">
             <header class="page-header">
                 <h1 class="page-title">🎯 个性化推荐</h1>
-                <p class="page-subtitle">基于知识图谱的可解释推荐实验系统</p>
             </header>
 
             <template v-if="authStore.isLoggedIn">
                 <!-- 标签页切换 -->
                 <div class="tab-bar">
                     <button
-                        :class="['tab-btn', { active: activeTab === 'recommend' }]"
+                        :class="[
+                            'tab-btn',
+                            { active: activeTab === 'recommend' },
+                        ]"
                         @click="activeTab = 'recommend'"
                     >
                         推荐结果
                     </button>
                     <button
-                        :class="['tab-btn', { active: activeTab === 'evaluate' }]"
-                        @click="activeTab = 'evaluate'; loadEvaluation()"
+                        :class="[
+                            'tab-btn',
+                            { active: activeTab === 'evaluate' },
+                        ]"
+                        @click="
+                            activeTab = 'evaluate';
+                            loadEvaluation();
+                        "
                     >
                         算法评估对比
                     </button>
@@ -127,79 +418,366 @@ function openRecommendationDetail(item) {
 
                 <!-- 推荐结果标签页 -->
                 <template v-if="activeTab === 'recommend'">
-                    <!-- 算法选择器 -->
-                    <section class="algo-selector">
-                        <span class="algo-label">推荐算法：</span>
-                        <div class="algo-buttons">
-                            <button
-                                v-for="opt in algorithmOptions"
-                                :key="opt.value"
-                                :class="['algo-btn', { active: selectedAlgorithm === opt.value }]"
-                                @click="onAlgorithmChange(opt.value)"
-                            >
-                                <span class="algo-type-badge" :class="opt.type === 'KG' ? 'kg' : 'baseline'">
-                                    {{ opt.type }}
-                                </span>
-                                {{ opt.label }}
-                            </button>
-                        </div>
-                    </section>
-
-                    <el-alert
-                        v-if="recommendError"
-                        class="page-alert"
-                        type="warning"
-                        show-icon
-                        :closable="false"
-                        :title="recommendError"
-                    />
-
-                    <section class="evidence-panel" v-loading="recommendLoading">
-                        <h2 class="panel-label">
-                            {{ currentAlgoLabel }} 推荐结果
-                            <span v-if="displayItems.length" class="result-count">
-                                ({{ displayItems.length }} 部)
-                            </span>
-                        </h2>
-
-                        <div class="movie-grid">
-                            <article
-                                v-for="item in displayItems"
-                                :key="item.movie.mid"
-                                class="movie-card"
-                                @click="openRecommendationDetail(item)"
-                            >
-                                <div class="poster-frame">
-                                    <img
-                                        :src="proxyImage(item.movie.cover) || defaultCover"
-                                        :alt="item.movie.title"
-                                        @error="(e) => (e.target.src = defaultCover)"
+                    <!-- ========== 冷启动模式 ========== -->
+                    <template v-if="coldStartMode && !coldStartSkipped">
+                        <!-- 引导区 -->
+                        <section class="cold-start-hero">
+                            <div class="hero-icon">🎬</div>
+                            <h2 class="hero-title">你喜欢哪些电影？</h2>
+                            <p class="hero-desc">
+                                任选
+                                <strong>{{ COLD_START_THRESHOLD }}</strong>
+                                部你感兴趣的电影即可生成个性化推荐
+                            </p>
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar">
+                                    <div
+                                        class="progress-fill"
+                                        :style="{
+                                            width: progressPercent + '%',
+                                        }"
                                     />
-                                    <div class="score-badge" v-if="item.score">
-                                        {{ (item.score * 100).toFixed(0) }}
-                                    </div>
                                 </div>
-                                <div class="movie-info">
-                                    <h3 class="movie-title">{{ item.movie.title }}</h3>
-                                    <div class="movie-meta">
-                                        <span v-if="item.movie.rating" class="rating">
-                                            ⭐ {{ item.movie.rating.toFixed(1) }}
-                                        </span>
-                                        <span v-if="item.movie.year" class="year">
-                                            {{ item.movie.year }}
-                                        </span>
-                                    </div>
-                                    <p class="reason-text">{{ item.reasons?.[0] || "" }}</p>
-                                </div>
-                            </article>
-                        </div>
+                                <span class="progress-text">
+                                    {{ effectiveSignalCount }} /
+                                    {{ COLD_START_THRESHOLD }}
+                                </span>
+                            </div>
+                            <button class="skip-btn" @click="skipColdStart">
+                                暂时跳过，浏览热门
+                            </button>
+                        </section>
 
-                        <el-empty
-                            v-if="!recommendLoading && !displayItems.length"
-                            :image-size="72"
-                            description="当前没有可展示的推荐结果"
+                        <!-- 种子电影网格 -->
+                        <section
+                            class="evidence-panel"
+                            v-loading="topMoviesLoading"
+                        >
+                            <h2 class="panel-label">高分热门电影</h2>
+                            <div class="movie-grid">
+                                <article
+                                    v-for="movie in topMovies"
+                                    :key="getMovieMid(movie)"
+                                    :class="[
+                                        'movie-card',
+                                        'seed-card',
+                                        {
+                                            interacted:
+                                                isMovieInteracted(movie),
+                                        },
+                                    ]"
+                                >
+                                    <div class="poster-frame">
+                                        <img
+                                            :src="getMovieCover(movie)"
+                                            :alt="getMovieTitle(movie)"
+                                            @error="
+                                                (e) =>
+                                                    (e.target.src =
+                                                        defaultCover)
+                                            "
+                                        />
+                                        <div
+                                            class="interacted-badge"
+                                            v-if="isMovieInteracted(movie)"
+                                        >
+                                            ✓
+                                        </div>
+                                    </div>
+                                    <div class="movie-info">
+                                        <h3 class="movie-title">
+                                            {{ getMovieTitle(movie) }}
+                                        </h3>
+                                        <div class="movie-meta">
+                                            <span
+                                                v-if="getMovieRating(movie)"
+                                                class="rating"
+                                            >
+                                                ⭐
+                                                {{
+                                                    getMovieRating(
+                                                        movie,
+                                                    ).toFixed(1)
+                                                }}
+                                            </span>
+                                            <span
+                                                v-if="movie.year"
+                                                class="year"
+                                            >
+                                                {{ movie.year }}
+                                            </span>
+                                        </div>
+                                        <!-- 操作按钮 -->
+                                        <div class="action-buttons">
+                                            <button
+                                                class="action-btn like-btn"
+                                                :disabled="
+                                                    isMovieInteracted(movie)
+                                                "
+                                                @click.stop="handleLike(movie)"
+                                            >
+                                                ❤️ 喜欢
+                                            </button>
+                                            <button
+                                                class="action-btn want-btn"
+                                                :disabled="
+                                                    isMovieInteracted(movie)
+                                                "
+                                                @click.stop="
+                                                    handleWantToWatch(movie)
+                                                "
+                                            >
+                                                👀 想看
+                                            </button>
+                                            <button
+                                                class="action-btn rate-btn"
+                                                :disabled="
+                                                    isMovieInteracted(movie)
+                                                "
+                                                @click.stop="
+                                                    openRatingDialog(movie)
+                                                "
+                                            >
+                                                ⭐ 评分
+                                            </button>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+                        </section>
+                    </template>
+
+                    <!-- ========== 跳过冷启动 → 热门保底 ========== -->
+                    <template v-else-if="coldStartMode && coldStartSkipped">
+                        <el-alert
+                            class="page-alert"
+                            type="info"
+                            show-icon
+                            :closable="true"
+                            title="随时可以对电影添加偏好来生成个性化推荐 🎯"
                         />
-                    </section>
+
+                        <section
+                            class="evidence-panel"
+                            v-loading="topMoviesLoading"
+                        >
+                            <h2 class="panel-label">热门推荐</h2>
+                            <div class="movie-grid">
+                                <article
+                                    v-for="movie in topMovies"
+                                    :key="getMovieMid(movie)"
+                                    class="movie-card"
+                                >
+                                    <div class="poster-frame">
+                                        <img
+                                            :src="getMovieCover(movie)"
+                                            :alt="getMovieTitle(movie)"
+                                            @error="
+                                                (e) =>
+                                                    (e.target.src =
+                                                        defaultCover)
+                                            "
+                                        />
+                                    </div>
+                                    <div class="movie-info">
+                                        <h3 class="movie-title">
+                                            {{ getMovieTitle(movie) }}
+                                        </h3>
+                                        <div class="movie-meta">
+                                            <span
+                                                v-if="getMovieRating(movie)"
+                                                class="rating"
+                                            >
+                                                ⭐
+                                                {{
+                                                    getMovieRating(
+                                                        movie,
+                                                    ).toFixed(1)
+                                                }}
+                                            </span>
+                                            <span
+                                                v-if="movie.year"
+                                                class="year"
+                                            >
+                                                {{ movie.year }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+                        </section>
+                    </template>
+
+                    <!-- ========== 正常推荐模式 ========== -->
+                    <template v-else>
+                        <!-- 算法选择器 -->
+                        <section class="algo-selector">
+                            <span class="algo-label">推荐算法：</span>
+                            <div class="algo-buttons">
+                                <button
+                                    v-for="opt in algorithmOptions"
+                                    :key="opt.value"
+                                    :class="[
+                                        'algo-btn',
+                                        {
+                                            active:
+                                                selectedAlgorithm === opt.value,
+                                        },
+                                    ]"
+                                    @click="onAlgorithmChange(opt.value)"
+                                >
+                                    <span
+                                        class="algo-type-badge"
+                                        :class="
+                                            opt.type === 'KG'
+                                                ? 'kg'
+                                                : 'baseline'
+                                        "
+                                    >
+                                        {{ opt.type }}
+                                    </span>
+                                    {{ opt.label }}
+                                </button>
+                            </div>
+                        </section>
+
+                        <el-alert
+                            v-if="recommendError"
+                            class="page-alert"
+                            type="warning"
+                            show-icon
+                            :closable="false"
+                            :title="recommendError"
+                        />
+
+                        <section
+                            class="evidence-panel"
+                            v-loading="recommendLoading"
+                        >
+                            <h2 class="panel-label">
+                                {{ currentAlgoLabel }} 推荐结果
+                            </h2>
+
+                            <div class="movie-grid">
+                                <article
+                                    v-for="item in displayItems"
+                                    :key="item.movie.mid"
+                                    class="movie-card"
+                                    @click="openRecommendationDetail(item)"
+                                >
+                                    <div class="poster-frame">
+                                        <img
+                                            :src="
+                                                proxyImage(item.movie.cover) ||
+                                                defaultCover
+                                            "
+                                            :alt="item.movie.title"
+                                            @error="
+                                                (e) =>
+                                                    (e.target.src =
+                                                        defaultCover)
+                                            "
+                                        />
+                                        <div
+                                            class="score-badge"
+                                            v-if="item.score"
+                                        >
+                                            {{ (item.score * 100).toFixed(0) }}
+                                        </div>
+                                    </div>
+                                    <div class="movie-info">
+                                        <h3 class="movie-title">
+                                            {{ item.movie.title }}
+                                        </h3>
+                                        <div class="movie-meta">
+                                            <span
+                                                v-if="item.movie.rating"
+                                                class="rating"
+                                            >
+                                                ⭐
+                                                {{
+                                                    item.movie.rating.toFixed(1)
+                                                }}
+                                            </span>
+                                            <span
+                                                v-if="item.movie.year"
+                                                class="year"
+                                            >
+                                                {{ item.movie.year }}
+                                            </span>
+                                        </div>
+                                        <p class="reason-text">
+                                            {{ item.reasons?.[0] || "" }}
+                                        </p>
+                                    </div>
+                                </article>
+                            </div>
+
+                            <!-- 个性化推荐为空 → 热门保底 -->
+                            <template v-if="showFallbackGrid">
+                                <el-alert
+                                    class="page-alert fallback-alert"
+                                    type="info"
+                                    show-icon
+                                    :closable="false"
+                                    title="个性化推荐暂无结果，以下为热门推荐"
+                                />
+                                <div class="movie-grid">
+                                    <article
+                                        v-for="movie in topMovies"
+                                        :key="getMovieMid(movie)"
+                                        class="movie-card"
+                                    >
+                                        <div class="poster-frame">
+                                            <img
+                                                :src="getMovieCover(movie)"
+                                                :alt="getMovieTitle(movie)"
+                                                @error="
+                                                    (e) =>
+                                                        (e.target.src =
+                                                            defaultCover)
+                                                "
+                                            />
+                                        </div>
+                                        <div class="movie-info">
+                                            <h3 class="movie-title">
+                                                {{ getMovieTitle(movie) }}
+                                            </h3>
+                                            <div class="movie-meta">
+                                                <span
+                                                    v-if="getMovieRating(movie)"
+                                                    class="rating"
+                                                >
+                                                    ⭐
+                                                    {{
+                                                        getMovieRating(
+                                                            movie,
+                                                        ).toFixed(1)
+                                                    }}
+                                                </span>
+                                                <span
+                                                    v-if="movie.year"
+                                                    class="year"
+                                                >
+                                                    {{ movie.year }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </article>
+                                </div>
+                            </template>
+
+                            <el-empty
+                                v-if="
+                                    !recommendLoading &&
+                                    !displayItems.length &&
+                                    !showFallbackGrid
+                                "
+                                :image-size="72"
+                                description="当前没有可展示的推荐结果"
+                            />
+                        </section>
+                    </template>
                 </template>
 
                 <!-- 评估对比标签页 -->
@@ -210,7 +788,8 @@ function openRecommendationDetail(item) {
                         <template v-if="evalData?.results">
                             <p class="eval-summary">
                                 评估方法: <strong>leave-one-out</strong> |
-                                测试用户: <strong>{{ evalData.n_test_users }}</strong>
+                                测试用户:
+                                <strong>{{ evalData.n_test_users }}</strong>
                             </p>
 
                             <div
@@ -232,23 +811,66 @@ function openRecommendationDetail(item) {
                                     </thead>
                                     <tbody>
                                         <tr
-                                            v-for="(data, algoName) in evalData.results"
+                                            v-for="(
+                                                data, algoName
+                                            ) in evalData.results"
                                             :key="algoName"
-                                            :class="{ 'kg-row': algoName.startsWith('kg_') }"
+                                            :class="{
+                                                'kg-row':
+                                                    algoName.startsWith('kg_'),
+                                            }"
                                         >
                                             <td>{{ data.display_name }}</td>
                                             <td>
                                                 <span
                                                     class="algo-type-badge"
-                                                    :class="algoName.startsWith('kg_') ? 'kg' : 'baseline'"
+                                                    :class="
+                                                        algoName.startsWith(
+                                                            'kg_',
+                                                        )
+                                                            ? 'kg'
+                                                            : 'baseline'
+                                                    "
                                                 >
-                                                    {{ algoName.startsWith("kg_") ? "KG" : "基线" }}
+                                                    {{
+                                                        algoName.startsWith(
+                                                            "kg_",
+                                                        )
+                                                            ? "KG"
+                                                            : "基线"
+                                                    }}
                                                 </span>
                                             </td>
-                                            <td>{{ data.metrics[k]?.precision?.toFixed(4) || "-" }}</td>
-                                            <td>{{ data.metrics[k]?.recall?.toFixed(4) || "-" }}</td>
-                                            <td>{{ data.metrics[k]?.ndcg?.toFixed(4) || "-" }}</td>
-                                            <td>{{ data.metrics[k]?.hit_rate?.toFixed(4) || "-" }}</td>
+                                            <td>
+                                                {{
+                                                    data.metrics[
+                                                        k
+                                                    ]?.precision?.toFixed(4) ||
+                                                    "-"
+                                                }}
+                                            </td>
+                                            <td>
+                                                {{
+                                                    data.metrics[
+                                                        k
+                                                    ]?.recall?.toFixed(4) || "-"
+                                                }}
+                                            </td>
+                                            <td>
+                                                {{
+                                                    data.metrics[
+                                                        k
+                                                    ]?.ndcg?.toFixed(4) || "-"
+                                                }}
+                                            </td>
+                                            <td>
+                                                {{
+                                                    data.metrics[
+                                                        k
+                                                    ]?.hit_rate?.toFixed(4) ||
+                                                    "-"
+                                                }}
+                                            </td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -270,7 +892,7 @@ function openRecommendationDetail(item) {
             </template>
 
             <section v-else class="guest-panel card">
-                <h2>登录后查看可解释推荐</h2>
+                <h2>登录后查看推荐</h2>
                 <p>
                     推荐页会展示真实的推荐结果、推荐逻辑，以及不同算法的评估对比。
                 </p>
@@ -282,6 +904,52 @@ function openRecommendationDetail(item) {
             :item="selectedRecommendation"
             :algorithm="selectedAlgorithm"
         />
+
+        <!-- 评分弹层 -->
+        <el-dialog
+            v-model="ratingDialogVisible"
+            title="为这部电影评分"
+            width="360px"
+            :close-on-click-modal="true"
+            class="rating-dialog"
+        >
+            <div class="rating-dialog-body" v-if="ratingDialogMovie">
+                <p class="rating-movie-name">
+                    {{ getMovieTitle(ratingDialogMovie) }}
+                </p>
+                <el-rate
+                    v-model="ratingDialogValue"
+                    :max="5"
+                    allow-half
+                    size="large"
+                    show-score
+                    :score-template="ratingDialogValue + ' 分'"
+                />
+            </div>
+            <template #footer>
+                <el-button @click="ratingDialogVisible = false">取消</el-button>
+                <el-button
+                    type="primary"
+                    :loading="ratingSubmitting"
+                    :disabled="ratingDialogValue <= 0"
+                    @click="submitRating"
+                >
+                    确认评分
+                </el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 回到顶部 -->
+        <transition name="fade-btn">
+            <button
+                v-show="showBackTop"
+                class="back-top-btn"
+                @click="scrollToTop"
+                title="回到顶部"
+            >
+                ↑
+            </button>
+        </transition>
     </div>
 </template>
 
@@ -294,12 +962,6 @@ function openRecommendationDetail(item) {
 .insights-shell {
     width: min(1280px, calc(100vw - 48px));
     margin: 0 auto;
-}
-
-.page-header {
-    padding-bottom: var(--space-lg);
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: var(--space-xl);
 }
 
 .page-title {
@@ -428,6 +1090,199 @@ function openRecommendationDetail(item) {
     }
 }
 
+/* ────────── 冷启动引导区 ────────── */
+.cold-start-hero {
+    text-align: center;
+    padding: var(--space-2xl) var(--space-xl);
+    margin-bottom: var(--space-xl);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.hero-icon {
+    font-size: 3rem;
+    margin-bottom: var(--space-md);
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+.hero-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-sm);
+}
+
+.hero-desc {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-lg);
+    line-height: 1.6;
+
+    strong {
+        color: var(--color-accent);
+    }
+}
+
+.progress-bar-wrapper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    max-width: 320px;
+    margin: 0 auto var(--space-lg);
+}
+
+.progress-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--color-accent), #a78bfa);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.progress-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-accent);
+    white-space: nowrap;
+}
+
+.skip-btn {
+    padding: 0.5rem 1.2rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+        color: var(--text-primary);
+        border-color: var(--border-color-light);
+    }
+}
+
+/* 种子卡片 */
+.seed-card {
+    position: relative;
+    transition: all var(--transition-normal);
+
+    &.interacted {
+        opacity: 0.6;
+        pointer-events: none;
+
+        .poster-frame::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+        }
+    }
+}
+
+.interacted-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 4px;
+    margin-top: var(--space-xs);
+}
+
+.action-btn {
+    flex: 1;
+    padding: 0.3rem 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+
+    &:hover:not(:disabled) {
+        border-color: var(--border-color-light);
+        color: var(--text-primary);
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+}
+
+.like-btn:hover:not(:disabled) {
+    border-color: #f43f5e;
+    color: #f43f5e;
+    background: rgba(244, 63, 94, 0.08);
+}
+
+.want-btn:hover:not(:disabled) {
+    border-color: #3b82f6;
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.rate-btn:hover:not(:disabled) {
+    border-color: #eab308;
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.08);
+}
+
+/* 评分弹层 */
+.rating-dialog-body {
+    text-align: center;
+    padding: var(--space-md) 0;
+}
+
+.rating-movie-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+}
+
+.fallback-alert {
+    margin-bottom: var(--space-md);
+    margin-top: var(--space-lg);
+}
+
 /* Movie Grid */
 .movie-grid {
     display: grid;
@@ -490,10 +1345,9 @@ function openRecommendationDetail(item) {
     color: var(--text-primary);
     margin: 0 0 var(--space-xs);
     line-height: 1.3;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .movie-meta {
@@ -648,5 +1502,55 @@ function openRecommendationDetail(item) {
     .movie-grid {
         grid-template-columns: repeat(2, 1fr);
     }
+
+    .action-btn {
+        font-size: 0.65rem;
+        padding: 0.25rem 0;
+    }
+}
+
+/* 回到顶部 + 加载更多 */
+.back-top-btn {
+    position: fixed;
+    right: 24px;
+    bottom: 32px;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+}
+
+.fade-btn-enter-active,
+.fade-btn-leave-active {
+    transition: opacity var(--transition-fast);
+}
+
+.fade-btn-enter-from,
+.fade-btn-leave-to {
+    opacity: 0;
+}
+
+.load-more-area {
+    text-align: center;
+    margin: var(--space-xl) 0;
+}
+
+.loading-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+}
+
+.no-more {
+    color: var(--text-muted);
+    font-size: 0.85rem;
 }
 </style>
