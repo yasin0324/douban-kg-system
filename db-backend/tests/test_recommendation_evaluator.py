@@ -1,3 +1,5 @@
+import json
+
 from app.algorithms.base import BaseRecommender
 from app.algorithms import evaluator
 
@@ -160,3 +162,49 @@ def test_tune_algorithm_progress_labels_include_grid_index(monkeypatch):
         "  验证[1/2] Tunable Fake",
         "  验证[2/2] Tunable Fake",
     ]
+
+
+def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):
+    monkeypatch.setattr(evaluator, "BACKEND_DIR", str(tmp_path))
+    report_bundle = {
+        "main": {
+            "protocol_version": 2,
+            "generated_at": "2026-03-12T10:00:00+08:00",
+            "eval_method": "main",
+            "negative_sample_seeds": [42],
+            "n_validation_users": 1,
+            "n_test_users": 1,
+            "results": {},
+        },
+        "legacy": {
+            "protocol_version": 1,
+            "generated_at": "2026-03-12T10:00:00+08:00",
+            "eval_method": "legacy",
+            "negative_sample_seeds": [42],
+            "n_test_users": 1,
+            "results": {},
+        },
+    }
+
+    evaluator._save_results(report_bundle)
+
+    reports_dir = tmp_path / "reports"
+    history_dir = reports_dir / "history"
+    assert (reports_dir / "eval_results.json").exists()
+    assert (reports_dir / "eval_results_legacy.json").exists()
+    assert (reports_dir / "eval_results.md").exists()
+    assert (reports_dir / "eval_results_legacy.md").exists()
+
+    history_json = sorted(path.name for path in history_dir.glob("*.json"))
+    history_md = sorted(path.name for path in history_dir.glob("*.md"))
+    assert history_json == [
+        "2026-03-12_100000_eval_results.json",
+        "2026-03-12_100000_eval_results_legacy.json",
+    ]
+    assert history_md == [
+        "2026-03-12_100000_eval_results.md",
+        "2026-03-12_100000_eval_results_legacy.md",
+    ]
+
+    with open(reports_dir / "eval_results.json", "r", encoding="utf-8") as file_obj:
+        assert json.load(file_obj)["generated_at"] == "2026-03-12T10:00:00+08:00"

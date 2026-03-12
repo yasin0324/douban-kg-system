@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from unittest.mock import patch
 
 from app.algorithms.graph_cache import (
     GraphMetadataCache,
@@ -11,10 +12,12 @@ from app.algorithms.kg_path import KGPathRecommender
 
 def setup_function():
     GraphMetadataCache.clear()
+    KGEmbedRecommender.clear_shared_artifacts()
 
 
 def teardown_function():
     GraphMetadataCache.clear()
+    KGEmbedRecommender.clear_shared_artifacts()
 
 
 def test_graph_cache_build_triples_excludes_user_and_rated_relations():
@@ -86,6 +89,20 @@ def test_kg_embed_negative_sampling_respects_entity_types():
     assert negatives[0, 2] in type_to_entity_indices["movie"]
     assert negatives[1, 0] in type_to_entity_indices["movie"]
     assert negatives[1, 2] in type_to_entity_indices["genre"]
+
+
+def test_kg_embed_skips_online_training_when_disabled_and_files_missing():
+    recommender = KGEmbedRecommender()
+
+    with (
+        patch("app.algorithms.kg_embed.os.path.exists", return_value=False),
+        patch("app.algorithms.kg_embed.settings.RECOMMEND_ENABLE_ONLINE_EMBED_TRAINING", False),
+        patch.object(recommender, "_train_transe") as mock_train,
+    ):
+        artifacts = recommender._load_or_train()
+
+    assert artifacts is None
+    mock_train.assert_not_called()
 
 
 def test_kg_path_scoring_matches_manual_accumulation():

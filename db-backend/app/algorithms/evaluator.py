@@ -19,6 +19,7 @@ import sys
 import time
 from collections import defaultdict
 from copy import deepcopy
+from datetime import datetime, timezone
 from statistics import mean, pstdev
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -469,8 +470,10 @@ def evaluate_suite() -> dict:
         }
         print(f"  ✅ 完成 ({test_summary['time_seconds']}s)")
 
+    generated_at = datetime.now(timezone.utc).astimezone().isoformat()
     report = {
         "protocol_version": 2,
+        "generated_at": generated_at,
         "eval_method": f"validation_and_test_sampled_leave_one_out (1_positive + {NUM_NEGATIVES}_negatives)",
         "user_split_seed": USER_SPLIT_SEED,
         "negative_sample_seeds": NEGATIVE_SAMPLE_SEEDS,
@@ -481,6 +484,7 @@ def evaluate_suite() -> dict:
     }
     legacy_report = {
         "protocol_version": 1,
+        "generated_at": generated_at,
         "eval_method": f"single_seed_sampled_leave_one_out (seed={LEGACY_NEGATIVE_SEED})",
         "negative_sample_seeds": [LEGACY_NEGATIVE_SEED],
         "n_test_users": len(test_users),
@@ -519,30 +523,95 @@ def _print_comparison_table(results: dict):
         )
 
 
+def _report_stamp(report: dict) -> str:
+    raw = report.get("generated_at")
+    if raw:
+        try:
+            dt = datetime.fromisoformat(raw)
+            return dt.astimezone().strftime("%Y-%m-%d_%H%M%S")
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d_%H%M%S")
+
+
+def _next_available_path(path: str) -> str:
+    if not os.path.exists(path):
+        return path
+    root, ext = os.path.splitext(path)
+    counter = 1
+    while True:
+        candidate = f"{root}_{counter}{ext}"
+        if not os.path.exists(candidate):
+            return candidate
+        counter += 1
+
+
+def _write_report_files(
+    *,
+    json_path: str,
+    markdown_path: str,
+    report: dict,
+    include_ablations: bool,
+):
+    with open(json_path, "w", encoding="utf-8") as file_obj:
+        json.dump(report, file_obj, ensure_ascii=False, indent=2)
+    with open(markdown_path, "w", encoding="utf-8") as file_obj:
+        file_obj.write(build_markdown_report(report, include_ablations=include_ablations))
+
+
 def _save_results(report_bundle: dict):
     reports_dir = os.path.join(BACKEND_DIR, "reports")
     os.makedirs(reports_dir, exist_ok=True)
+    history_dir = os.path.join(reports_dir, "history")
+    os.makedirs(history_dir, exist_ok=True)
 
     main_json_path = os.path.join(reports_dir, "eval_results.json")
-    with open(main_json_path, "w", encoding="utf-8") as file_obj:
-        json.dump(report_bundle["main"], file_obj, ensure_ascii=False, indent=2)
+    main_md_path = os.path.join(reports_dir, "eval_results.md")
+    _write_report_files(
+        json_path=main_json_path,
+        markdown_path=main_md_path,
+        report=report_bundle["main"],
+        include_ablations=True,
+    )
 
     legacy_json_path = os.path.join(reports_dir, "eval_results_legacy.json")
-    with open(legacy_json_path, "w", encoding="utf-8") as file_obj:
-        json.dump(report_bundle["legacy"], file_obj, ensure_ascii=False, indent=2)
-
-    main_md_path = os.path.join(reports_dir, "eval_results.md")
-    with open(main_md_path, "w", encoding="utf-8") as file_obj:
-        file_obj.write(build_markdown_report(report_bundle["main"], include_ablations=True))
-
     legacy_md_path = os.path.join(reports_dir, "eval_results_legacy.md")
-    with open(legacy_md_path, "w", encoding="utf-8") as file_obj:
-        file_obj.write(build_markdown_report(report_bundle["legacy"], include_ablations=False))
+    _write_report_files(
+        json_path=legacy_json_path,
+        markdown_path=legacy_md_path,
+        report=report_bundle["legacy"],
+        include_ablations=False,
+    )
+
+    stamp = _report_stamp(report_bundle["main"])
+    history_main_json_path = _next_available_path(
+        os.path.join(history_dir, f"{stamp}_eval_results.json")
+    )
+    history_main_md_path = os.path.splitext(history_main_json_path)[0] + ".md"
+    _write_report_files(
+        json_path=history_main_json_path,
+        markdown_path=history_main_md_path,
+        report=report_bundle["main"],
+        include_ablations=True,
+    )
+
+    history_legacy_json_path = _next_available_path(
+        os.path.join(history_dir, f"{stamp}_eval_results_legacy.json")
+    )
+    history_legacy_md_path = os.path.splitext(history_legacy_json_path)[0] + ".md"
+    _write_report_files(
+        json_path=history_legacy_json_path,
+        markdown_path=history_legacy_md_path,
+        report=report_bundle["legacy"],
+        include_ablations=False,
+    )
 
     print(f"\n  📄 JSON 报告: {main_json_path}")
     print(f"  📄 Legacy JSON: {legacy_json_path}")
     print(f"  📄 Markdown 报告: {main_md_path}")
     print(f"  📄 Legacy Markdown: {legacy_md_path}")
+    print(f"  🗂️ 历史 JSON 报告: {history_main_json_path}")
+    print(f"  🗂️ 历史 Legacy JSON: {history_legacy_json_path}")
 
 
 def build_markdown_report(report: dict, *, include_ablations: bool) -> str:

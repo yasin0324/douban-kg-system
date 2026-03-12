@@ -34,8 +34,17 @@ export function useRecommendationFeed(defaultOptions = {}) {
             data.value = response.data;
             return response.data;
         } catch (err) {
-            error.value =
-                err.response?.data?.detail || "推荐加载失败，请稍后重试";
+            if (err.response?.status === 503) {
+                error.value = "推荐服务繁忙，请稍后重试或切换其他算法";
+            } else if (
+                err.response?.status === 504 ||
+                err.code === "ECONNABORTED"
+            ) {
+                error.value = "推荐计算超时，请稍后重试或切换其他算法";
+            } else {
+                error.value =
+                    err.response?.data?.detail || "推荐加载失败，请稍后重试";
+            }
             data.value = null;
             throw err;
         } finally {
@@ -53,6 +62,6 @@ export function useRecommendationFeed(defaultOptions = {}) {
 }
 
 export async function fetchRecommendationExplanation(params) {
-    const response = await recommendApi.explain(params);
+    const response = await recommendApi.explain(params, { silentError: true });
     return response.data;
 }

@@ -41,6 +41,7 @@ api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const silentError = Boolean(originalRequest?.silentError);
 
         // 401 且非刷新请求 → 尝试刷新 Token
         if (
@@ -100,7 +101,7 @@ api.interceptors.response.use(
             error.response?.data?.detail ||
             error.response?.data?.message ||
             "请求失败，请稍后重试";
-        if (status !== 401 && status !== 404) {
+        if (status !== 401 && status !== 404 && !silentError) {
             ElMessage.error(message);
         }
 

@@ -2,19 +2,69 @@
 推荐系统路由 — 个性化推荐、推荐解释、离线评估
 """
 
+import asyncio
+import glob
 import logging
+from functools import partial
+from threading import BoundedSemaphore, Lock
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.algorithms import ALGORITHMS, ALGORITHM_NAMES
+from app.config import settings
 from app.db.mysql import get_connection
 from app.db.neo4j import Neo4jConnection
-from app.dependencies import get_current_user, get_mysql_conn, get_neo4j_session
+from app.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/recommend", tags=["推荐系统"])
+
+RECOMMEND_TIMEOUT_SECONDS = max(float(settings.RECOMMEND_TIMEOUT_SECONDS), 1.0)
+RECOMMEND_MAX_CONCURRENT_JOBS = max(
+    int(settings.RECOMMEND_MAX_CONCURRENT_JOBS_PER_ALGORITHM),
+    1,
+)
+
+_runtime_lock = Lock()
+_algorithm_instances: dict[str, object] = {}
+_algorithm_slots: dict[str, BoundedSemaphore] = {}
+
+
+def _get_algorithm_instance(algo_name: str):
+    with _runtime_lock:
+        algo = _algorithm_instances.get(algo_name)
+        if algo is None:
+            algo = ALGORITHMS[algo_name]()
+            _algorithm_instances[algo_name] = algo
+        return algo
+
+
+def _get_algorithm_slot(algo_name: str) -> BoundedSemaphore:
+    with _runtime_lock:
+        slot = _algorithm_slots.get(algo_name)
+        if slot is None:
+            slot = BoundedSemaphore(RECOMMEND_MAX_CONCURRENT_JOBS)
+            _algorithm_slots[algo_name] = slot
+        return slot
+
+
+def _reset_algorithm_runtime_state():
+    with _runtime_lock:
+        _algorithm_instances.clear()
+        _algorithm_slots.clear()
+
+
+def _run_recommendation_job(algo, slot: BoundedSemaphore, *, user_id: int, n: int, exclude_mids: set[str]):
+    try:
+        return algo.recommend(
+            user_id=user_id,
+            n=n,
+            exclude_mids=exclude_mids,
+        )
+    finally:
+        slot.release()
 
 
 @router.get("/personal", summary="个人电影推荐")
@@ -38,15 +88,48 @@ async def get_personal_recommendations(
         )
 
     algo_class = ALGORITHMS[algo_name]
-    algo = algo_class()
+    algo = _get_algorithm_instance(algo_name)
+    slot = _get_algorithm_slot(algo_name)
 
     exclude_mids = set(exclude_movie_ids) if exclude_movie_ids else set()
+    if not slot.acquire(blocking=False):
+        logger.warning("推荐算法 %s 当前繁忙，拒绝用户 %s 的新请求", algo_name, user["id"])
+        raise HTTPException(
+            status_code=503,
+            detail=f"{algo_class.display_name} 当前正在处理中，请稍后重试或切换其他算法",
+        )
 
     try:
-        recommendations = algo.recommend(
-            user_id=user["id"],
-            n=limit,
-            exclude_mids=exclude_mids,
+        loop = asyncio.get_running_loop()
+        try:
+            future = loop.run_in_executor(
+                None,
+                partial(
+                    _run_recommendation_job,
+                    algo,
+                    slot,
+                    user_id=user["id"],
+                    n=limit,
+                    exclude_mids=exclude_mids,
+                ),
+            )
+        except Exception:
+            slot.release()
+            raise
+        recommendations = await asyncio.wait_for(
+            future,
+            timeout=RECOMMEND_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "推荐算法 %s 对用户 %s 执行超时（%.1fs）",
+            algo_name,
+            user["id"],
+            RECOMMEND_TIMEOUT_SECONDS,
+        )
+        raise HTTPException(
+            status_code=504,
+            detail=f"{algo_class.display_name} 计算超时，请稍后重试或切换其他算法",
         )
     except Exception as e:
         logger.error(f"推荐算法 {algo_name} 执行失败: {e}", exc_info=True)
@@ -162,9 +245,9 @@ async def list_algorithms():
 @router.get("/evaluate", summary="离线评估报告")
 async def get_evaluation_report(user=Depends(get_current_user)):
     """
-    触发离线评估并返回结果
+    返回最新的离线评估报告
 
-    注意：首次运行 KG-Embed 算法时会训练 TransE 嵌入，耗时较长
+    优先读取 reports/eval_results.json；若主报告不存在，则回退到 history 中最新的一份。
     """
     import json
     import os
@@ -174,11 +257,27 @@ async def get_evaluation_report(user=Depends(get_current_user)):
         "reports",
     )
     json_path = os.path.join(reports_dir, "eval_results.json")
+    history_dir = os.path.join(reports_dir, "history")
 
     # 优先返回已有报告
     if os.path.exists(json_path):
         with open(json_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    history_candidates = sorted(
+        [
+            path
+            for path in glob.glob(os.path.join(history_dir, "*.json"))
+            if not path.endswith("_legacy.json")
+        ],
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    if history_candidates:
+        with open(history_candidates[0], "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        payload["report_source"] = os.path.basename(history_candidates[0])
+        return payload
 
     # 没有报告，提示用户运行评估脚本
     return {

@@ -1,10 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import RecommendationDetailDrawer from "@/components/recommend/RecommendationDetailDrawer.vue";
-import {
-    fetchRecommendationExplanation,
-    useRecommendationFeed,
-} from "@/composables/useRecommendations";
+import { useRecommendationFeed } from "@/composables/useRecommendations";
 import { useAuthStore } from "@/stores/auth";
 import { proxyImage } from "@/utils/image";
 
@@ -29,8 +26,6 @@ const {
     limit: 12,
 });
 
-const explainMap = ref({});
-const explainLoading = ref(false);
 const selectedRecommendation = ref(null);
 const recommendationDrawerVisible = ref(false);
 const evalData = ref(null);
@@ -40,23 +35,7 @@ const activeTab = ref("recommend");
 const defaultCover =
     "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzBmMTcyYSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjQyIiBmaWxsPSIjMzM0MTU1IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==";
 
-const displayItems = computed(() =>
-    (recommendData.value?.items || []).map((item) => {
-        const explain = explainMap.value[item.movie.mid] || null;
-        const path = explain?.reason_paths?.[0] || null;
-        return {
-            ...item,
-            explain,
-            pathSteps: path
-                ? [
-                      "用户",
-                      `${path.relation_label}：${path.matched_entities?.[0] || ""}`,
-                      `推荐结果：${item.movie.title}`,
-                  ]
-                : [],
-        };
-    }),
-);
+const displayItems = computed(() => recommendData.value?.items || []);
 
 const currentAlgoLabel = computed(() => {
     const opt = algorithmOptions.find((o) => o.value === selectedAlgorithm.value);
@@ -74,7 +53,8 @@ watch(
             await loadPage();
             return;
         }
-        explainMap.value = {};
+        selectedRecommendation.value = null;
+        recommendationDrawerVisible.value = false;
     },
 );
 
@@ -87,11 +67,10 @@ async function loadPage() {
 
 async function loadWithAlgorithm(algo) {
     try {
-        const payload = await loadRecommendations({
+        await loadRecommendations({
             algorithm: algo,
             limit: 12,
         });
-        await loadExplainSummaries(payload?.items || [], algo);
     } catch (err) {
         console.error("推荐页加载失败:", err);
     }
@@ -100,33 +79,6 @@ async function loadWithAlgorithm(algo) {
 async function onAlgorithmChange(algo) {
     selectedAlgorithm.value = algo;
     await loadWithAlgorithm(algo);
-}
-
-async function loadExplainSummaries(items, algo) {
-    const topItems = items.slice(0, 4);
-    if (!topItems.length) {
-        explainMap.value = {};
-        return;
-    }
-
-    explainLoading.value = true;
-    const results = await Promise.allSettled(
-        topItems.map((item) =>
-            fetchRecommendationExplanation({
-                target_mid: item.movie.mid,
-                algorithm: algo,
-            }),
-        ),
-    );
-
-    const nextMap = {};
-    results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-            nextMap[topItems[index].movie.mid] = result.value;
-        }
-    });
-    explainMap.value = nextMap;
-    explainLoading.value = false;
 }
 
 async function loadEvaluation() {

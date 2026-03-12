@@ -9,6 +9,8 @@ import logging
 import math
 import os
 from collections import defaultdict
+from threading import Lock
+from typing import ClassVar
 
 import numpy as np
 
@@ -26,6 +28,7 @@ from app.algorithms.graph_cache import (
     REL_YEAR_BUCKET,
     safe_idf,
 )
+from app.config import settings
 from app.db.mysql import get_connection
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,8 @@ EMBED_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "embeddi
 class KGEmbedRecommender(BaseRecommender):
     name = "kg_embed"
     display_name = "基于知识图谱嵌入的推荐"
+    _shared_artifacts_by_scope: ClassVar[dict[str, dict]] = {}
+    _shared_artifacts_lock: ClassVar[Lock] = Lock()
 
     EMBED_DIM = 64
     LEARNING_RATE = 0.01
@@ -65,7 +70,6 @@ class KGEmbedRecommender(BaseRecommender):
 
     def __init__(self, **config):
         self._config = {**self.DEFAULT_CONFIG, **config}
-        self._artifacts_by_scope: dict[str, dict] = {}
         self._user_component_cache: dict[tuple[str, int, tuple[str, ...]], dict] = {}
         self._user_context_cache: dict[tuple[int, tuple[str, ...]], tuple[list[dict], set[str]] | None] = {}
 
@@ -377,23 +381,54 @@ class KGEmbedRecommender(BaseRecommender):
             os.path.join(EMBED_DIR, f"transe_meta_{scope}.json"),
         )
 
-    def _load_or_train(self) -> dict | None:
-        scope = self._scope_name()
-        if scope in self._artifacts_by_scope:
-            return self._artifacts_by_scope[scope]
+    @classmethod
+    def clear_shared_artifacts(cls):
+        with cls._shared_artifacts_lock:
+            cls._shared_artifacts_by_scope = {}
+
+    @classmethod
+    def preload_existing_artifacts(cls):
+        recommender = cls()
+        for use_expanded_relations in (False, True):
+            recommender._load_or_train(
+                use_expanded_relations=use_expanded_relations,
+                allow_training=False,
+            )
+
+    def _load_or_train(
+        self,
+        *,
+        use_expanded_relations: bool | None = None,
+        allow_training: bool | None = None,
+    ) -> dict | None:
+        scope = self._scope_name() if use_expanded_relations is None else (
+            "expanded" if use_expanded_relations else "core"
+        )
+        with self._shared_artifacts_lock:
+            artifacts = self._shared_artifacts_by_scope.get(scope)
+        if artifacts is not None:
+            return artifacts
 
         embed_path, meta_path = self._artifact_paths(scope)
         if os.path.exists(embed_path) and os.path.exists(meta_path):
             logger.info("加载已有 %s TransE 嵌入向量...", scope)
             artifacts = self._load_artifacts(embed_path, meta_path)
-            self._artifacts_by_scope[scope] = artifacts
+            with self._shared_artifacts_lock:
+                self._shared_artifacts_by_scope[scope] = artifacts
             return artifacts
 
+        if allow_training is None:
+            allow_training = bool(settings.RECOMMEND_ENABLE_ONLINE_EMBED_TRAINING)
+        if not allow_training:
+            logger.warning("未找到 %s TransE 嵌入文件，且已禁用在线训练，跳过 KG-Embed 初始化", scope)
+            return None
+
         logger.info("未找到 %s TransE 嵌入文件，开始训练...", scope)
-        artifacts = self._train_transe(use_expanded_relations=self._config["use_expanded_relations"])
+        artifacts = self._train_transe(use_expanded_relations=(scope == "expanded"))
         if artifacts is None:
             return None
-        self._artifacts_by_scope[scope] = artifacts
+        with self._shared_artifacts_lock:
+            self._shared_artifacts_by_scope[scope] = artifacts
         return artifacts
 
     def _load_artifacts(self, embed_path: str, meta_path: str) -> dict:

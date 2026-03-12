@@ -21,16 +21,18 @@ const serializeParams = (params = {}) => {
 
 export const recommendApi = {
     /** 获取个性化推荐结果 */
-    getPersonal(params = {}) {
+    getPersonal(params = {}, config = {}) {
         return api.get("/recommend/personal", {
+            ...config,
             params,
             paramsSerializer: { serialize: serializeParams },
         });
     },
 
     /** 获取推荐解释图 */
-    explain(params = {}) {
+    explain(params = {}, config = {}) {
         return api.get("/recommend/explain", {
+            ...config,
             params,
             paramsSerializer: { serialize: serializeParams },
         });
