@@ -4,6 +4,45 @@
 from typing import Optional
 
 
+ROLE_PRIORITY = ("director", "actor")
+
+
+def _merge_person_movies(*movie_groups: list[dict]) -> list[dict]:
+    merged: dict[str, dict] = {}
+    for group in movie_groups:
+        for item in group:
+            mid = item.get("mid")
+            if not mid:
+                continue
+            movie = merged.setdefault(
+                mid,
+                {
+                    "mid": mid,
+                    "title": item.get("title"),
+                    "rating": item.get("rating"),
+                    "year": item.get("year"),
+                    "role": item.get("role"),
+                    "roles": [],
+                },
+            )
+            for field in ("title", "rating", "year"):
+                if movie.get(field) is None and item.get(field) is not None:
+                    movie[field] = item.get(field)
+            role = item.get("role")
+            if role and role not in movie["roles"]:
+                movie["roles"].append(role)
+
+    movies = []
+    for movie in merged.values():
+        ordered_roles = [role for role in ROLE_PRIORITY if role in movie["roles"]]
+        extra_roles = [role for role in movie["roles"] if role not in ROLE_PRIORITY]
+        movie["roles"] = ordered_roles + extra_roles
+        movie["role"] = movie["roles"][0] if len(movie["roles"]) == 1 else None
+        movies.append(movie)
+    movies.sort(key=lambda x: x.get("year") or 0, reverse=True)
+    return movies
+
+
 def search_persons(conn, q: str, page: int = 1, size: int = 20) -> dict:
     """关键词搜索影人（MySQL LIKE，支持忽略分隔符·）"""
     offset = (page - 1) * size
@@ -78,8 +117,7 @@ def get_person_movies(session, pid: str) -> Optional[dict]:
         return None
     directed = [d for d in record["directed"] if d["mid"] is not None]
     acted = [a for a in record["acted"] if a["mid"] is not None]
-    movies = directed + acted
-    movies.sort(key=lambda x: x.get("year") or 0, reverse=True)
+    movies = _merge_person_movies(directed, acted)
     return {"pid": record["pid"], "name": record["name"], "movies": movies}
 
 

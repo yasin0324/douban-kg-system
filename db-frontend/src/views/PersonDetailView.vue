@@ -13,6 +13,7 @@ const personMovies = ref(null);
 const collaborators = ref([]);
 const loading = ref(true);
 const activeTab = ref("all");
+const roleOrder = ["director", "actor"];
 
 // 作品列表折叠
 const showAllMovies = ref(false);
@@ -22,6 +23,45 @@ const defaultShowCount = 20;
 const showBackTop = ref(false);
 
 const pid = () => route.params.pid;
+
+const getMovieRoles = (movie) => {
+    if (Array.isArray(movie?.roles) && movie.roles.length) {
+        return roleOrder.filter((role) => movie.roles.includes(role));
+    }
+    return movie?.role ? [movie.role] : [];
+};
+
+const mergeMoviesByMid = (movies = []) => {
+    const merged = new Map();
+    for (const movie of movies) {
+        if (!movie?.mid) continue;
+        const roles = getMovieRoles(movie);
+        if (!merged.has(movie.mid)) {
+            merged.set(movie.mid, {
+                ...movie,
+                roles: [],
+            });
+        }
+        const current = merged.get(movie.mid);
+        for (const field of ["title", "rating", "year"]) {
+            if (current[field] == null && movie[field] != null) {
+                current[field] = movie[field];
+            }
+        }
+        current.roles = roleOrder.filter(
+            (role) => current.roles.includes(role) || roles.includes(role),
+        );
+        current.role = current.roles.length === 1 ? current.roles[0] : null;
+    }
+    return Array.from(merged.values());
+};
+
+const mergedMovies = computed(() => mergeMoviesByMid(personMovies.value?.movies));
+const totalMovieCount = computed(() => mergedMovies.value.length);
+
+const hasMovieRole = (movie, role) => getMovieRoles(movie).includes(role);
+const countMoviesByRole = (role) =>
+    mergedMovies.value.filter((movie) => hasMovieRole(movie, role)).length;
 
 // 加载数据
 const fetchData = async () => {
@@ -45,12 +85,11 @@ const fetchData = async () => {
 
 // 按 Tab 筛选电影
 const filteredMovies = computed(() => {
-    if (!personMovies.value?.movies) return [];
-    const all = personMovies.value.movies;
+    const all = mergedMovies.value;
     if (activeTab.value === "director")
-        return all.filter((m) => m.role === "director");
+        return all.filter((movie) => hasMovieRole(movie, "director"));
     if (activeTab.value === "actor")
-        return all.filter((m) => m.role === "actor");
+        return all.filter((movie) => hasMovieRole(movie, "actor"));
     return all;
 });
 
@@ -161,7 +200,7 @@ watch(() => route.params.pid, fetchData);
                     </div>
                     <div class="person-stats">
                         <span class="stat-badge" v-if="person.movie_count">
-                            参演 {{ person.movie_count }} 部
+                            作品 {{ totalMovieCount }} 部
                         </span>
                         <span class="stat-badge" v-if="person.directed_count">
                             执导 {{ person.directed_count }} 部
@@ -204,23 +243,13 @@ watch(() => route.params.pid, fetchData);
                     class="film-tabs"
                 >
                     <el-radio-button value="all"
-                        >全部 ({{
-                            personMovies.movies.length
-                        }})</el-radio-button
+                        >全部 ({{ totalMovieCount }})</el-radio-button
                     >
                     <el-radio-button value="director">
-                        导演 ({{
-                            personMovies.movies.filter(
-                                (m) => m.role === "director",
-                            ).length
-                        }})
+                        导演 ({{ countMoviesByRole("director") }})
                     </el-radio-button>
                     <el-radio-button value="actor">
-                        演员 ({{
-                            personMovies.movies.filter(
-                                (m) => m.role === "actor",
-                            ).length
-                        }})
+                        演员 ({{ countMoviesByRole("actor") }})
                     </el-radio-button>
                 </el-radio-group>
 
@@ -235,18 +264,13 @@ watch(() => route.params.pid, fetchData);
                         <div class="film-info">
                             <span class="film-title">{{ movie.title }}</span>
                             <el-tag
-                                v-if="movie.role"
+                                v-for="role in getMovieRoles(movie)"
+                                :key="`${movie.mid}-${role}`"
                                 size="small"
-                                :type="
-                                    movie.role === 'director'
-                                        ? 'warning'
-                                        : 'info'
-                                "
+                                :type="role === 'director' ? 'warning' : 'info'"
                                 effect="plain"
                             >
-                                {{
-                                    movie.role === "director" ? "导演" : "演员"
-                                }}
+                                {{ role === "director" ? "导演" : "演员" }}
                             </el-tag>
                         </div>
                         <span class="film-rating" v-if="movie.rating">

@@ -46,6 +46,24 @@ class FakeConn:
         self.commit_called += 1
 
 
+class FakeNeo4jSingleResult:
+    def __init__(self, record):
+        self._record = record
+
+    def single(self):
+        return self._record
+
+
+class FakeNeo4jSession:
+    def __init__(self, record):
+        self._record = record
+        self.queries = []
+
+    def run(self, query, **params):
+        self.queries.append((query, params))
+        return FakeNeo4jSingleResult(self._record)
+
+
 def test_get_current_user_requires_sid(monkeypatch):
     monkeypatch.setattr(dependencies, "_decode_token", lambda _token: {"sub": "1", "type": "access"})
 
@@ -83,6 +101,55 @@ def test_search_persons_uses_person_table():
     assert result["items"][0]["pid"] == "1001"
     assert any("FROM person" in sql for sql, _ in cursor.queries)
     assert not any("FROM persons" in sql for sql, _ in cursor.queries)
+
+
+def test_get_person_movies_merges_director_and_actor_entries():
+    session = FakeNeo4jSession(
+        {
+            "pid": "1048000",
+            "name": "Ben Stiller",
+            "directed": [
+                {
+                    "mid": "1292274",
+                    "title": "白日梦想家 The Secret Life of Walter Mitty",
+                    "rating": 8.6,
+                    "year": 2013,
+                    "role": "director",
+                },
+                {
+                    "mid": "1867345",
+                    "title": "热带惊雷 Tropic Thunder",
+                    "rating": 6.9,
+                    "year": 2008,
+                    "role": "director",
+                },
+            ],
+            "acted": [
+                {
+                    "mid": "1292274",
+                    "title": "白日梦想家 The Secret Life of Walter Mitty",
+                    "rating": 8.6,
+                    "year": 2013,
+                    "role": "actor",
+                },
+                {
+                    "mid": "3072126",
+                    "title": "格林伯格 Greenberg",
+                    "rating": 6.3,
+                    "year": 2010,
+                    "role": "actor",
+                },
+            ],
+        }
+    )
+
+    result = person_service.get_person_movies(session, "1048000")
+
+    assert [movie["mid"] for movie in result["movies"]] == ["1292274", "3072126", "1867345"]
+    assert result["movies"][0]["roles"] == ["director", "actor"]
+    assert result["movies"][0]["role"] is None
+    assert result["movies"][1]["roles"] == ["actor"]
+    assert result["movies"][1]["role"] == "actor"
 
 
 def test_get_rating_returns_empty_payload_when_user_has_not_rated(monkeypatch):

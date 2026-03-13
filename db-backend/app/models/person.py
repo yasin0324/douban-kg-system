@@ -2,7 +2,7 @@
 影人相关 Pydantic 模型
 """
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PersonBrief(BaseModel):
@@ -29,12 +29,13 @@ class PersonMovieItem(BaseModel):
     rating: Optional[float] = None
     year: Optional[int] = None
     role: Optional[str] = None  # "director" | "actor"
+    roles: List[str] = Field(default_factory=list)
 
 
 class PersonMovies(BaseModel):
     pid: str
     name: str
-    movies: List[PersonMovieItem] = []
+    movies: List[PersonMovieItem] = Field(default_factory=list)
 
 
 class CollaboratorItem(BaseModel):
