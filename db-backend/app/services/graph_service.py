@@ -3,15 +3,27 @@
 """
 import time
 
-ALLOWED_REL_TYPES = {
+PUBLIC_GRAPH_NODE_TYPES = {
+    "Movie",
+    "Person",
+    "Genre",
+}
+
+PUBLIC_GRAPH_REL_TYPES = {
     "DIRECTED",
     "ACTED_IN",
     "HAS_GENRE",
-    "IN_REGION",
-    "IN_LANGUAGE",
-    "HAS_CONTENT_TYPE",
-    "IN_YEAR_BUCKET",
 }
+
+PERSON_ONLY_GRAPH_REL_TYPES = {
+    "DIRECTED",
+    "ACTED_IN",
+}
+
+PUBLIC_GRAPH_ENTITY_MATCH_CLAUSE = (
+    "(start:Movie OR start:Person OR start:Genre) "
+    "AND (end:Movie OR end:Person OR end:Genre)"
+)
 
 
 def _safe_run(session, query: str, timeout_ms: int | None = None, **params):
@@ -31,11 +43,13 @@ def _safe_run(session, query: str, timeout_ms: int | None = None, **params):
         return []
 
 
-def _to_node_payload(node):
+def _to_node_payload(node, allowed_node_types: set[str] | None = None):
     if node is None:
         return None
     labels = list(node.labels)
     node_type = labels[0] if labels else "Unknown"
+    if allowed_node_types and node_type not in allowed_node_types:
+        return None
     props = dict(node)
     node_id_val = props.get("mid") or props.get("pid") or props.get("name")
     if not node_id_val:
@@ -53,12 +67,18 @@ def _to_node_payload(node):
     return node_id, {"id": node_id, "label": label, "type": node_type, "properties": node_props}
 
 
-def _add_path_to_graph(path, nodes_map: dict, edges_set: set):
+def _add_path_to_graph(
+    path,
+    nodes_map: dict,
+    edges_set: set,
+    allowed_node_types: set[str] | None = None,
+    allowed_rel_types: set[str] | None = None,
+):
     if path is None:
         return
     path_nodes = list(path.nodes)
     for node in path_nodes:
-        node_payload = _to_node_payload(node)
+        node_payload = _to_node_payload(node, allowed_node_types=allowed_node_types)
         if node_payload:
             node_id, payload = node_payload
             nodes_map[node_id] = payload
@@ -67,7 +87,7 @@ def _add_path_to_graph(path, nodes_map: dict, edges_set: set):
         rel_type = getattr(rel, "type", None)
         if not rel_type:
             continue
-        if rel_type not in ALLOWED_REL_TYPES:
+        if allowed_rel_types and rel_type not in allowed_rel_types:
             continue
 
         start_node = getattr(rel, "start_node", None)
@@ -78,13 +98,35 @@ def _add_path_to_graph(path, nodes_map: dict, edges_set: set):
             start_node = path_nodes[idx]
             end_node = path_nodes[idx + 1]
 
-        start_payload = _to_node_payload(start_node)
-        end_payload = _to_node_payload(end_node)
+        start_payload = _to_node_payload(start_node, allowed_node_types=allowed_node_types)
+        end_payload = _to_node_payload(end_node, allowed_node_types=allowed_node_types)
         if not start_payload or not end_payload:
             continue
         source = start_payload[0]
         target = end_payload[0]
         edges_set.add((source, target, rel_type))
+
+
+def _path_matches_public_graph(
+    path,
+    allowed_node_types: set[str],
+    allowed_rel_types: set[str],
+) -> bool:
+    if path is None:
+        return False
+
+    for node in path.nodes:
+        labels = list(getattr(node, "labels", []))
+        node_type = labels[0] if labels else "Unknown"
+        if node_type not in allowed_node_types:
+            return False
+
+    for rel in path.relationships:
+        rel_type = getattr(rel, "type", None)
+        if rel_type not in allowed_rel_types:
+            return False
+
+    return True
 
 
 def _finalize_graph(nodes_map: dict, edges_set: set, depth: int, start_time: float, node_limit: int, edge_limit: int) -> dict:
@@ -170,7 +212,10 @@ def get_movie_graph(
     nodes_map: dict = {}
     edges_set: set = set()
 
-    center_payload = _to_node_payload(record["m"])
+    center_payload = _to_node_payload(
+        record["m"],
+        allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+    )
     if center_payload:
         center_id, center_node = center_payload
         nodes_map[center_id] = center_node
@@ -181,18 +226,35 @@ def get_movie_graph(
         rel = item.get("rel") if item else None
         if node is None or rel is None:
             continue
-        node_payload = _to_node_payload(node)
+        node_payload = _to_node_payload(
+            node,
+            allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+        )
         if not node_payload:
             continue
         nid, npayload = node_payload
         nodes_map[nid] = npayload
         # 提取关系
         rel_type = getattr(rel, "type", None)
-        if rel_type and rel_type in ALLOWED_REL_TYPES:
+        if rel_type and rel_type in PUBLIC_GRAPH_REL_TYPES:
             start_node = getattr(rel, "start_node", None)
             end_node = getattr(rel, "end_node", None)
-            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
-            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            sp = (
+                _to_node_payload(
+                    start_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if start_node and hasattr(start_node, "labels")
+                else None
+            )
+            ep = (
+                _to_node_payload(
+                    end_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if end_node and hasattr(end_node, "labels")
+                else None
+            )
             if sp and ep:
                 edges_set.add((sp[0], ep[0], rel_type))
             elif center_payload:
@@ -204,17 +266,34 @@ def get_movie_graph(
         rel = item.get("rel") if item else None
         if node is None or rel is None:
             continue
-        node_payload = _to_node_payload(node)
+        node_payload = _to_node_payload(
+            node,
+            allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+        )
         if not node_payload:
             continue
         nid, npayload = node_payload
         nodes_map[nid] = npayload
         rel_type = getattr(rel, "type", None)
-        if rel_type and rel_type in ALLOWED_REL_TYPES:
+        if rel_type and rel_type in PUBLIC_GRAPH_REL_TYPES:
             start_node = getattr(rel, "start_node", None)
             end_node = getattr(rel, "end_node", None)
-            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
-            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            sp = (
+                _to_node_payload(
+                    start_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if start_node and hasattr(start_node, "labels")
+                else None
+            )
+            ep = (
+                _to_node_payload(
+                    end_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if end_node and hasattr(end_node, "labels")
+                else None
+            )
             if sp and ep:
                 edges_set.add((sp[0], ep[0], rel_type))
 
@@ -270,7 +349,10 @@ def get_person_graph(
     nodes_map: dict = {}
     edges_set: set = set()
 
-    center_payload = _to_node_payload(record["p"])
+    center_payload = _to_node_payload(
+        record["p"],
+        allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+    )
     if center_payload:
         center_id, center_node = center_payload
         nodes_map[center_id] = center_node
@@ -281,17 +363,34 @@ def get_person_graph(
         rel = item.get("rel") if item else None
         if node is None or rel is None:
             continue
-        node_payload = _to_node_payload(node)
+        node_payload = _to_node_payload(
+            node,
+            allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+        )
         if not node_payload:
             continue
         nid, npayload = node_payload
         nodes_map[nid] = npayload
         rel_type = getattr(rel, "type", None)
-        if rel_type and rel_type in ALLOWED_REL_TYPES:
+        if rel_type and rel_type in PUBLIC_GRAPH_REL_TYPES:
             start_node = getattr(rel, "start_node", None)
             end_node = getattr(rel, "end_node", None)
-            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
-            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            sp = (
+                _to_node_payload(
+                    start_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if start_node and hasattr(start_node, "labels")
+                else None
+            )
+            ep = (
+                _to_node_payload(
+                    end_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if end_node and hasattr(end_node, "labels")
+                else None
+            )
             if sp and ep:
                 edges_set.add((sp[0], ep[0], rel_type))
             elif center_payload:
@@ -303,17 +402,34 @@ def get_person_graph(
         rel = item.get("rel") if item else None
         if node is None or rel is None:
             continue
-        node_payload = _to_node_payload(node)
+        node_payload = _to_node_payload(
+            node,
+            allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+        )
         if not node_payload:
             continue
         nid, npayload = node_payload
         nodes_map[nid] = npayload
         rel_type = getattr(rel, "type", None)
-        if rel_type and rel_type in ALLOWED_REL_TYPES:
+        if rel_type and rel_type in PUBLIC_GRAPH_REL_TYPES:
             start_node = getattr(rel, "start_node", None)
             end_node = getattr(rel, "end_node", None)
-            sp = _to_node_payload(start_node) if start_node and hasattr(start_node, "labels") else None
-            ep = _to_node_payload(end_node) if end_node and hasattr(end_node, "labels") else None
+            sp = (
+                _to_node_payload(
+                    start_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if start_node and hasattr(start_node, "labels")
+                else None
+            )
+            ep = (
+                _to_node_payload(
+                    end_node,
+                    allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+                )
+                if end_node and hasattr(end_node, "labels")
+                else None
+            )
             if sp and ep:
                 edges_set.add((sp[0], ep[0], rel_type))
 
@@ -324,26 +440,18 @@ def find_shortest_path(session, from_id: str, to_id: str, max_hops: int = 6, exc
     """查找两个实体之间的最短路径"""
     max_hops = min(max(max_hops, 1), 6)
     start_time = time.time()
+    allowed_rel_types = PERSON_ONLY_GRAPH_REL_TYPES if exclude_genre else PUBLIC_GRAPH_REL_TYPES
+    rel_pattern = "|".join(sorted(allowed_rel_types))
 
-    if exclude_genre:
-        # 排除 HAS_GENRE 关系，只通过演职人员关系查找路径
-        cypher = f"""
-        MATCH (start), (end)
-        WHERE (start.mid = $from_id OR start.pid = $from_id OR start.name = $from_id)
-          AND (end.mid = $to_id OR end.pid = $to_id OR end.name = $to_id)
-        MATCH path = shortestPath((start)-[:DIRECTED|ACTED_IN*..{max_hops}]-(end))
-        RETURN path
-        LIMIT 1
-        """
-    else:
-        cypher = f"""
-        MATCH (start), (end)
-        WHERE (start.mid = $from_id OR start.pid = $from_id OR start.name = $from_id)
-          AND (end.mid = $to_id OR end.pid = $to_id OR end.name = $to_id)
-        MATCH path = shortestPath((start)-[*..{max_hops}]-(end))
-        RETURN path
-        LIMIT 1
-        """
+    cypher = f"""
+    MATCH (start), (end)
+    WHERE {PUBLIC_GRAPH_ENTITY_MATCH_CLAUSE}
+      AND (start.mid = $from_id OR start.pid = $from_id OR start.name = $from_id)
+      AND (end.mid = $to_id OR end.pid = $to_id OR end.name = $to_id)
+    MATCH path = shortestPath((start)-[:{rel_pattern}*..{max_hops}]-(end))
+    RETURN path
+    LIMIT 1
+    """
 
     result = session.run(
         cypher,
@@ -355,9 +463,22 @@ def find_shortest_path(session, from_id: str, to_id: str, max_hops: int = 6, exc
         return _empty_graph(0, start_time)
 
     path = record["path"]
+    if not _path_matches_public_graph(
+        path,
+        allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+        allowed_rel_types=allowed_rel_types,
+    ):
+        return _empty_graph(0, start_time)
+
     nodes_map: dict = {}
     edges_set: set = set()
-    _add_path_to_graph(path, nodes_map, edges_set)
+    _add_path_to_graph(
+        path,
+        nodes_map,
+        edges_set,
+        allowed_node_types=PUBLIC_GRAPH_NODE_TYPES,
+        allowed_rel_types=allowed_rel_types,
+    )
 
     query_time = int((time.time() - start_time) * 1000)
     edges = [{"source": s, "target": t, "type": rel_type} for s, t, rel_type in sorted(edges_set)]
