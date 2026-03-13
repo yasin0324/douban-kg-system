@@ -38,6 +38,8 @@ RECOMMEND_MAX_CONCURRENT_JOBS = max(
 _runtime_lock = Lock()
 _algorithm_instances: dict[str, object] = {}
 _algorithm_slots: dict[str, BoundedSemaphore] = {}
+PREFERENCE_AFFECTED_ALGORITHMS = frozenset({"kg_path", "kg_embed"})
+RATING_AFFECTED_ALGORITHMS = frozenset({"kg_path", "kg_embed", "item_cf"})
 
 EXPLAIN_RELATION_ORDER = (
     REL_DIRECTOR,
@@ -83,6 +85,24 @@ def _reset_algorithm_runtime_state():
     with _runtime_lock:
         _algorithm_instances.clear()
         _algorithm_slots.clear()
+
+
+def invalidate_recommendation_runtime(
+    *,
+    preference_changed: bool = False,
+    rating_changed: bool = False,
+) -> None:
+    affected_algorithms: set[str] = set()
+    if preference_changed:
+        affected_algorithms.update(PREFERENCE_AFFECTED_ALGORITHMS)
+    if rating_changed:
+        affected_algorithms.update(RATING_AFFECTED_ALGORITHMS)
+    if not affected_algorithms:
+        return
+
+    with _runtime_lock:
+        for algo_name in affected_algorithms:
+            _algorithm_instances.pop(algo_name, None)
 
 
 def _run_recommendation_job(algo, slot: BoundedSemaphore, *, user_id: int, n: int, exclude_mids: set[str]):

@@ -136,3 +136,32 @@ def test_personal_recommendation_returns_503_when_algorithm_is_busy():
     assert "处理中" in second_response.json()["detail"]
     time.sleep(0.06)
     recommend._reset_algorithm_runtime_state()
+
+
+def test_invalidate_recommendation_runtime_only_drops_affected_algorithms():
+    recommend._reset_algorithm_runtime_state()
+    with recommend._runtime_lock:
+        recommend._algorithm_instances.update(
+            {
+                "content": object(),
+                "item_cf": object(),
+                "kg_path": object(),
+                "kg_embed": object(),
+            }
+        )
+
+    recommend.invalidate_recommendation_runtime(preference_changed=True)
+
+    with recommend._runtime_lock:
+        assert "kg_path" not in recommend._algorithm_instances
+        assert "kg_embed" not in recommend._algorithm_instances
+        assert "item_cf" in recommend._algorithm_instances
+        assert "content" in recommend._algorithm_instances
+
+    recommend.invalidate_recommendation_runtime(rating_changed=True)
+
+    with recommend._runtime_lock:
+        assert "item_cf" not in recommend._algorithm_instances
+        assert "content" in recommend._algorithm_instances
+
+    recommend._reset_algorithm_runtime_state()

@@ -1,13 +1,17 @@
 """
 用户行为路由 — /api/users
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.dependencies import get_mysql_conn, get_current_user
 from app.models.user import UserPreferenceCreate, UserRatingCreate, UserRatingLookupResponse
+from app.routers import recommend as recommend_runtime
 from app.services import user_service
 
 router = APIRouter(prefix="/api/users", tags=["用户行为"])
+logger = logging.getLogger(__name__)
 
 
 # ---------- 偏好 ----------
@@ -15,6 +19,10 @@ router = APIRouter(prefix="/api/users", tags=["用户行为"])
 @router.post("/preferences", summary="添加偏好（喜欢/想看）")
 def add_preference(body: UserPreferenceCreate, user=Depends(get_current_user), conn=Depends(get_mysql_conn)):
     result = user_service.add_preference(conn, user["id"], body.mid, body.pref_type)
+    try:
+        recommend_runtime.invalidate_recommendation_runtime(preference_changed=True)
+    except Exception:
+        logger.warning("推荐运行时偏好缓存失效失败: user_id=%s mid=%s", user["id"], body.mid, exc_info=True)
     return result
 
 
@@ -23,6 +31,10 @@ def remove_preference(mid: str, user=Depends(get_current_user), conn=Depends(get
     ok = user_service.remove_preference(conn, user["id"], mid)
     if not ok:
         raise HTTPException(status_code=404, detail="偏好记录不存在")
+    try:
+        recommend_runtime.invalidate_recommendation_runtime(preference_changed=True)
+    except Exception:
+        logger.warning("推荐运行时偏好缓存失效失败: user_id=%s mid=%s", user["id"], mid, exc_info=True)
     return {"message": "已取消"}
 
 
@@ -54,9 +66,14 @@ def activity_summary(user=Depends(get_current_user), conn=Depends(get_mysql_conn
 @router.post("/ratings", summary="创建/更新评分")
 def add_rating(body: UserRatingCreate, user=Depends(get_current_user), conn=Depends(get_mysql_conn)):
     try:
-        return user_service.add_rating(conn, user["id"], body.mid, body.rating, body.comment_short)
+        result = user_service.add_rating(conn, user["id"], body.mid, body.rating, body.comment_short)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    try:
+        recommend_runtime.invalidate_recommendation_runtime(rating_changed=True)
+    except Exception:
+        logger.warning("推荐运行时评分缓存失效失败: user_id=%s mid=%s", user["id"], body.mid, exc_info=True)
+    return result
 
 
 @router.delete("/ratings/{mid}", summary="删除评分")
@@ -64,6 +81,10 @@ def remove_rating(mid: str, user=Depends(get_current_user), conn=Depends(get_mys
     ok = user_service.remove_rating(conn, user["id"], mid)
     if not ok:
         raise HTTPException(status_code=404, detail="评分记录不存在")
+    try:
+        recommend_runtime.invalidate_recommendation_runtime(rating_changed=True)
+    except Exception:
+        logger.warning("推荐运行时评分缓存失效失败: user_id=%s mid=%s", user["id"], mid, exc_info=True)
     return {"message": "已删除"}
 
 

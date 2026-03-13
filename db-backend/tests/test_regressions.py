@@ -113,6 +113,122 @@ def test_get_rating_returns_empty_payload_when_user_has_not_rated(monkeypatch):
     }
 
 
+def test_add_preference_route_invalidates_recommendation_runtime(monkeypatch):
+    app = FastAPI()
+    app.include_router(users.router)
+
+    def override_current_user():
+        return {"id": 7}
+
+    def override_conn():
+        yield object()
+
+    app.dependency_overrides[users.get_current_user] = override_current_user
+    app.dependency_overrides[users.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        users.user_service,
+        "add_preference",
+        lambda conn, user_id, mid, pref_type: {"mid": mid, "pref_type": pref_type},
+    )
+    calls = []
+    monkeypatch.setattr(
+        users.recommend_runtime,
+        "invalidate_recommendation_runtime",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/api/users/preferences", json={"mid": "m1", "pref_type": "like"})
+
+    assert response.status_code == 200
+    assert calls == [{"preference_changed": True}]
+
+
+def test_remove_preference_route_invalidates_recommendation_runtime(monkeypatch):
+    app = FastAPI()
+    app.include_router(users.router)
+
+    def override_current_user():
+        return {"id": 7}
+
+    def override_conn():
+        yield object()
+
+    app.dependency_overrides[users.get_current_user] = override_current_user
+    app.dependency_overrides[users.get_mysql_conn] = override_conn
+    monkeypatch.setattr(users.user_service, "remove_preference", lambda conn, user_id, mid: True)
+    calls = []
+    monkeypatch.setattr(
+        users.recommend_runtime,
+        "invalidate_recommendation_runtime",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    with TestClient(app) as client:
+        response = client.delete("/api/users/preferences/m1")
+
+    assert response.status_code == 200
+    assert calls == [{"preference_changed": True}]
+
+
+def test_add_rating_route_invalidates_recommendation_runtime(monkeypatch):
+    app = FastAPI()
+    app.include_router(users.router)
+
+    def override_current_user():
+        return {"id": 7}
+
+    def override_conn():
+        yield object()
+
+    app.dependency_overrides[users.get_current_user] = override_current_user
+    app.dependency_overrides[users.get_mysql_conn] = override_conn
+    monkeypatch.setattr(
+        users.user_service,
+        "add_rating",
+        lambda conn, user_id, mid, rating, comment_short=None: {"mid": mid, "rating": rating},
+    )
+    calls = []
+    monkeypatch.setattr(
+        users.recommend_runtime,
+        "invalidate_recommendation_runtime",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/api/users/ratings", json={"mid": "m1", "rating": 4.5})
+
+    assert response.status_code == 200
+    assert calls == [{"rating_changed": True}]
+
+
+def test_remove_rating_route_invalidates_recommendation_runtime(monkeypatch):
+    app = FastAPI()
+    app.include_router(users.router)
+
+    def override_current_user():
+        return {"id": 7}
+
+    def override_conn():
+        yield object()
+
+    app.dependency_overrides[users.get_current_user] = override_current_user
+    app.dependency_overrides[users.get_mysql_conn] = override_conn
+    monkeypatch.setattr(users.user_service, "remove_rating", lambda conn, user_id, mid: True)
+    calls = []
+    monkeypatch.setattr(
+        users.recommend_runtime,
+        "invalidate_recommendation_runtime",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    with TestClient(app) as client:
+        response = client.delete("/api/users/ratings/m1")
+
+    assert response.status_code == 200
+    assert calls == [{"rating_changed": True}]
+
+
 def test_add_preference_commits_without_recommendation_side_effects():
     cursor = FakeCursor(fetchone_results=[{"id": 1, "mid": "m1", "pref_type": "like", "created_at": "2026-03-10"}])
     conn = FakeConn(cursor)
