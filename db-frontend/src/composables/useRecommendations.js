@@ -6,7 +6,7 @@ export function useRecommendationFeed(defaultOptions = {}) {
     const loading = ref(false);
     const error = ref("");
     const options = ref({
-        algorithm: "kg_path",
+        algorithm: "cfkg",
         limit: 12,
         ...defaultOptions,
     });

@@ -1,5 +1,11 @@
 export const ALGORITHM_OPTIONS = [
     {
+        value: "cfkg",
+        label: "CFKG 主链路",
+        type: "KG",
+        description: "协同过滤召回后结合知识图谱重排与解释的主推荐链路。",
+    },
+    {
         value: "kg_path",
         label: "KG 路径推荐",
         type: "KG",
@@ -30,6 +36,7 @@ export const ALGORITHM_LABELS = {
 };
 
 export const SOURCE_ALGORITHM_LABELS = {
+    cfkg: "CFKG 主链路",
     kg_path: "KG 路径",
     kg_embed: "KG 嵌入",
     content: "内容推荐",

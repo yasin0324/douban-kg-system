@@ -7,22 +7,102 @@ import { moviesApi } from "@/api/movies";
 const route = useRoute();
 const router = useRouter();
 
-// 筛选条件
-const selectedGenre = ref(route.query.genre || "");
+const DEFAULT_YEAR_FROM = 1950;
+const DEFAULT_YEAR_TO = 2026;
+const DEFAULT_RATING_MIN = 0;
+const DEFAULT_SORT_BY = "weighted";
+const DEFAULT_PAGE = 1;
+
+const selectedGenre = ref("");
 const contentType = ref("");
-const yearRange = ref([1950, 2026]);
-const ratingMin = ref(0);
-const sortBy = ref("weighted");
+const yearRange = ref([DEFAULT_YEAR_FROM, DEFAULT_YEAR_TO]);
+const ratingMin = ref(DEFAULT_RATING_MIN);
+const sortBy = ref(DEFAULT_SORT_BY);
 const genres = ref([]);
 
-// 结果
 const movies = ref([]);
 const total = ref(0);
-const page = ref(1);
+const page = ref(DEFAULT_PAGE);
 const pageSize = 24;
 const loading = ref(false);
 
-// 加载类型列表
+const getQueryValue = (value) =>
+    Array.isArray(value) ? value[0] : (value ?? "");
+const parseIntWithFallback = (value, fallback) => {
+    const parsed = Number.parseInt(getQueryValue(value), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+const parseFloatWithFallback = (value, fallback) => {
+    const parsed = Number.parseFloat(getQueryValue(value));
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const applyQueryState = () => {
+    selectedGenre.value = getQueryValue(route.query.genre);
+    contentType.value = getQueryValue(route.query.content_type);
+    const yearFrom = parseIntWithFallback(
+        route.query.year_from,
+        DEFAULT_YEAR_FROM,
+    );
+    const yearTo = parseIntWithFallback(route.query.year_to, DEFAULT_YEAR_TO);
+    yearRange.value = [
+        Math.min(Math.max(yearFrom, DEFAULT_YEAR_FROM), DEFAULT_YEAR_TO),
+        Math.min(Math.max(yearTo, DEFAULT_YEAR_FROM), DEFAULT_YEAR_TO),
+    ];
+    ratingMin.value = Math.min(
+        Math.max(
+            parseFloatWithFallback(route.query.rating_min, DEFAULT_RATING_MIN),
+            0,
+        ),
+        9.5,
+    );
+    const sortByValue = getQueryValue(route.query.sort_by);
+    sortBy.value = ["weighted", "rating", "votes"].includes(sortByValue)
+        ? sortByValue
+        : DEFAULT_SORT_BY;
+    page.value = Math.max(
+        parseIntWithFallback(route.query.page, DEFAULT_PAGE),
+        DEFAULT_PAGE,
+    );
+};
+
+const buildQueryState = () => {
+    const query = {};
+    if (selectedGenre.value) query.genre = selectedGenre.value;
+    if (contentType.value) query.content_type = contentType.value;
+    if (yearRange.value[0] > DEFAULT_YEAR_FROM) {
+        query.year_from = String(yearRange.value[0]);
+    }
+    if (yearRange.value[1] < DEFAULT_YEAR_TO) {
+        query.year_to = String(yearRange.value[1]);
+    }
+    if (ratingMin.value > DEFAULT_RATING_MIN) {
+        query.rating_min = String(ratingMin.value);
+    }
+    if (sortBy.value !== DEFAULT_SORT_BY) query.sort_by = sortBy.value;
+    if (page.value > DEFAULT_PAGE) query.page = String(page.value);
+    return query;
+};
+
+const isSameQuery = (currentQuery, nextQuery) => {
+    const currentKeys = Object.keys(currentQuery).sort();
+    const nextKeys = Object.keys(nextQuery).sort();
+    if (currentKeys.length !== nextKeys.length) return false;
+    return currentKeys.every((key, index) => {
+        if (key !== nextKeys[index]) return false;
+        return String(getQueryValue(currentQuery[key])) === nextQuery[key];
+    });
+};
+
+const syncRouteQuery = async () => {
+    const nextQuery = buildQueryState();
+    if (isSameQuery(route.query, nextQuery)) {
+        return false;
+    }
+    await router.replace({ query: nextQuery });
+    return true;
+};
+
 onMounted(async () => {
     try {
         const { data } = await moviesApi.getGenres();
@@ -30,10 +110,8 @@ onMounted(async () => {
     } catch (err) {
         console.error("加载类型失败:", err);
     }
-    fetchMovies();
 });
 
-// 获取电影列表
 const fetchMovies = async () => {
     loading.value = true;
     try {
@@ -58,32 +136,43 @@ const fetchMovies = async () => {
     }
 };
 
-// 筛选变化
-const handleFilter = () => {
-    page.value = 1;
-    fetchMovies();
+watch(
+    () => route.query,
+    () => {
+        applyQueryState();
+        fetchMovies();
+    },
+    { immediate: true },
+);
+
+const handleFilter = async () => {
+    page.value = DEFAULT_PAGE;
+    const queryChanged = await syncRouteQuery();
+    if (!queryChanged) {
+        fetchMovies();
+    }
 };
 
-// 分页
-const handlePage = (p) => {
+const handlePage = async (p) => {
     page.value = p;
-    fetchMovies();
+    const queryChanged = await syncRouteQuery();
+    if (!queryChanged) {
+        fetchMovies();
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
 };
 
-// 选择类型
 const selectGenre = (genre) => {
     selectedGenre.value = selectedGenre.value === genre ? "" : genre;
     handleFilter();
 };
 
-// 重置筛选
 const resetFilters = () => {
     selectedGenre.value = "";
     contentType.value = "";
-    yearRange.value = [1950, 2026];
-    ratingMin.value = 0;
-    sortBy.value = "weighted";
+    yearRange.value = [DEFAULT_YEAR_FROM, DEFAULT_YEAR_TO];
+    ratingMin.value = DEFAULT_RATING_MIN;
+    sortBy.value = DEFAULT_SORT_BY;
     handleFilter();
 };
 </script>

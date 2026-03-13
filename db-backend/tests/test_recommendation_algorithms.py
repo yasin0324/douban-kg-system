@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from unittest.mock import patch
 
+from app.algorithms.cfkg import CFKGRecommender
 from app.algorithms.graph_cache import (
     GraphMetadataCache,
     MovieGraphProfile,
@@ -209,3 +210,76 @@ def test_kg_path_select_genres_prefers_rare_entities():
     selected = recommender._select_genres({"剧情", "悬疑", "犯罪"})
 
     assert selected == {"悬疑", "犯罪"}
+
+
+class StubRecommender:
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def recommend(self, user_id, n=20, exclude_mids=None, exclude_from_training=None):
+        return self.rows[:n]
+
+
+def test_cfkg_merges_candidates_and_prioritizes_kg_reasons():
+    recommender = CFKGRecommender()
+    recommender._item_cf = StubRecommender(
+        [
+            {"mid": "m1", "score": 0.9, "reason": "item_cf reason"},
+            {"mid": "m2", "score": 0.8, "reason": "item_cf reason 2"},
+        ]
+    )
+    recommender._kg_embed = StubRecommender(
+        [
+            {"mid": "m1", "score": 0.7, "reason": "kg_embed reason"},
+            {"mid": "m3", "score": 0.6, "reason": "kg_embed reason 2"},
+        ]
+    )
+    recommender._kg_path = StubRecommender(
+        [
+            {"mid": "m1", "score": 0.5, "reason": "kg_path reason"},
+            {"mid": "m4", "score": 0.9, "reason": "kg_path reason 2"},
+        ]
+    )
+    recommender._content = StubRecommender([])
+
+    results = recommender.recommend(user_id=1, n=10)
+
+    assert [row["mid"] for row in results] == ["m1", "m2", "m3", "m4"]
+    assert results[0]["source_algorithms"] == ["item_cf", "kg_embed", "kg_path"]
+    assert results[0]["reasons"] == ["kg_path reason", "kg_embed reason", "item_cf reason"]
+    assert results[0]["reason"] == "kg_path reason"
+
+
+def test_cfkg_resolve_branch_weights_renormalizes_when_item_cf_missing():
+    recommender = CFKGRecommender()
+
+    weights = recommender._resolve_branch_weights(
+        {
+            "item_cf": [],
+            "kg_embed": [{"mid": "m1", "score": 1.0, "reason": "kg"}],
+            "kg_path": [{"mid": "m2", "score": 1.0, "reason": "path"}],
+        }
+    )
+
+    assert "item_cf" not in weights
+    assert weights["kg_embed"] == pytest.approx(0.75)
+    assert weights["kg_path"] == pytest.approx(0.25)
+
+
+def test_cfkg_uses_content_as_fallback_candidates():
+    recommender = CFKGRecommender()
+    recommender._item_cf = StubRecommender([])
+    recommender._kg_embed = StubRecommender(
+        [{"mid": "m1", "score": 1.0, "reason": "kg_embed reason"}]
+    )
+    recommender._kg_path = StubRecommender([])
+    recommender._content = StubRecommender(
+        [{"mid": "m2", "score": 0.9, "reason": "content reason"}]
+    )
+
+    results = recommender.recommend(user_id=1, n=5)
+
+    assert [row["mid"] for row in results] == ["m1", "m2"]
+    assert results[0]["source_algorithms"] == ["kg_embed"]
+    assert results[1]["source_algorithms"] == ["content"]
+    assert results[1]["reason"] == "content reason"

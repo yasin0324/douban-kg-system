@@ -11,12 +11,13 @@ import { proxyImage } from "@/utils/image";
 
 const router = useRouter();
 const authStore = useAuthStore();
-const HOME_RECOMMEND_PRIMARY_ALGORITHM = "kg_embed";
+const HOME_RECOMMEND_PRIMARY_ALGORITHM = "cfkg";
 const HOME_RECOMMEND_FALLBACK_ALGORITHMS = [
-    "kg_embed",
-    "kg_path",
+    "cfkg",
     "item_cf",
+    "kg_embed",
     "content",
+    "kg_path",
 ];
 
 const topMovies = ref([]);
@@ -389,9 +390,18 @@ const defaultCover =
 
                         <div class="home-copy">
                             <h3>{{ item.movie.title }}</h3>
-                            <span class="home-year">{{
-                                item.movie.year || "—"
-                            }}</span>
+                            <div class="home-meta">
+                                <span
+                                    v-if="item.movie.rating"
+                                    class="home-rating"
+                                >
+                                    ⭐
+                                    {{ Number(item.movie.rating).toFixed(1) }}
+                                </span>
+                                <span class="home-year">{{
+                                    item.movie.year || "—"
+                                }}</span>
+                            </div>
                             <p>推荐理由：{{ item.summary }}</p>
                         </div>
                     </article>
@@ -680,6 +690,18 @@ const defaultCover =
     &.short {
         width: 64%;
     }
+}
+
+.home-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.home-rating {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-rating);
 }
 
 .home-year {

@@ -12,6 +12,7 @@ import { usersApi } from "@/api/users";
 const authStore = useAuthStore();
 
 const algorithmOptions = [
+    { value: "cfkg", label: "CFKG 主链路", type: "KG" },
     { value: "kg_path", label: "KG 路径推荐", type: "KG" },
     { value: "kg_embed", label: "KG 嵌入推荐", type: "KG" },
     { value: "content", label: "基于内容推荐", type: "基线" },
@@ -20,7 +21,7 @@ const algorithmOptions = [
 const RECOMMEND_BATCH_SIZE = 12;
 const SCROLL_LOAD_THRESHOLD = 300;
 
-const selectedAlgorithm = ref("kg_path");
+const selectedAlgorithm = ref("cfkg");
 const { rememberMovies, buildRerollParams } = useRecommendationHistory();
 
 const {
@@ -28,7 +29,7 @@ const {
     error: recommendError,
     loadRecommendations,
 } = useRecommendationFeed({
-    algorithm: "kg_path",
+    algorithm: "cfkg",
     limit: RECOMMEND_BATCH_SIZE,
 });
 
@@ -52,6 +53,10 @@ const currentAlgoLabel = computed(() => {
     );
     return opt ? opt.label : selectedAlgorithm.value;
 });
+
+function isKnowledgeGraphAlgorithm(algoName) {
+    return algoName === "cfkg" || String(algoName || "").startsWith("kg_");
+}
 
 // ────────────── 冷启动状态 ──────────────
 const COLD_START_THRESHOLD = 3;
@@ -961,7 +966,9 @@ const isMovieInteracted = (movie) =>
                                             :key="algoName"
                                             :class="{
                                                 'kg-row':
-                                                    algoName.startsWith('kg_'),
+                                                    isKnowledgeGraphAlgorithm(
+                                                        algoName,
+                                                    ),
                                             }"
                                         >
                                             <td>{{ data.display_name }}</td>
@@ -969,16 +976,16 @@ const isMovieInteracted = (movie) =>
                                                 <span
                                                     class="algo-type-badge"
                                                     :class="
-                                                        algoName.startsWith(
-                                                            'kg_',
+                                                        isKnowledgeGraphAlgorithm(
+                                                            algoName,
                                                         )
                                                             ? 'kg'
                                                             : 'baseline'
                                                     "
                                                 >
                                                     {{
-                                                        algoName.startsWith(
-                                                            "kg_",
+                                                        isKnowledgeGraphAlgorithm(
+                                                            algoName,
                                                         )
                                                             ? "KG"
                                                             : "基线"

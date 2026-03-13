@@ -38,8 +38,8 @@ RECOMMEND_MAX_CONCURRENT_JOBS = max(
 _runtime_lock = Lock()
 _algorithm_instances: dict[str, object] = {}
 _algorithm_slots: dict[str, BoundedSemaphore] = {}
-PREFERENCE_AFFECTED_ALGORITHMS = frozenset({"kg_path", "kg_embed"})
-RATING_AFFECTED_ALGORITHMS = frozenset({"kg_path", "kg_embed", "item_cf"})
+PREFERENCE_AFFECTED_ALGORITHMS = frozenset({"cfkg", "kg_path", "kg_embed"})
+RATING_AFFECTED_ALGORITHMS = frozenset({"cfkg", "kg_path", "kg_embed", "item_cf"})
 
 EXPLAIN_RELATION_ORDER = (
     REL_DIRECTOR,
@@ -426,7 +426,7 @@ def _build_recommendation_explain_payload(
 @router.get("/personal", summary="个人电影推荐")
 async def get_personal_recommendations(
     algorithm: Optional[str] = Query(
-        "kg_path",
+        "cfkg",
         description=f"推荐算法: {', '.join(ALGORITHM_NAMES)}",
     ),
     limit: int = Query(20, ge=1, le=50),
@@ -436,7 +436,7 @@ async def get_personal_recommendations(
     """
     根据指定算法为当前用户生成个性化推荐
     """
-    algo_name = (algorithm or "kg_path").lower()
+    algo_name = (algorithm or "cfkg").lower()
     if algo_name not in ALGORITHMS:
         raise HTTPException(
             status_code=400,
@@ -492,7 +492,7 @@ async def get_personal_recommendations(
         raise HTTPException(status_code=500, detail=f"推荐算法执行失败: {str(e)}")
 
     # 补充电影详情
-    items = _enrich_movie_details(recommendations)
+    items = _enrich_movie_details(recommendations, fallback_source=algo_name)
 
     return {
         "algorithm": algo_name,
@@ -506,13 +506,13 @@ async def get_personal_recommendations(
 @router.get("/explain", summary="推荐结果解释")
 def explain_recommendation(
     target_mid: str = Query(..., description="目标推荐电影 ID"),
-    algorithm: Optional[str] = Query("kg_path", description="推荐算法"),
+    algorithm: Optional[str] = Query("cfkg", description="推荐算法"),
     user=Depends(get_current_user),
 ):
     """
     为指定电影生成推荐解释（简化版，返回基本推理路径）
     """
-    algo_name = (algorithm or "kg_path").lower()
+    algo_name = (algorithm or "cfkg").lower()
 
     # 获取目标电影基本信息
     conn = get_connection()
@@ -576,7 +576,7 @@ async def list_algorithms():
             {
                 "name": name,
                 "display_name": cls.display_name,
-                "type": "KG" if name.startswith("kg_") else "基线",
+                "type": "KG" if name == "cfkg" or name.startswith("kg_") else "基线",
             }
             for name, cls in ALGORITHMS.items()
         ]
@@ -627,7 +627,7 @@ async def get_evaluation_report(user=Depends(get_current_user)):
     }
 
 
-def _enrich_movie_details(recommendations: list[dict]) -> list[dict]:
+def _enrich_movie_details(recommendations: list[dict], fallback_source: str | None = None) -> list[dict]:
     """批量补充电影详情"""
     if not recommendations:
         return []
@@ -662,11 +662,29 @@ def _enrich_movie_details(recommendations: list[dict]) -> list[dict]:
         movie_info = movies_map.get(rec["mid"])
         if not movie_info:
             continue
+        reasons = rec.get("reasons")
+        if isinstance(reasons, list):
+            reason_list = [str(reason) for reason in reasons if str(reason).strip()]
+        else:
+            reason_list = []
+        if not reason_list and rec.get("reason"):
+            reason_list = [str(rec["reason"])]
+
+        source_algorithms = rec.get("source_algorithms")
+        if isinstance(source_algorithms, list):
+            source_list = [str(source) for source in source_algorithms if str(source).strip()]
+        else:
+            source_list = []
+        if not source_list and rec.get("source"):
+            source_list = [str(rec["source"])]
+        if not source_list and fallback_source:
+            source_list = [fallback_source]
+
         items.append({
             "movie": movie_info,
             "score": rec["score"],
-            "reasons": [rec.get("reason", "")],
-            "source_algorithms": [rec.get("source", "")],
+            "reasons": reason_list,
+            "source_algorithms": source_list,
         })
 
     return items

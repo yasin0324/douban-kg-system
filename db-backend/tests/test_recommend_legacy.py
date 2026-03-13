@@ -33,11 +33,14 @@ def test_algorithms_list_route():
     assert response.status_code == 200
     data = response.json()
     assert "algorithms" in data
+    algo_meta = {item["name"]: item for item in data["algorithms"]}
     algo_names = [a["name"] for a in data["algorithms"]]
+    assert "cfkg" in algo_names
     assert "content" in algo_names
     assert "item_cf" in algo_names
     assert "kg_path" in algo_names
     assert "kg_embed" in algo_names
+    assert algo_meta["cfkg"]["type"] == "KG"
 
 
 @patch("app.algorithms.content_based.get_connection")
@@ -108,6 +111,47 @@ class SlowRecommender:
         return []
 
 
+class FastCFKGRecommender:
+    display_name = "CFKG 主链路推荐"
+
+    def recommend(self, user_id: int, n: int = 20, exclude_mids=None, exclude_from_training=None):
+        return [
+            {
+                "mid": "m1",
+                "score": 1.0,
+                "reason": "kg reason",
+                "reasons": ["kg reason", "cf reason"],
+                "source_algorithms": ["cfkg", "kg_embed"],
+            }
+        ]
+
+
+def test_personal_recommendation_defaults_to_cfkg():
+    with (
+        patch.object(recommend, "_get_algorithm_instance", return_value=FastCFKGRecommender()),
+        patch.object(
+            recommend,
+            "_enrich_movie_details",
+            return_value=[
+                {
+                    "movie": {"mid": "m1", "title": "Movie 1"},
+                    "score": 1.0,
+                    "reasons": ["kg reason", "cf reason"],
+                    "source_algorithms": ["cfkg", "kg_embed"],
+                }
+            ],
+        ),
+    ):
+        with build_client() as client:
+            response = client.get("/api/recommend/personal?limit=5")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["algorithm"] == "cfkg"
+    assert data["algorithm_display_name"] == "CFKG 主链路推荐"
+    assert data["items"][0]["source_algorithms"] == ["cfkg", "kg_embed"]
+
+
 def test_personal_recommendation_timeout_returns_504():
     with (
         patch.dict(recommend.ALGORITHMS, {"slow": SlowRecommender}, clear=False),
@@ -143,6 +187,7 @@ def test_invalidate_recommendation_runtime_only_drops_affected_algorithms():
     with recommend._runtime_lock:
         recommend._algorithm_instances.update(
             {
+                "cfkg": object(),
                 "content": object(),
                 "item_cf": object(),
                 "kg_path": object(),
@@ -153,6 +198,7 @@ def test_invalidate_recommendation_runtime_only_drops_affected_algorithms():
     recommend.invalidate_recommendation_runtime(preference_changed=True)
 
     with recommend._runtime_lock:
+        assert "cfkg" not in recommend._algorithm_instances
         assert "kg_path" not in recommend._algorithm_instances
         assert "kg_embed" not in recommend._algorithm_instances
         assert "item_cf" in recommend._algorithm_instances
@@ -162,6 +208,7 @@ def test_invalidate_recommendation_runtime_only_drops_affected_algorithms():
 
     with recommend._runtime_lock:
         assert "item_cf" not in recommend._algorithm_instances
+        assert "cfkg" not in recommend._algorithm_instances
         assert "content" in recommend._algorithm_instances
 
     recommend._reset_algorithm_runtime_state()

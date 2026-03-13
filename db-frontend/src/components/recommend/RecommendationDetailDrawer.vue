@@ -16,7 +16,7 @@ const props = defineProps({
     },
     algorithm: {
         type: String,
-        default: "kg_path",
+        default: "cfkg",
     },
 });
 
