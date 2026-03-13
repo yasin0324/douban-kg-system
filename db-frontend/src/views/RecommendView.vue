@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import RecommendationDetailDrawer from "@/components/recommend/RecommendationDetailDrawer.vue";
+import { useRecommendationHistory } from "@/composables/useRecommendationHistory";
 import { useRecommendationFeed } from "@/composables/useRecommendations";
 import { useAuthStore } from "@/stores/auth";
 import { proxyImage } from "@/utils/image";
@@ -16,17 +17,19 @@ const algorithmOptions = [
     { value: "content", label: "基于内容推荐", type: "基线" },
     { value: "item_cf", label: "协同过滤推荐", type: "基线" },
 ];
+const RECOMMEND_BATCH_SIZE = 12;
+const SCROLL_LOAD_THRESHOLD = 300;
 
 const selectedAlgorithm = ref("kg_path");
+const { rememberMovies, buildRerollParams } = useRecommendationHistory();
 
 const {
-    data: recommendData,
     loading: recommendLoading,
     error: recommendError,
     loadRecommendations,
 } = useRecommendationFeed({
     algorithm: "kg_path",
-    limit: 50,
+    limit: RECOMMEND_BATCH_SIZE,
 });
 
 const selectedRecommendation = ref(null);
@@ -34,11 +37,14 @@ const recommendationDrawerVisible = ref(false);
 const evalData = ref(null);
 const evalLoading = ref(false);
 const activeTab = ref("recommend");
+const recommendItems = ref([]);
+const recommendLoadingMore = ref(false);
+const recommendNoMore = ref(false);
 
 const defaultCover =
     "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzBmMTcyYSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjQyIiBmaWxsPSIjMzM0MTU1IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==";
 
-const displayItems = computed(() => recommendData.value?.items || []);
+const displayItems = computed(() => recommendItems.value);
 
 const currentAlgoLabel = computed(() => {
     const opt = algorithmOptions.find(
@@ -86,6 +92,9 @@ function resetColdStartState() {
     coldStartSkipped.value = false;
     effectiveSignalCount.value = 0;
     interactedMids.value = new Set();
+    recommendItems.value = [];
+    recommendLoadingMore.value = false;
+    recommendNoMore.value = false;
     actionLoading.value = {};
     ratingDialogVisible.value = false;
     ratingDialogMovie.value = null;
@@ -207,8 +216,88 @@ async function loadMoreTopMovies() {
 }
 
 async function loadWithAlgorithm(algo) {
+    return loadRecommendBatch(algo, { replace: true });
+}
+
+function getRecommendationItemMid(item) {
+    return String(item?.movie?.mid || item?.mid || "");
+}
+
+function replaceRecommendationItems(items = []) {
+    const nextItems = [];
+    const seen = new Set();
+    items.forEach((item) => {
+        const mid = getRecommendationItemMid(item);
+        if (!mid || seen.has(mid)) {
+            return;
+        }
+        seen.add(mid);
+        nextItems.push(item);
+    });
+    recommendItems.value = nextItems;
+}
+
+function appendRecommendationItems(items = []) {
+    const seen = new Set(
+        recommendItems.value.map((item) => getRecommendationItemMid(item)),
+    );
+    const merged = [...recommendItems.value];
+    items.forEach((item) => {
+        const mid = getRecommendationItemMid(item);
+        if (!mid || seen.has(mid)) {
+            return;
+        }
+        seen.add(mid);
+        merged.push(item);
+    });
+    recommendItems.value = merged;
+}
+
+function getDisplayedRecommendationIds() {
+    return recommendItems.value
+        .map((item) => getRecommendationItemMid(item))
+        .filter(Boolean);
+}
+
+async function loadRecommendBatch(
+    algo,
+    { replace = false, reroll = false } = {},
+) {
     try {
-        const payload = await loadRecommendations({ algorithm: algo, limit: 50 });
+        const params = {
+            algorithm: algo,
+            limit: RECOMMEND_BATCH_SIZE,
+        };
+        if (reroll) {
+            Object.assign(params, buildRerollParams(algo));
+        } else if (!replace) {
+            const excludeMovieIds = getDisplayedRecommendationIds();
+            if (!excludeMovieIds.length) {
+                recommendNoMore.value = true;
+                return null;
+            }
+            params.exclude_movie_ids = excludeMovieIds;
+        }
+
+        const payload = await loadRecommendations(params, {
+            silentLoading: !replace,
+        });
+        const items = payload?.items || [];
+        const movieIds = items
+            .map((item) => getRecommendationItemMid(item))
+            .filter(Boolean);
+
+        if (replace) {
+            if (items.length || !recommendItems.value.length || !reroll) {
+                replaceRecommendationItems(items);
+            }
+        } else {
+            appendRecommendationItems(items);
+        }
+
+        rememberMovies(algo, movieIds);
+        recommendNoMore.value = items.length < RECOMMEND_BATCH_SIZE;
+
         if (!payload?.items?.length && !topMovies.value.length) {
             await loadTopMovies();
         }
@@ -223,18 +312,48 @@ async function loadWithAlgorithm(algo) {
     }
 }
 
+async function handleReroll() {
+    if (recommendLoading.value || recommendLoadingMore.value) return;
+    recommendNoMore.value = false;
+    await loadRecommendBatch(selectedAlgorithm.value, {
+        replace: true,
+        reroll: true,
+    });
+}
+
+async function loadMoreRecommendations() {
+    if (
+        recommendLoading.value ||
+        recommendLoadingMore.value ||
+        recommendNoMore.value
+    ) {
+        return;
+    }
+    recommendLoadingMore.value = true;
+    try {
+        await loadRecommendBatch(selectedAlgorithm.value, { replace: false });
+    } finally {
+        recommendLoadingMore.value = false;
+    }
+}
+
 // ────────────── 滚动 ──────────────
 const handleScroll = () => {
     showBackTop.value = window.scrollY > 600;
+    if (activeTab.value !== "recommend") {
+        return;
+    }
 
     const scrollBottom =
         document.documentElement.scrollHeight -
         window.scrollY -
         window.innerHeight;
-    if (scrollBottom < 300) {
+    if (scrollBottom < SCROLL_LOAD_THRESHOLD) {
         // 冷启动 / 跳过 / 保底：分页加载更多热门
         if (coldStartMode.value || showFallbackGrid.value) {
             loadMoreTopMovies();
+        } else {
+            loadMoreRecommendations();
         }
     }
 };
@@ -245,6 +364,7 @@ const scrollToTop = () => {
 
 async function onAlgorithmChange(algo) {
     selectedAlgorithm.value = algo;
+    recommendNoMore.value = false;
     await loadWithAlgorithm(algo);
 }
 
@@ -654,9 +774,20 @@ const isMovieInteracted = (movie) =>
                             class="evidence-panel"
                             v-loading="recommendLoading"
                         >
-                            <h2 class="panel-label">
-                                {{ currentAlgoLabel }} 推荐结果
-                            </h2>
+                            <div class="recommend-toolbar">
+                                <h2 class="panel-label">
+                                    {{ currentAlgoLabel }} 推荐结果
+                                </h2>
+                                <button
+                                    class="reroll-btn"
+                                    :disabled="
+                                        recommendLoading || recommendLoadingMore
+                                    "
+                                    @click="handleReroll"
+                                >
+                                    换一批
+                                </button>
+                            </div>
 
                             <div class="movie-grid">
                                 <article
@@ -711,6 +842,19 @@ const isMovieInteracted = (movie) =>
                                         </p>
                                     </div>
                                 </article>
+                            </div>
+
+                            <div
+                                v-if="displayItems.length && !showFallbackGrid"
+                                class="recommend-feed-state"
+                            >
+                                <span v-if="recommendLoadingMore">
+                                    正在加载更多推荐...
+                                </span>
+                                <span v-else-if="recommendNoMore">
+                                    暂无更多推荐结果
+                                </span>
+                                <span v-else>下拉到底部继续加载</span>
                             </div>
 
                             <!-- 个性化推荐为空 → 热门保底 -->
@@ -988,6 +1132,51 @@ const isMovieInteracted = (movie) =>
 .result-count {
     font-weight: 400;
     opacity: 0.7;
+}
+
+.recommend-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+
+    .panel-label {
+        margin-bottom: 0;
+    }
+}
+
+.reroll-btn {
+    padding: 0.48rem 0.95rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+
+    &:hover:not(:disabled) {
+        color: var(--text-primary);
+        border-color: var(--border-color-light);
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+}
+
+.recommend-feed-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: var(--space-md) 0 var(--space-xs);
+    color: var(--text-muted);
+    font-size: 0.88rem;
 }
 
 /* Tab Bar */
@@ -1469,6 +1658,15 @@ const isMovieInteracted = (movie) =>
     .algo-selector {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .recommend-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .reroll-btn {
+        width: 100%;
     }
 
     .movie-grid {

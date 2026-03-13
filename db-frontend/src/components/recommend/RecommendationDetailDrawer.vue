@@ -43,6 +43,9 @@ const matchedEntities = computed(
 const reasonPaths = computed(() => explainPayload.value?.reason_paths || []);
 const graphNodes = computed(() => explainPayload.value?.nodes || []);
 const graphEdges = computed(() => explainPayload.value?.edges || []);
+const graphHighlightId = computed(() =>
+    currentMovie.value?.mid ? `movie_${currentMovie.value.mid}` : "",
+);
 
 const headline = computed(() => {
     if (currentReasons.value.length) {
@@ -194,6 +197,7 @@ watch(
                         :nodes="graphNodes"
                         :edges="graphEdges"
                         :loading="explainLoading"
+                        :highlight-id="graphHighlightId"
                         layout="force"
                         :min-height="340"
                     />

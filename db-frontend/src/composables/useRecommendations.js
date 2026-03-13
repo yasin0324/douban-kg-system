@@ -12,7 +12,10 @@ export function useRecommendationFeed(defaultOptions = {}) {
     });
 
     const loadRecommendations = async (overrides = {}, requestConfig = {}) => {
-        loading.value = true;
+        const { silentLoading = false, ...axiosConfig } = requestConfig;
+        if (!silentLoading) {
+            loading.value = true;
+        }
         error.value = "";
 
         const mergedOptions = {
@@ -30,7 +33,10 @@ export function useRecommendationFeed(defaultOptions = {}) {
         options.value = mergedOptions;
 
         try {
-            const response = await recommendApi.getPersonal(mergedOptions, requestConfig);
+            const response = await recommendApi.getPersonal(
+                mergedOptions,
+                axiosConfig,
+            );
             data.value = response.data;
             return response.data;
         } catch (err) {
@@ -48,7 +54,9 @@ export function useRecommendationFeed(defaultOptions = {}) {
             data.value = null;
             throw err;
         } finally {
-            loading.value = false;
+            if (!silentLoading) {
+                loading.value = false;
+            }
         }
     };
 

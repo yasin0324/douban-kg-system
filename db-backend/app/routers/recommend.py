@@ -5,6 +5,7 @@
 import asyncio
 import glob
 import logging
+from collections import defaultdict
 from functools import partial
 from threading import BoundedSemaphore, Lock
 from typing import List, Optional
@@ -12,9 +13,16 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.algorithms import ALGORITHMS, ALGORITHM_NAMES
+from app.algorithms.graph_cache import (
+    GraphMetadataCache,
+    MovieGraphProfile,
+    REL_ACTOR,
+    REL_DIRECTOR,
+    REL_GENRE,
+    safe_idf,
+)
 from app.config import settings
 from app.db.mysql import get_connection
-from app.db.neo4j import Neo4jConnection
 from app.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -30,6 +38,27 @@ RECOMMEND_MAX_CONCURRENT_JOBS = max(
 _runtime_lock = Lock()
 _algorithm_instances: dict[str, object] = {}
 _algorithm_slots: dict[str, BoundedSemaphore] = {}
+
+EXPLAIN_RELATION_ORDER = (
+    REL_DIRECTOR,
+    REL_ACTOR,
+    REL_GENRE,
+)
+EXPLAIN_RELATION_WEIGHTS = {
+    REL_DIRECTOR: 1.0,
+    REL_ACTOR: 0.6,
+    REL_GENRE: 0.4,
+}
+EXPLAIN_RELATION_LABELS = {
+    REL_DIRECTOR: "共同导演",
+    REL_ACTOR: "共同演员",
+    REL_GENRE: "同类类型",
+}
+EXPLAIN_GROUP_LABELS = {
+    REL_DIRECTOR: "导演",
+    REL_ACTOR: "演员",
+    REL_GENRE: "类型",
+}
 
 
 def _get_algorithm_instance(algo_name: str):
@@ -65,6 +94,313 @@ def _run_recommendation_job(algo, slot: BoundedSemaphore, *, user_id: int, n: in
         )
     finally:
         slot.release()
+
+
+def _node_payload(node_id: str, label: str, node_type: str, properties: dict | None = None) -> dict:
+    return {
+        "id": node_id,
+        "label": label,
+        "type": node_type,
+        "properties": properties or None,
+    }
+
+
+def _graph_token(value: str) -> str:
+    return str(value).replace("/", "-").replace(" ", "-")
+
+
+def _movie_node_payload(
+    *,
+    mid: str,
+    title: str,
+    year: int | None = None,
+    rating: float | None = None,
+) -> dict:
+    properties = {}
+    if year:
+        properties["year"] = year
+    if rating is not None:
+        properties["rating"] = rating
+    return _node_payload(f"movie_{mid}", title, "Movie", properties)
+
+
+def _person_node_payload(pid: str, name: str) -> dict:
+    return _node_payload(f"person_{pid}", name, "Person")
+
+
+def _genre_node_payload(name: str) -> dict:
+    return _node_payload(f"genre_{name}", name, "Genre")
+
+
+def _signal_node_payload(relation: str, entity_name: str) -> dict:
+    return _node_payload(
+        f"signal_{relation}_{_graph_token(entity_name)}",
+        f"{EXPLAIN_RELATION_LABELS[relation]} {entity_name}",
+        "Signal",
+    )
+
+
+def _entity_name(relation: str, entity_id: str) -> str:
+    if relation in {REL_DIRECTOR, REL_ACTOR}:
+        return GraphMetadataCache.person_name(entity_id)
+    return str(entity_id)
+
+
+def _relation_entities(profile: MovieGraphProfile, relation: str) -> set[str]:
+    if relation == REL_ACTOR:
+        return profile.relation_entities(relation, actor_top_only=True)
+    return profile.relation_entities(relation)
+
+
+def _reason_template(relation: str, entity_names: list[str]) -> str:
+    if not entity_names:
+        return EXPLAIN_RELATION_LABELS[relation]
+    if relation == REL_GENRE:
+        return f"与偏好影片同属 {' / '.join(entity_names[:3])}"
+    return f"{EXPLAIN_RELATION_LABELS[relation]} {' / '.join(entity_names[:3])}"
+
+
+def _load_positive_movies_for_user(user_id: int, algo_name: str) -> list[dict]:
+    if algo_name not in ALGORITHMS:
+        return []
+    algo = _get_algorithm_instance(algo_name)
+    conn = get_connection()
+    try:
+        return algo.get_user_positive_movies(conn, user_id)
+    finally:
+        conn.close()
+
+
+def _build_overlap_explanation(
+    *,
+    target_movie: dict,
+    positive_movies: list[dict],
+) -> dict:
+    GraphMetadataCache.ensure_loaded()
+    profiles = GraphMetadataCache.movie_profiles()
+    target_mid = str(target_movie["mid"])
+    target_profile = profiles.get(target_mid)
+    if not target_profile or not positive_movies:
+        return {"nodes": [], "edges": [], "reason_paths": [], "matched_entities": []}
+
+    evidence_records = []
+    for movie in positive_movies:
+        seed_mid = str(movie["mid"])
+        if seed_mid == target_mid:
+            continue
+        seed_profile = profiles.get(seed_mid)
+        if not seed_profile:
+            continue
+        seed_weight = float(movie.get("rating") or 0) / 5.0
+        if seed_weight <= 0:
+            continue
+
+        for relation in EXPLAIN_RELATION_ORDER:
+            shared_entities = sorted(
+                _relation_entities(target_profile, relation)
+                & _relation_entities(seed_profile, relation)
+            )
+            for entity_id in shared_entities[:3]:
+                entity_name = _entity_name(relation, entity_id)
+                evidence_records.append(
+                    {
+                        "seed_mid": seed_mid,
+                        "seed_title": seed_profile.name,
+                        "seed_year": seed_profile.year,
+                        "relation": relation,
+                        "entity_id": str(entity_id),
+                        "entity_name": entity_name,
+                        "score": seed_weight
+                        * EXPLAIN_RELATION_WEIGHTS[relation]
+                        * safe_idf(GraphMetadataCache.entity_degree(relation, entity_id)),
+                    }
+                )
+
+    if not evidence_records:
+        return {"nodes": [], "edges": [], "reason_paths": [], "matched_entities": []}
+
+    evidence_records.sort(
+        key=lambda item: (
+            item["score"],
+            item["seed_mid"],
+            item["relation"],
+            item["entity_name"],
+        ),
+        reverse=True,
+    )
+    selected_records = evidence_records[:6]
+
+    nodes_map = {
+        f"movie_{target_mid}": _movie_node_payload(
+            mid=target_mid,
+            title=target_movie["title"],
+            year=target_movie.get("year"),
+            rating=target_movie.get("rating"),
+        )
+    }
+    edges_set: set[tuple[str, str, str]] = set()
+    matched_by_relation: dict[str, list[str]] = defaultdict(list)
+    reason_entities: dict[tuple[str, str], list[str]] = defaultdict(list)
+
+    for record in selected_records:
+        seed_node_id = f"movie_{record['seed_mid']}"
+        nodes_map[seed_node_id] = _movie_node_payload(
+            mid=record["seed_mid"],
+            title=record["seed_title"],
+            year=record.get("seed_year"),
+        )
+
+        signal_payload = _signal_node_payload(record["relation"], record["entity_name"])
+        signal_id = signal_payload["id"]
+        nodes_map[signal_id] = signal_payload
+
+        edges_set.add((seed_node_id, signal_id, "SEED_CONTEXT"))
+        edges_set.add((signal_id, f"movie_{target_mid}", "PROFILE_HINT"))
+
+        group = matched_by_relation[record["relation"]]
+        if record["entity_name"] not in group:
+            group.append(record["entity_name"])
+
+        key = (record["seed_mid"], record["relation"])
+        if record["entity_name"] not in reason_entities[key]:
+            reason_entities[key].append(record["entity_name"])
+
+    reason_paths = []
+    for (seed_mid, relation), entity_names in reason_entities.items():
+        seed_title = next(
+            (item["seed_title"] for item in selected_records if item["seed_mid"] == seed_mid),
+            seed_mid,
+        )
+        reason_paths.append(
+            {
+                "relation_type": relation,
+                "relation_label": EXPLAIN_RELATION_LABELS[relation],
+                "template": _reason_template(relation, entity_names),
+                "representative_mid": seed_mid,
+                "representative_title": seed_title,
+                "matched_entities": entity_names[:3],
+            }
+        )
+
+    matched_entities = [
+        {"type": EXPLAIN_GROUP_LABELS[relation], "items": items[:5]}
+        for relation, items in matched_by_relation.items()
+        if items
+    ]
+
+    edges = [
+        {"source": source, "target": target, "type": rel_type}
+        for source, target, rel_type in sorted(edges_set)
+    ]
+    return {
+        "nodes": list(nodes_map.values()),
+        "edges": edges,
+        "reason_paths": reason_paths,
+        "matched_entities": matched_entities,
+    }
+
+
+def _build_target_context_explanation(target_movie: dict) -> dict:
+    GraphMetadataCache.ensure_loaded()
+    profiles = GraphMetadataCache.movie_profiles()
+    target_mid = str(target_movie["mid"])
+    target_profile = profiles.get(target_mid)
+    if not target_profile:
+        return {"nodes": [], "edges": [], "reason_paths": [], "matched_entities": []}
+
+    nodes_map = {
+        f"movie_{target_mid}": _movie_node_payload(
+            mid=target_mid,
+            title=target_movie["title"],
+            year=target_movie.get("year"),
+            rating=target_movie.get("rating"),
+        )
+    }
+    edges_set: set[tuple[str, str, str]] = set()
+    matched_entities = []
+    reason_paths = []
+
+    directors = sorted(target_profile.directors)[:2]
+    if directors:
+        names = []
+        for pid in directors:
+            name = _entity_name(REL_DIRECTOR, pid)
+            nodes_map[f"person_{pid}"] = _person_node_payload(pid, name)
+            edges_set.add((f"person_{pid}", f"movie_{target_mid}", "DIRECTED"))
+            names.append(name)
+        matched_entities.append({"type": "导演", "items": names})
+        reason_paths.append(
+            {
+                "relation_type": REL_DIRECTOR,
+                "relation_label": "影片导演",
+                "template": f"导演 {' / '.join(names)}",
+                "representative_mid": target_mid,
+                "representative_title": target_movie["title"],
+                "matched_entities": names,
+            }
+        )
+
+    actors = sorted(target_profile.top_actors or target_profile.actors)[:3]
+    if actors:
+        names = []
+        for pid in actors:
+            name = _entity_name(REL_ACTOR, pid)
+            nodes_map[f"person_{pid}"] = _person_node_payload(pid, name)
+            edges_set.add((f"person_{pid}", f"movie_{target_mid}", "ACTED_IN"))
+            names.append(name)
+        matched_entities.append({"type": "演员", "items": names})
+        reason_paths.append(
+            {
+                "relation_type": REL_ACTOR,
+                "relation_label": "核心演员",
+                "template": f"演员 {' / '.join(names)}",
+                "representative_mid": target_mid,
+                "representative_title": target_movie["title"],
+                "matched_entities": names,
+            }
+        )
+
+    genres = sorted(target_profile.genres)[:3]
+    if genres:
+        for genre in genres:
+            nodes_map[f"genre_{genre}"] = _genre_node_payload(genre)
+            edges_set.add((f"movie_{target_mid}", f"genre_{genre}", "HAS_GENRE"))
+        matched_entities.append({"type": "类型", "items": genres})
+        reason_paths.append(
+            {
+                "relation_type": REL_GENRE,
+                "relation_label": "影片类型",
+                "template": f"类型 {' / '.join(genres)}",
+                "representative_mid": target_mid,
+                "representative_title": target_movie["title"],
+                "matched_entities": genres,
+            }
+        )
+
+    edges = [
+        {"source": source, "target": target, "type": rel_type}
+        for source, target, rel_type in sorted(edges_set)
+    ]
+    return {
+        "nodes": list(nodes_map.values()),
+        "edges": edges,
+        "reason_paths": reason_paths,
+        "matched_entities": matched_entities,
+    }
+
+
+def _build_recommendation_explain_payload(
+    *,
+    target_movie: dict,
+    positive_movies: list[dict],
+) -> dict:
+    overlap_payload = _build_overlap_explanation(
+        target_movie=target_movie,
+        positive_movies=positive_movies,
+    )
+    if overlap_payload["nodes"] and overlap_payload["edges"]:
+        return overlap_payload
+    return _build_target_context_explanation(target_movie)
 
 
 @router.get("/personal", summary="个人电影推荐")
@@ -180,48 +516,33 @@ def explain_recommendation(
         }
 
     genres = [g.strip() for g in (movie.get("genres") or "").split("/") if g.strip()]
-
-    # 如果是 KG 算法，尝试获取图路径证据
-    reason_paths = []
-    nodes = []
-    edges = []
-
-    if algo_name.startswith("kg_"):
-        driver = Neo4jConnection.get_driver()
-        with driver.session() as session:
-            # 查询电影关联的导演和演员
-            result = session.run(
-                "MATCH (m:Movie {mid: $mid})<-[:DIRECTED]-(d:Person) "
-                "RETURN d.name AS name, 'director' AS role LIMIT 3 "
-                "UNION ALL "
-                "MATCH (m:Movie {mid: $mid})<-[:ACTED_IN]-(a:Person) "
-                "RETURN a.name AS name, 'actor' AS role LIMIT 5",
-                mid=target_mid,
-            )
-            related_persons = [{"name": r["name"], "role": r["role"]} for r in result]
-
-            for person in related_persons:
-                role_label = "导演" if person["role"] == "director" else "演员"
-                reason_paths.append({
-                    "relation_label": f"共同{role_label}",
-                    "matched_entities": [person["name"]],
-                })
+    target_movie = {
+        "mid": target_mid,
+        "title": movie["name"],
+        "rating": float(movie["douban_score"]) if movie.get("douban_score") else None,
+        "year": movie.get("year"),
+        "cover": movie.get("cover"),
+        "genres": genres,
+    }
+    positive_movies = _load_positive_movies_for_user(user["id"], algo_name)
+    explain_payload = _build_recommendation_explain_payload(
+        target_movie=target_movie,
+        positive_movies=positive_movies,
+    )
+    reason_paths = explain_payload["reason_paths"]
+    matched_entities = explain_payload["matched_entities"]
+    nodes = explain_payload["nodes"]
+    edges = explain_payload["edges"]
 
     return {
         "algorithm": algo_name,
-        "target_movie": {
-            "mid": target_mid,
-            "title": movie["name"],
-            "rating": float(movie["douban_score"]) if movie.get("douban_score") else None,
-            "year": movie.get("year"),
-            "cover": movie.get("cover"),
-            "genres": genres,
-        },
+        "target_movie": target_movie,
         "reason_paths": reason_paths,
+        "matched_entities": matched_entities,
         "nodes": nodes,
         "edges": edges,
         "meta": {
-            "has_graph_evidence": len(reason_paths) > 0,
+            "has_graph_evidence": bool(nodes and edges),
             "cold_start": False,
         },
     }
