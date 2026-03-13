@@ -67,7 +67,7 @@ export const statsApi = {
     },
 
     /** 评分与评论人数散点图 */
-    getRatingVoteScatter() {
-        return api.get("/stats/rating-vote-scatter");
+    getRatingVoteScatter(limit = 240) {
+        return api.get("/stats/rating-vote-scatter", { params: { limit } });
     },
 };

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import KnowledgeGraph from "@/components/graph/KnowledgeGraph.vue";
 import { fetchRecommendationExplanation } from "@/composables/useRecommendations";
 import { proxyImage } from "@/utils/image";
@@ -20,6 +21,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue"]);
+const router = useRouter();
 
 const defaultCover =
     "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzBjMTExYiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjQyIiBmaWxsPSIjMzM0MTU1IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==";
@@ -46,6 +48,15 @@ const graphEdges = computed(() => explainPayload.value?.edges || []);
 const graphHighlightId = computed(() =>
     currentMovie.value?.mid ? `movie_${currentMovie.value.mid}` : "",
 );
+const movieDetailRoute = computed(() => {
+    if (!currentMovie.value?.mid) {
+        return null;
+    }
+    return {
+        name: "movie-detail",
+        params: { mid: currentMovie.value.mid },
+    };
+});
 
 const headline = computed(() => {
     if (currentReasons.value.length) {
@@ -53,6 +64,14 @@ const headline = computed(() => {
     }
     return "推荐路径与用户兴趣画像存在明确关联。";
 });
+
+const goToMovieDetail = () => {
+    if (!movieDetailRoute.value) {
+        return;
+    }
+    drawerVisible.value = false;
+    router.push(movieDetailRoute.value);
+};
 
 const loadExplanation = async () => {
     if (!drawerVisible.value || !currentMovie.value?.mid) {
@@ -103,16 +122,20 @@ watch(
     >
         <template #header>
             <div v-if="currentMovie" class="drawer-header">
-                <div class="poster-shell">
+                <button class="poster-shell poster-button" @click="goToMovieDetail">
                     <img
                         :src="proxyImage(currentMovie.cover) || defaultCover"
                         :alt="currentMovie.title"
                         @error="(e) => (e.target.src = defaultCover)"
                     />
-                </div>
+                </button>
                 <div class="header-copy">
                     <span class="header-kicker">知识路径</span>
-                    <h2>{{ currentMovie.title }}</h2>
+                    <div class="header-title-row">
+                        <button class="title-link" @click="goToMovieDetail">
+                            {{ currentMovie.title }}
+                        </button>
+                    </div>
                     <p>{{ headline }}</p>
                 </div>
             </div>
@@ -239,9 +262,30 @@ watch(
     }
 }
 
+.poster-button {
+    padding: 0;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: transform var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+
+    &:hover {
+        transform: translateY(-2px);
+        border-color: var(--color-accent);
+        box-shadow: var(--shadow-sm);
+    }
+}
+
 .header-copy {
     display: grid;
     align-content: center;
+    gap: var(--space-sm);
+}
+
+.header-title-row {
+    display: flex;
+    align-items: center;
     gap: var(--space-sm);
 }
 
@@ -265,6 +309,23 @@ watch(
     font-size: 1.75rem;
     font-weight: 700;
     color: var(--text-primary);
+}
+
+.title-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+
+    &:hover {
+        color: var(--color-accent);
+    }
 }
 
 .header-copy p {
@@ -381,6 +442,10 @@ watch(
 
     .poster-shell {
         max-width: 200px;
+    }
+
+    .header-title-row {
+        width: 100%;
     }
 }
 </style>

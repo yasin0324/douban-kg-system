@@ -15,7 +15,7 @@ const genreChartRef = ref(null);
 const yearChartRef = ref(null);
 const ratingChartRef = ref(null);
 const genreYearChartRef = ref(null);
-const ratingYearChartRef = ref(null);
+const ratingVoteChartRef = ref(null);
 
 let chartInstances = [];
 // 保存原始数据用于主题切换后重绘
@@ -45,6 +45,7 @@ const accentColors = [
     "#f97316",
     "#6366f1",
 ];
+const RATING_VOTE_SCATTER_LIMIT = 240;
 
 // 加载所有数据
 onMounted(async () => {
@@ -56,14 +57,14 @@ onMounted(async () => {
             yearRes,
             ratingRes,
             genreYearRes,
-            ratingYearRes,
+            ratingVoteRes,
         ] = await Promise.all([
             statsApi.getOverview(),
             statsApi.getGenreDistribution(),
             statsApi.getYearDistribution(),
             statsApi.getRatingDistribution(),
             statsApi.getGenreYearTrends(),
-            statsApi.getRatingYearTrends(),
+            statsApi.getRatingVoteScatter(RATING_VOTE_SCATTER_LIMIT),
         ]);
 
         overview.value = overviewRes.data;
@@ -73,7 +74,7 @@ onMounted(async () => {
             year: yearRes.data,
             rating: ratingRes.data,
             genreYear: genreYearRes.data,
-            ratingYear: ratingYearRes.data,
+            ratingVote: ratingVoteRes.data,
         };
 
         await nextTick();
@@ -82,7 +83,7 @@ onMounted(async () => {
         initYearChart(cachedData.year);
         initRatingChart(cachedData.rating);
         initGenreYearChart(cachedData.genreYear);
-        initRatingYearChart(cachedData.ratingYear);
+        initRatingVoteChart(cachedData.ratingVote);
     } catch (err) {
         console.error("统计数据加载失败:", err);
     } finally {
@@ -111,7 +112,7 @@ watch(
         initYearChart(cachedData.year);
         initRatingChart(cachedData.rating);
         initGenreYearChart(cachedData.genreYear);
-        initRatingYearChart(cachedData.ratingYear);
+        initRatingVoteChart(cachedData.ratingVote);
     },
 );
 
@@ -352,38 +353,114 @@ const initGenreYearChart = (data) => {
     });
 };
 
-// ========== 9. 评分年代变化 ==========
-const initRatingYearChart = (data) => {
-    const chart = createChart(ratingYearChartRef.value);
+// ========== 9. 热度与口碑分布（气泡散点图） ==========
+const initRatingVoteChart = (data) => {
+    const chart = createChart(ratingVoteChartRef.value);
     if (!chart) return;
     const t = getChartTheme();
+    const validData = [...data]
+        .filter(
+            (d) =>
+                d &&
+                d.title &&
+                Number(d.rating) > 0 &&
+                Number(d.votes) > 0,
+        )
+        .sort((a, b) => Number(b.votes) - Number(a.votes));
+
+    if (!validData.length) {
+        chart.clear();
+        return;
+    }
+
+    const scatterData = validData.map((item) => [
+        Number(item.votes),
+        Number(item.rating),
+        item.title,
+    ]);
+
+    const minVotes = Math.min(...scatterData.map((item) => item[0]));
+    const maxVotes = Math.max(...scatterData.map((item) => item[0]));
+
+    const formatVotes = (value) => {
+        if (value >= 100000000) return `${(value / 100000000).toFixed(1)}亿`;
+        if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
+        return `${Math.round(value)}`;
+    };
 
     chart.setOption({
+        animation: false,
         title: {
-            text: "⭐ 评分年代演变趋势",
+            text: "🔥 热度与口碑分布",
             left: "center",
             textStyle: { color: t.titleColor, fontSize: 16, fontWeight: 600 },
         },
-        tooltip: { trigger: "axis", formatter: "{b}年: 平均 {c} 分" },
-        grid: { left: 50, right: 30, top: 40, bottom: 40 },
+        tooltip: {
+            trigger: "item",
+            backgroundColor: themeStore.isDark
+                ? "rgba(18, 18, 22, 0.92)"
+                : "rgba(255, 255, 255, 0.96)",
+            borderColor: t.axisLineColor,
+            textStyle: { color: t.titleColor },
+            formatter: (params) => {
+                const [votes, rating, title] = params.data;
+                return `${title}<br/>评分: ${Number(rating).toFixed(
+                    1,
+                )} 分<br/>评论人数: ${formatVotes(votes)}`;
+            },
+        },
+        grid: { left: 66, right: 28, top: 56, bottom: 56 },
         xAxis: {
-            type: "category",
-            data: data.map((d) => d.year),
-            axisLabel: { color: t.textColor },
+            type: "log",
+            name: "评论人数",
+            min: minVotes,
+            max: maxVotes,
+            nameTextStyle: { color: t.textColor, padding: [16, 0, 0, 0] },
+            axisLabel: { color: t.textColor, formatter: formatVotes },
+            axisLine: { lineStyle: { color: t.axisLineColor } },
+            splitLine: { lineStyle: { color: t.splitLineColor } },
         },
         yAxis: {
             type: "value",
-            min: "dataMin",
-            axisLabel: { color: t.textColor },
+            name: "豆瓣评分",
+            min: 5,
+            max: 10,
+            nameTextStyle: { color: t.textColor },
+            axisLabel: { color: t.textColor, formatter: "{value} 分" },
+            axisLine: { lineStyle: { color: t.axisLineColor } },
             splitLine: { lineStyle: { color: t.splitLineColor } },
+        },
+        visualMap: {
+            type: "continuous",
+            min: 5,
+            max: 9.5,
+            dimension: 1,
+            orient: "horizontal",
+            left: "center",
+            bottom: 8,
+            text: ["高分", "一般"],
+            textStyle: { color: t.textColor },
+            inRange: {
+                color: ["#60a5fa", "#22c55e", "#f59e0b", "#ef4444"],
+            },
+            calculable: false,
         },
         series: [
             {
-                data: data.map((d) => d.avg_rating),
-                type: "line",
-                smooth: true,
-                lineStyle: { width: 3, color: "#f59e0b" },
-                itemStyle: { color: "#f59e0b" },
+                type: "scatter",
+                data: scatterData,
+                symbolSize: (value) => {
+                    const votes = Number(value[0]);
+                    return Math.max(8, Math.min(22, Math.sqrt(votes) / 12));
+                },
+                progressive: 300,
+                progressiveThreshold: 200,
+                itemStyle: {
+                    opacity: 0.72,
+                },
+                emphasis: {
+                    scale: 1.15,
+                },
             },
         ],
     });
@@ -437,7 +514,7 @@ const initRatingYearChart = (data) => {
                 <div ref="ratingChartRef" class="chart-container"></div>
             </div>
             <div class="chart-card">
-                <div ref="ratingYearChartRef" class="chart-container"></div>
+                <div ref="ratingVoteChartRef" class="chart-container"></div>
             </div>
             <div class="chart-card chart-card-tall full-width">
                 <div ref="genreYearChartRef" class="chart-container-tall"></div>
