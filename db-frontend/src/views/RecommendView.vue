@@ -952,10 +952,8 @@ const isMovieInteracted = (movie) =>
                                         <tr>
                                             <th>算法</th>
                                             <th>类型</th>
-                                            <th>Precision@{{ k }}</th>
-                                            <th>Recall@{{ k }}</th>
+                                            <th>HR@{{ k }}</th>
                                             <th>NDCG@{{ k }}</th>
-                                            <th>Hit Rate@{{ k }}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -996,15 +994,8 @@ const isMovieInteracted = (movie) =>
                                                 {{
                                                     data.metrics[
                                                         k
-                                                    ]?.precision?.toFixed(4) ||
+                                                    ]?.hit_rate?.toFixed(4) ||
                                                     "-"
-                                                }}
-                                            </td>
-                                            <td>
-                                                {{
-                                                    data.metrics[
-                                                        k
-                                                    ]?.recall?.toFixed(4) || "-"
                                                 }}
                                             </td>
                                             <td>
@@ -1012,14 +1003,6 @@ const isMovieInteracted = (movie) =>
                                                     data.metrics[
                                                         k
                                                     ]?.ndcg?.toFixed(4) || "-"
-                                                }}
-                                            </td>
-                                            <td>
-                                                {{
-                                                    data.metrics[
-                                                        k
-                                                    ]?.hit_rate?.toFixed(4) ||
-                                                    "-"
                                                 }}
                                             </td>
                                         </tr>

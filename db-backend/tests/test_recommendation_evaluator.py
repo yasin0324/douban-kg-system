@@ -1,4 +1,5 @@
 import json
+import sys
 
 from app.algorithms.base import BaseRecommender
 from app.algorithms import evaluator
@@ -94,6 +95,8 @@ def test_build_markdown_report_includes_ablation_section():
     report = {
         "protocol_version": 2,
         "eval_method": "test",
+        "user_source": "public",
+        "user_source_display": "公开豆瓣用户（douban_public_*)",
         "negative_sample_seeds": [42, 52],
         "n_validation_users": 1,
         "n_test_users": 2,
@@ -126,6 +129,37 @@ def test_build_markdown_report_includes_ablation_section():
     assert "## Ablations" in markdown
     assert "1-hop" in markdown
     assert "actor_weight" in markdown
+    assert "HR@5" in markdown
+    assert "NDCG@5" in markdown
+    assert "Recall@5" not in markdown
+    assert "Precision@5" not in markdown
+    assert "Recall@K 与 Hit Rate@K 数值恒等" in markdown
+    assert "公开豆瓣用户（douban_public_*)" in markdown
+
+
+def test_user_source_helpers_cover_public_filter():
+    query, params = evaluator._ratings_query_for_user_source("public")
+
+    assert "JOIN users u ON u.id = r.user_id" in query
+    assert "u.username LIKE %s" in query
+    assert params == ("douban_public_%",)
+    assert evaluator.describe_user_source("seed_cfkg") == "历史 mock 用户（seed_cfkg_*)"
+
+
+def test_parse_args_defaults_to_all(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["evaluator.py"])
+
+    args = evaluator.parse_args()
+
+    assert args.user_source == "all"
+
+
+def test_parse_args_accepts_public(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["evaluator.py", "--user-source", "public"])
+
+    args = evaluator.parse_args()
+
+    assert args.user_source == "public"
 
 
 def test_tune_algorithm_progress_labels_include_grid_index(monkeypatch):

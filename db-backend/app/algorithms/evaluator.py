@@ -10,6 +10,7 @@ Protocol:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import math
@@ -39,6 +40,17 @@ USER_SPLIT_SEED = 42
 VALIDATION_RATIO = 0.2
 NEGATIVE_SAMPLE_SEEDS = [42, 52, 62, 72, 82]
 LEGACY_NEGATIVE_SEED = 42
+SINGLE_POSITIVE_METRIC_NOTE = (
+    "当前评估采用 sampled leave-one-out，每个用户仅保留 1 个测试正样本；"
+    "因此 Recall@K 与 Hit Rate@K 数值恒等，报告主表默认仅展示更常见的 HR@K 与 NDCG@K。"
+)
+USER_SOURCE_CHOICES = ("all", "public", "seed_cfkg", "non_public")
+USER_SOURCE_LABELS = {
+    "all": "全量用户（真实公开 + 历史 mock）",
+    "public": "公开豆瓣用户（douban_public_*)",
+    "seed_cfkg": "历史 mock 用户（seed_cfkg_*)",
+    "non_public": "非公开导入用户（排除 douban_public_*）",
+}
 
 
 def _build_progress_label(
@@ -55,6 +67,30 @@ def _build_progress_label(
     if detail:
         return f"  {label} {display_name} - {detail}"
     return f"  {label} {display_name}"
+
+
+def describe_user_source(user_source: str) -> str:
+    try:
+        return USER_SOURCE_LABELS[user_source]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported user source: {user_source}") from exc
+
+
+def _ratings_query_for_user_source(user_source: str) -> tuple[str, tuple[str, ...]]:
+    query = (
+        "SELECT r.user_id, r.mid, r.rating, r.rated_at "
+        "FROM user_movie_ratings r "
+        "JOIN users u ON u.id = r.user_id "
+    )
+    if user_source == "all":
+        return query + "ORDER BY r.user_id, r.rated_at ASC", ()
+    if user_source == "public":
+        return query + "WHERE u.username LIKE %s ORDER BY r.user_id, r.rated_at ASC", ("douban_public_%",)
+    if user_source == "seed_cfkg":
+        return query + "WHERE u.username LIKE %s ORDER BY r.user_id, r.rated_at ASC", ("seed_cfkg_%",)
+    if user_source == "non_public":
+        return query + "WHERE u.username NOT LIKE %s ORDER BY r.user_id, r.rated_at ASC", ("douban_public_%",)
+    raise ValueError(f"Unsupported user source: {user_source}")
 
 
 def _ndcg_at_k(ranked_list: list[str], relevant: set[str], k: int) -> float:
@@ -96,15 +132,12 @@ def _diversity_at_k(ranked_list: list[str], k: int) -> float:
     return sum(pair_scores) / len(pair_scores) if pair_scores else 0.0
 
 
-def build_evaluation_users() -> tuple[list[dict], int]:
+def build_evaluation_users(*, user_source: str = "all") -> tuple[list[dict], int]:
     conn = get_connection()
     try:
+        ratings_query, ratings_params = _ratings_query_for_user_source(user_source)
         with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT user_id, mid, rating, rated_at "
-                "FROM user_movie_ratings "
-                "ORDER BY user_id, rated_at ASC"
-            )
+            cursor.execute(ratings_query, ratings_params)
             all_ratings = cursor.fetchall()
         with conn.cursor() as cursor:
             cursor.execute("SELECT douban_id FROM movies WHERE douban_id IS NOT NULL")
@@ -358,7 +391,7 @@ def tune_algorithm(algo_class, validation_users: list[dict], all_movie_count: in
     return select_best_config(validation_results)
 
 
-def evaluate_suite() -> dict:
+def evaluate_suite(*, user_source: str = "all") -> dict:
     from app.algorithms import ALGORITHMS
 
     print("=" * 78)
@@ -366,9 +399,10 @@ def evaluate_suite() -> dict:
     print("=" * 78)
     print(f"  评估方法: 1 正样本 + {NUM_NEGATIVES} 随机负样本，共 {NUM_NEGATIVES + 1} 个候选")
     print(f"  测试负采样 seeds: {NEGATIVE_SAMPLE_SEEDS}")
+    print(f"  用户来源: {describe_user_source(user_source)}")
 
     print("\n📊 准备评估数据...")
-    evaluation_users, all_movie_count = build_evaluation_users()
+    evaluation_users, all_movie_count = build_evaluation_users(user_source=user_source)
     validation_users, test_users = split_evaluation_users(evaluation_users)
     print(f"  符合条件用户数: {len(evaluation_users)}")
     print(f"  验证集用户数: {len(validation_users)}")
@@ -475,6 +509,8 @@ def evaluate_suite() -> dict:
         "protocol_version": 2,
         "generated_at": generated_at,
         "eval_method": f"validation_and_test_sampled_leave_one_out (1_positive + {NUM_NEGATIVES}_negatives)",
+        "user_source": user_source,
+        "user_source_display": describe_user_source(user_source),
         "user_split_seed": USER_SPLIT_SEED,
         "negative_sample_seeds": NEGATIVE_SAMPLE_SEEDS,
         "n_total_users": len(evaluation_users),
@@ -486,6 +522,8 @@ def evaluate_suite() -> dict:
         "protocol_version": 1,
         "generated_at": generated_at,
         "eval_method": f"single_seed_sampled_leave_one_out (seed={LEGACY_NEGATIVE_SEED})",
+        "user_source": user_source,
+        "user_source_display": describe_user_source(user_source),
         "negative_sample_seeds": [LEGACY_NEGATIVE_SEED],
         "n_test_users": len(test_users),
         "results": legacy_results,
@@ -497,20 +535,19 @@ def _print_comparison_table(results: dict):
     print("\n" + "=" * 78)
     print("📋 测试集结果对比（5-seed mean ± std）")
     print("=" * 78)
+    print(f"  说明: {SINGLE_POSITIVE_METRIC_NOTE}")
     for k in K_VALUES:
         print(f"\n  --- K = {k} ---")
-        print(f"  {'算法':<24} {'Recall@K':>12} {'NDCG@K':>12} {'Hit Rate':>12}")
+        print(f"  {'算法':<24} {'HR@K':>12} {'NDCG@K':>12}")
         print(f"  {'-' * 64}")
         for algo_name, payload in results.items():
             metrics = payload["metrics"][str(k)]
-            recall_text = f"{metrics['recall']:.4f}±{metrics['recall_std']:.4f}"
             ndcg_text = f"{metrics['ndcg']:.4f}±{metrics['ndcg_std']:.4f}"
             hit_text = f"{metrics['hit_rate']:.4f}±{metrics['hit_rate_std']:.4f}"
             print(
                 f"  {payload['display_name']:<24}"
-                f" {recall_text:>12}"
-                f" {ndcg_text:>12}"
                 f" {hit_text:>12}"
+                f" {ndcg_text:>12}"
             )
 
     print("\n  --- Coverage / Diversity / Time ---")
@@ -620,28 +657,28 @@ def build_markdown_report(report: dict, *, include_ablations: bool) -> str:
         "",
         f"- 协议版本: **v{report['protocol_version']}**",
         f"- 评估方法: **{report['eval_method']}**",
+        f"- 用户来源: **{report.get('user_source_display', describe_user_source(report.get('user_source', 'all')))}**",
         f"- 负采样 seeds: **{report['negative_sample_seeds']}**",
     ]
     if "n_validation_users" in report:
         lines.append(f"- 验证集用户数: **{report['n_validation_users']}**")
     lines.append(f"- 测试集用户数: **{report['n_test_users']}**")
+    lines.append(f"- 指标说明: **{SINGLE_POSITIVE_METRIC_NOTE}**")
     lines.append("")
 
     for k in K_VALUES:
         lines.append(f"## K = {k}")
         lines.append("")
         lines.append(
-            f"| 算法 | Recall@{k} | NDCG@{k} | Hit@{k} | Precision@{k} |"
+            f"| 算法 | HR@{k} | NDCG@{k} |"
         )
-        lines.append("|------|------|------|------|------|")
+        lines.append("|------|------|------|")
         for payload in report["results"].values():
             metrics = payload["metrics"][str(k)]
             lines.append(
                 f"| {payload['display_name']} "
-                f"| {metrics['recall']:.4f} ± {metrics.get('recall_std', 0.0):.4f} "
-                f"| {metrics['ndcg']:.4f} ± {metrics.get('ndcg_std', 0.0):.4f} "
                 f"| {metrics['hit_rate']:.4f} ± {metrics.get('hit_rate_std', 0.0):.4f} "
-                f"| {metrics['precision']:.4f} ± {metrics.get('precision_std', 0.0):.4f} |"
+                f"| {metrics['ndcg']:.4f} ± {metrics.get('ndcg_std', 0.0):.4f} |"
             )
         lines.append("")
 
@@ -671,15 +708,14 @@ def build_markdown_report(report: dict, *, include_ablations: bool) -> str:
                 continue
             lines.append(f"### {payload['display_name']}")
             lines.append("")
-            lines.append("| 消融 | Recall@10 | NDCG@10 | Hit@10 | Params |")
-            lines.append("|------|-----------|---------|--------|--------|")
+            lines.append("| 消融 | HR@10 | NDCG@10 | Params |")
+            lines.append("|------|-------|---------|--------|")
             for label, ablation in payload["ablations"].items():
                 metrics = ablation["metrics"]["10"]
                 lines.append(
                     f"| {label} "
-                    f"| {metrics['recall']:.4f} ± {metrics.get('recall_std', 0.0):.4f} "
-                    f"| {metrics['ndcg']:.4f} ± {metrics.get('ndcg_std', 0.0):.4f} "
                     f"| {metrics['hit_rate']:.4f} ± {metrics.get('hit_rate_std', 0.0):.4f} "
+                    f"| {metrics['ndcg']:.4f} ± {metrics.get('ndcg_std', 0.0):.4f} "
                     f"| `{json.dumps(ablation.get('params', {}), ensure_ascii=False, sort_keys=True)}` |"
                 )
             lines.append("")
@@ -687,19 +723,31 @@ def build_markdown_report(report: dict, *, include_ablations: bool) -> str:
     return "\n".join(lines)
 
 
-def run_evaluation():
-    report_bundle = evaluate_suite()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="推荐算法离线评估")
+    parser.add_argument(
+        "--user-source",
+        choices=USER_SOURCE_CHOICES,
+        default="all",
+        help="评估用户来源：all=全量，public=公开豆瓣用户，seed_cfkg=历史 mock 用户，non_public=排除公开导入用户。",
+    )
+    return parser.parse_args()
+
+
+def run_evaluation(*, user_source: str = "all"):
+    report_bundle = evaluate_suite(user_source=user_source)
     _print_comparison_table(report_bundle["main"]["results"])
     _save_results(report_bundle)
 
 
 if __name__ == "__main__":
+    args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(name)s - %(message)s")
     init_pool()
     Neo4jConnection.get_driver()
 
     try:
-        run_evaluation()
+        run_evaluation(user_source=args.user_source)
     finally:
         from app.db.mysql import close_pool
 
