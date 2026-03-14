@@ -48,9 +48,10 @@ const router = createRouter({
             props: (route) => ({ type: "person", id: route.params.pid }),
         },
         {
-            path: "/graph/path",
-            name: "graph-path",
-            component: () => import("@/views/PathView.vue"),
+            path: "/graph/explore",
+            name: "graph-explore",
+            component: () =>
+                import("@/views/KnowledgeGraphExploreView.vue"),
         },
         {
             path: "/stats",

@@ -163,7 +163,7 @@ const goCollabDetail = () => {
 const goCollabPath = () => {
     collabDialogVisible.value = false;
     router.push({
-        path: "/graph/path",
+        path: "/graph/explore",
         query: {
             from: pid(),
             to: selectedCollab.value.pid,

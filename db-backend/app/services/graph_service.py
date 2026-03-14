@@ -495,6 +495,101 @@ def find_shortest_path(session, from_id: str, to_id: str, max_hops: int = 6, exc
     }
 
 
+def get_overview_graph(
+    session,
+    node_limit: int = 200,
+    edge_limit: int = 400,
+    seed_count: int = 30,
+    timeout_ms: int = 8000,
+) -> dict:
+    """分层采样高评分/随机/类型多样性电影及其 1 跳关联，生成知识图谱全局概览子图"""
+    node_limit = min(max(node_limit, 30), 1500)
+    edge_limit = min(max(edge_limit, 50), 3000)
+    seed_count = min(max(seed_count, 5), 500)
+    start_time = time.time()
+
+    top_n = max(seed_count // 2, 1)
+    random_n = max(seed_count // 4, 1)
+    genre_n = seed_count - top_n - random_n
+
+    # Genre 节点全量（总共 32 种），Person 节点按每种子限额防爆
+    per_seed_person_limit = max(min(node_limit // max(seed_count, 1) + 2, 20), 3)
+
+    query = f"""
+    CALL {{
+        MATCH (m:Movie) WHERE m.rating IS NOT NULL
+        WITH m ORDER BY m.rating DESC LIMIT {top_n}
+        RETURN m
+      UNION
+        MATCH (m:Movie) WHERE m.rating IS NOT NULL AND m.rating >= 6
+        WITH m, rand() AS r ORDER BY r LIMIT {random_n}
+        RETURN m
+      UNION
+        MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
+        WHERE m.rating IS NOT NULL AND m.rating >= 7
+        WITH g, collect(m) AS movies
+        UNWIND movies[0..{max(genre_n // 5, 1)}] AS m
+        RETURN m
+    }}
+    WITH DISTINCT m LIMIT {seed_count}
+    OPTIONAL MATCH (m)-[rg:HAS_GENRE]->(g:Genre)
+    OPTIONAL MATCH (m)-[rp]-(p:Person)
+    WHERE type(rp) IN ['DIRECTED', 'ACTED_IN']
+    WITH m,
+         collect(DISTINCT {{node: g, rel: rg}}) AS genre_conns,
+         collect(DISTINCT {{node: p, rel: rp}})[..{per_seed_person_limit}] AS person_conns
+    RETURN m, genre_conns + person_conns AS connections
+    """
+
+    records = _safe_run(session, query, timeout_ms=timeout_ms)
+    if not records:
+        return _empty_graph(1, start_time)
+
+    nodes_map: dict = {}
+    edges_set: set = set()
+
+    for record in records:
+        movie_node = record.get("m")
+        if movie_node is None:
+            continue
+        center_payload = _to_node_payload(movie_node, allowed_node_types=PUBLIC_GRAPH_NODE_TYPES)
+        if not center_payload:
+            continue
+        center_id, center_data = center_payload
+        nodes_map[center_id] = center_data
+
+        for item in record.get("connections", []):
+            node = item.get("node") if item else None
+            rel = item.get("rel") if item else None
+            if node is None or rel is None:
+                continue
+            node_payload = _to_node_payload(node, allowed_node_types=PUBLIC_GRAPH_NODE_TYPES)
+            if not node_payload:
+                continue
+            nid, npayload = node_payload
+            nodes_map[nid] = npayload
+            rel_type = getattr(rel, "type", None)
+            if rel_type and rel_type in PUBLIC_GRAPH_REL_TYPES:
+                start_node = getattr(rel, "start_node", None)
+                end_node = getattr(rel, "end_node", None)
+                sp = (
+                    _to_node_payload(start_node, allowed_node_types=PUBLIC_GRAPH_NODE_TYPES)
+                    if start_node and hasattr(start_node, "labels")
+                    else None
+                )
+                ep = (
+                    _to_node_payload(end_node, allowed_node_types=PUBLIC_GRAPH_NODE_TYPES)
+                    if end_node and hasattr(end_node, "labels")
+                    else None
+                )
+                if sp and ep:
+                    edges_set.add((sp[0], ep[0], rel_type))
+                else:
+                    edges_set.add((center_id, nid, rel_type))
+
+    return _finalize_graph(nodes_map, edges_set, 1, start_time, node_limit, edge_limit)
+
+
 def find_common_movies(session, pid1: str, pid2: str, limit: int = 50) -> dict:
     """查找两位影人的共同电影"""
     start_time = time.time()

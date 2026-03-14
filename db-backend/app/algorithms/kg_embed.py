@@ -387,13 +387,23 @@ class KGEmbedRecommender(BaseRecommender):
             cls._shared_artifacts_by_scope = {}
 
     @classmethod
-    def preload_existing_artifacts(cls):
+    def preload_artifacts(cls, *, allow_training: bool | None = None) -> dict[str, bool]:
         recommender = cls()
+        readiness = {}
         for use_expanded_relations in (False, True):
-            recommender._load_or_train(
-                use_expanded_relations=use_expanded_relations,
-                allow_training=False,
+            scope = "expanded" if use_expanded_relations else "core"
+            readiness[scope] = (
+                recommender._load_or_train(
+                    use_expanded_relations=use_expanded_relations,
+                    allow_training=allow_training,
+                )
+                is not None
             )
+        return readiness
+
+    @classmethod
+    def preload_existing_artifacts(cls):
+        return cls.preload_artifacts(allow_training=False)
 
     def _load_or_train(
         self,

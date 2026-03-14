@@ -29,6 +29,7 @@ const TYPE_COLORS = {
     Movie: "#409EFF",
     Person: "#67C23A",
     Genre: "#E6A23C",
+    User: "#F56C6C",
     Signal: "#00B894",
     Preference: "#F56C6C",
     Unknown: "#909399",
@@ -37,6 +38,7 @@ const TYPE_LABELS = {
     Movie: "电影",
     Person: "影人",
     Genre: "类型",
+    User: "用户",
     Signal: "推荐信号",
     Preference: "偏好提示",
     Unknown: "节点",
@@ -47,6 +49,9 @@ const REL_LABELS = {
     DIRECTED: "导演",
     ACTED_IN: "出演",
     HAS_GENRE: "类型",
+    RATED: "评分",
+    LIKED: "喜欢",
+    WANT_TO_WATCH: "想看",
     SEED_CONTEXT: "种子上下文",
     CF_SIGNAL: "协同过滤信号",
     CONTENT_SIGNAL: "内容信号",
@@ -86,22 +91,30 @@ const buildOption = () => {
         conn[e.target] = (conn[e.target] || 0) + 1;
     });
 
+    const totalVisible = visibleNodes.length;
+    const isLargeGraph = totalVisible > 500;
+    const isVeryLargeGraph = totalVisible > 800;
+
     const echartsNodes = visibleNodes.map((n) => {
         const isCenter = n.id === props.highlightId;
         const rating = n.properties?.rating;
         const connections = conn[n.id] || 1;
 
-        // 节点大小：中心节点最大，电影按评分，其他按连接数
         let size = 20;
         if (isCenter) {
-            size = 55;
+            size = isLargeGraph ? 40 : 55;
         } else if (n.type === "Movie" && rating) {
-            size = 12 + rating * 2.5;
+            size = isLargeGraph ? 6 + rating * 1.5 : 12 + rating * 2.5;
         } else {
-            size = 12 + Math.min(connections, 20) * 1.5;
+            const connScale = isLargeGraph ? 0.8 : 1.5;
+            size = (isLargeGraph ? 6 : 12) + Math.min(connections, 20) * connScale;
         }
 
         const color = TYPE_COLORS[n.type] || TYPE_COLORS.Unknown;
+
+        const showLabel = isLargeGraph
+            ? isCenter || connections > (isVeryLargeGraph ? 15 : 8)
+            : isCenter || size > 25;
 
         return {
             id: n.id,
@@ -117,17 +130,16 @@ const buildOption = () => {
                     : themeStore.isDark
                       ? "rgba(255,255,255,0.2)"
                       : "rgba(0,0,0,0.15)",
-                borderWidth: isCenter ? 3 : 1,
+                borderWidth: isCenter ? 3 : isLargeGraph ? 0.5 : 1,
                 shadowBlur: isCenter ? 20 : 0,
                 shadowColor: isCenter ? color : "transparent",
             },
             label: {
-                show: isCenter || size > 25,
-                fontSize: isCenter ? 14 : 11,
+                show: showLabel,
+                fontSize: isCenter ? 14 : isLargeGraph ? 9 : 11,
                 color: themeStore.isDark ? "#e8e8e8" : "#1d1d1f",
                 fontWeight: isCenter ? "bold" : "normal",
             },
-            // 附加数据用于 tooltip 和 click
             _raw: n,
         };
     });
@@ -142,12 +154,17 @@ const buildOption = () => {
             if (!existing._labels.includes(newLabel)) {
                 existing._labels.push(newLabel);
             }
+            // 保留有属性的边的属性（如 RATED 边的 rating）
+            if (e.properties && !existing._properties) {
+                existing._properties = e.properties;
+            }
         } else {
             edgeMap.set(key, {
                 source: e.source,
                 target: e.target,
                 _labels: [REL_LABELS[e.type] || e.type],
                 _relType: e.type,
+                _properties: e.properties || null,
             });
         }
     });
@@ -159,11 +176,11 @@ const buildOption = () => {
             color: themeStore.isDark
                 ? "rgba(255,255,255,0.12)"
                 : "rgba(0,0,0,0.15)",
-            width: 1.5,
+            width: isLargeGraph ? 0.8 : 1.5,
             curveness: 0.1,
         },
         label: {
-            show: edgeMap.size <= 40,
+            show: !isLargeGraph && edgeMap.size <= 40,
             formatter: e._labels.join("/"),
             fontSize: 10,
             color: themeStore.isDark
@@ -171,6 +188,7 @@ const buildOption = () => {
                 : "rgba(0,0,0,0.45)",
         },
         _relType: e._relType,
+        _properties: e._properties,
     }));
 
     // 类目（用于图例）
@@ -219,9 +237,11 @@ const buildOption = () => {
                               ? "🧑 影人"
                               : raw.type === "Genre"
                                 ? "🏷️ 类型"
-                                : raw.type === "Signal"
-                                  ? "🧠 推荐信号"
-                                  : "📍 节点";
+                                : raw.type === "User"
+                                  ? "👤 用户"
+                                  : raw.type === "Signal"
+                                    ? "🧠 推荐信号"
+                                    : "📍 节点";
                     const subColor = themeStore.isDark ? "#a0a0b0" : "#6e6e73";
                     html += `<br/><span style="color:${subColor}">${typeLabel}</span>`;
                     if (raw.properties?.rating) {
@@ -238,7 +258,11 @@ const buildOption = () => {
                     const label =
                         REL_LABELS[params.data._relType] ||
                         params.data._relType;
-                    return `关系: ${label}`;
+                    let html = `关系: ${label}`;
+                    if (params.data._properties?.rating !== undefined) {
+                        html += `<br/>⭐ 我的评分: ${params.data._properties.rating}`;
+                    }
+                    return html;
                 }
                 return "";
             },
@@ -247,7 +271,7 @@ const buildOption = () => {
             show: false,
             data: categories.map((c) => c.name),
         },
-        animationDuration: 800,
+        animationDuration: isVeryLargeGraph ? 300 : 800,
         animationEasingUpdate: "quinticInOut",
         series: [
             {
@@ -257,16 +281,18 @@ const buildOption = () => {
                 links: echartsEdges,
                 categories: categories,
                 roam: true,
-                draggable: true,
+                draggable: !isVeryLargeGraph,
                 force: isLinear
                     ? undefined
                     : {
-                          repulsion: echartsNodes.length > 80 ? 200 : 350,
-                          gravity: 0.08,
-                          edgeLength: echartsNodes.length > 80 ? 80 : 120,
-                          friction: 0.6,
-                          layoutAnimation: true,
+                          repulsion: isVeryLargeGraph ? 120 : isLargeGraph ? 160 : echartsNodes.length > 80 ? 200 : 350,
+                          gravity: isVeryLargeGraph ? 0.15 : isLargeGraph ? 0.12 : 0.08,
+                          edgeLength: isVeryLargeGraph ? 40 : isLargeGraph ? 60 : echartsNodes.length > 80 ? 80 : 120,
+                          friction: isLargeGraph ? 0.7 : 0.6,
+                          layoutAnimation: !isVeryLargeGraph,
                       },
+                progressive: isLargeGraph ? 200 : 0,
+                progressiveThreshold: isLargeGraph ? 300 : 3000,
                 emphasis: {
                     focus: "adjacency",
                     itemStyle: {

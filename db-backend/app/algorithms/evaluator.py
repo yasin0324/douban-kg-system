@@ -76,6 +76,21 @@ def describe_user_source(user_source: str) -> str:
         raise ValueError(f"Unsupported user source: {user_source}") from exc
 
 
+def _prewarm_embedding_artifacts() -> dict[str, bool]:
+    from app.algorithms.kg_embed import KGEmbedRecommender
+
+    print("\n♨️ 预热 KG-Embed 嵌入工件（core + expanded）...")
+    started_at = time.perf_counter()
+    readiness = KGEmbedRecommender.preload_artifacts()
+    ready_scopes = [scope for scope, ready in readiness.items() if ready]
+    elapsed = time.perf_counter() - started_at
+    if ready_scopes:
+        print(f"  ✅ KG-Embed 预热完成: {', '.join(ready_scopes)} ({elapsed:.2f}s)")
+    else:
+        print(f"  ⚠️ KG-Embed 预热未就绪，后续将按当前配置决定是否在线训练 ({elapsed:.2f}s)")
+    return readiness
+
+
 def _ratings_query_for_user_source(user_source: str) -> tuple[str, tuple[str, ...]]:
     query = (
         "SELECT r.user_id, r.mid, r.rating, r.rated_at "
@@ -410,6 +425,8 @@ def evaluate_suite(*, user_source: str = "all") -> dict:
 
     if not test_users:
         raise RuntimeError("没有足够的用户用于离线评估")
+
+    _prewarm_embedding_artifacts()
 
     main_results = {}
     legacy_results = {}

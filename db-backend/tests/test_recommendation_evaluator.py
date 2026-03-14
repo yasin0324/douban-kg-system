@@ -146,6 +146,30 @@ def test_user_source_helpers_cover_public_filter():
     assert evaluator.describe_user_source("seed_cfkg") == "历史 mock 用户（seed_cfkg_*)"
 
 
+def test_prewarm_embedding_artifacts_invokes_kg_embed_preload(monkeypatch, capsys):
+    from app.algorithms.kg_embed import KGEmbedRecommender
+
+    calls = []
+
+    def fake_preload(cls, *, allow_training=None):
+        calls.append(allow_training)
+        return {"core": True, "expanded": True}
+
+    monkeypatch.setattr(
+        KGEmbedRecommender,
+        "preload_artifacts",
+        classmethod(fake_preload),
+    )
+
+    readiness = evaluator._prewarm_embedding_artifacts()
+    captured = capsys.readouterr()
+
+    assert readiness == {"core": True, "expanded": True}
+    assert calls == [None]
+    assert "预热 KG-Embed 嵌入工件" in captured.out
+    assert "KG-Embed 预热完成" in captured.out
+
+
 def test_parse_args_defaults_to_all(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["evaluator.py"])
 

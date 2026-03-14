@@ -48,6 +48,16 @@ class FakeConn:
         self.commit_called += 1
 
 
+class FakeNeo4jSession:
+    def __init__(self, records=None):
+        self.records = list(records or [])
+        self.calls = []
+
+    def run(self, query, **params):
+        self.calls.append((query, params))
+        return list(self.records)
+
+
 # ────────────── activity-summary 测试 ──────────────
 
 
@@ -113,6 +123,28 @@ def test_activity_summary_dedup():
     assert result["rating_count"] == 1
     assert result["liked_count"] == 1
     assert result["effective_signal_count"] == 1
+
+
+def test_profile_analysis_summary_uses_deduplicated_signal_count():
+    """画像摘要应沿用与 activity-summary 一致的去重冷启动口径"""
+    cursor = FakeCursor(fetchall_results=[
+        [{"mid": "m1", "rating": 4.0}],  # ratings
+        [
+            {"mid": "m1", "pref_type": "like"},
+            {"mid": "m2", "pref_type": "want_to_watch"},
+        ],
+    ])
+    conn = FakeConn(cursor)
+    neo4j_session = FakeNeo4jSession()
+
+    result = user_service.get_profile_analysis(conn, neo4j_session, user_id=1)
+
+    assert result["summary"]["rating_count"] == 1
+    assert result["summary"]["liked_count"] == 1
+    assert result["summary"]["want_to_watch_count"] == 1
+    assert result["summary"]["effective_signal_count"] == 2
+    assert result["summary"]["cold_start"] is True
+    assert result["summary"]["meets_personalization_threshold"] is False
 
 
 # ────────────── 算法基类偏好融合测试 ──────────────

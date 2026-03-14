@@ -23,6 +23,17 @@ export const graphApi = {
         });
     },
 
+    /** 知识图谱全局概览 */
+    getOverviewGraph(params = {}) {
+        return api.get("/graph/overview", {
+            params: {
+                node_limit: params.nodeLimit || 200,
+                edge_limit: params.edgeLimit || 400,
+                seed_count: params.seedCount || 30,
+            },
+        });
+    },
+
     /** 最短路径查询 */
     getPath(from, to, maxHops = 6, excludeGenre = false) {
         return api.get("/graph/path", {

@@ -44,4 +44,18 @@ export const usersApi = {
     removeRating(mid) {
         return api.delete(`/users/ratings/${mid}`);
     },
+
+    // ========== 画像分析 ==========
+
+    /** 获取用户画像分析数据 */
+    getProfileAnalysis() {
+        return api.get("/users/profile-analysis");
+    },
+
+    /** 获取用户画像图谱 */
+    getProfileGraph(params = {}) {
+        return api.get("/users/profile-graph", {
+            params: { movie_limit: params.movieLimit || 30 },
+        });
+    },
 };

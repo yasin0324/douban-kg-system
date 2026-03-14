@@ -5,7 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.dependencies import get_mysql_conn, get_current_user
+from app.dependencies import get_mysql_conn, get_neo4j_session, get_current_user
 from app.models.user import UserPreferenceCreate, UserRatingCreate, UserRatingLookupResponse
 from app.routers import recommend as recommend_runtime
 from app.services import user_service
@@ -96,6 +96,29 @@ def list_ratings(
     conn=Depends(get_mysql_conn),
 ):
     return user_service.list_ratings(conn, user["id"], page, size)
+
+
+@router.get("/profile-analysis", summary="用户画像分析")
+def profile_analysis(
+    user=Depends(get_current_user),
+    conn=Depends(get_mysql_conn),
+    neo4j_session=Depends(get_neo4j_session),
+):
+    return user_service.get_profile_analysis(conn, neo4j_session, user["id"])
+
+
+@router.get("/profile-graph", summary="用户画像图谱")
+def profile_graph(
+    movie_limit: int = Query(30, ge=5, le=100),
+    user=Depends(get_current_user),
+    conn=Depends(get_mysql_conn),
+    neo4j_session=Depends(get_neo4j_session),
+):
+    return user_service.get_profile_graph(
+        conn, neo4j_session, user["id"],
+        user.get("nickname") or user.get("username", ""),
+        movie_limit,
+    )
 
 
 @router.get("/ratings/{mid}", response_model=UserRatingLookupResponse, summary="获取某电影评分")

@@ -33,6 +33,16 @@ def person_graph(
     return graph_service.get_person_graph(session, pid, depth, node_limit, edge_limit, timeout_ms)
 
 
+@router.get("/overview", summary="知识图谱全局概览")
+def overview_graph(
+    node_limit: int = Query(200, ge=30, le=1500),
+    edge_limit: int = Query(400, ge=50, le=3000),
+    seed_count: int = Query(30, ge=5, le=500),
+    session=Depends(get_neo4j_session),
+):
+    return graph_service.get_overview_graph(session, node_limit, edge_limit, seed_count)
+
+
 @router.get("/path", summary="最短路径")
 def shortest_path(
     from_id: str = Query(..., alias="from"),

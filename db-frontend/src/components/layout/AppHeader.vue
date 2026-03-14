@@ -37,7 +37,7 @@ const handleLogout = async () => {
                 <router-link to="/">首页</router-link>
                 <router-link to="/movies/filter">电影库</router-link>
                 <router-link to="/recommend">推荐</router-link>
-                <router-link to="/graph/path">路径查询</router-link>
+                <router-link to="/graph/explore">知识图谱</router-link>
                 <router-link to="/stats">统计</router-link>
             </nav>
 
