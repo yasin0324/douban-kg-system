@@ -1,0 +1,2 @@
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS is_mock TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为导入/模拟用户' AFTER avatar_url;

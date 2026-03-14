@@ -64,6 +64,10 @@ db-backend/reports/eval_results.json
 db-backend/reports/eval_results.md
 db-backend/reports/eval_results_legacy.json
 db-backend/reports/eval_results_legacy.md
+db-backend/reports/history/*_eval_results*.json
+db-backend/reports/history/*_eval_results*.md
+db-backend/reports/public_douban_*.json
+db-backend/app/seed/public_douban_*.json
 
 tmp/cfkg/
 output/models/cfkg/

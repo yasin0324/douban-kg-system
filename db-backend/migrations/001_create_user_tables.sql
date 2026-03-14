@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     nickname VARCHAR(50) NULL,
     avatar_url VARCHAR(500) NULL,
+    is_mock TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为导入/模拟用户',
     status ENUM('active', 'banned', 'deleted') NOT NULL DEFAULT 'active',
     last_login_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
