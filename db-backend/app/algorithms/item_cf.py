@@ -17,12 +17,32 @@ from app.db.mysql import get_connection
 class ItemCFRecommender(BaseRecommender):
     name = "item_cf"
     display_name = "基于物品的协同过滤"
+    MAX_POSITIVE_RATING_SEEDS = 50
+    MAX_LIKE_SEEDS = 10
+    MAX_WISH_SEEDS = 0
 
     def __init__(self):
         self._item_users = None
         self._user_items = None
         self._movie_names = None
         self._item_norms = None
+
+    def get_user_positive_movies(
+        self,
+        conn,
+        user_id: int,
+        threshold: float = 3.5,
+        exclude_mids: set | None = None,
+    ) -> list[dict]:
+        return self.get_user_positive_movies_for_kg(
+            conn,
+            user_id,
+            threshold=threshold,
+            exclude_mids=exclude_mids,
+            max_positive_ratings=self.MAX_POSITIVE_RATING_SEEDS,
+            max_likes=self.MAX_LIKE_SEEDS,
+            max_wishes=self.MAX_WISH_SEEDS,
+        )
 
     def _load_data(self):
         """一次性加载全局评分矩阵并缓存"""

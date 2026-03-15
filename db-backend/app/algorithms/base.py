@@ -59,6 +59,11 @@ class BaseRecommender(ABC):
         "like": 4.5,
         "want_to_watch": 4.0,
     }
+    KG_SIGNAL_PRIORITY = {
+        "rating": 0,
+        "like": 1,
+        "want_to_watch": 2,
+    }
 
     def get_user_positive_movies(
         self,
@@ -110,6 +115,87 @@ class BaseRecommender(ABC):
         # 按评分降序
         rated_rows.sort(key=lambda r: float(r["rating"]), reverse=True)
         return rated_rows
+
+    def get_user_positive_movies_for_kg(
+        self,
+        conn,
+        user_id: int,
+        threshold: float = 3.5,
+        exclude_mids: set | None = None,
+        *,
+        max_positive_ratings: int = 50,
+        max_likes: int = 20,
+        max_wishes: int = 10,
+    ) -> list[dict]:
+        """为 KG 分支截断正反馈种子，避免重度用户把图谱算法拖爆。"""
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT mid, rating, rated_at FROM user_movie_ratings "
+                "WHERE user_id = %s AND rating >= %s "
+                "ORDER BY rating DESC, rated_at DESC",
+                (user_id, threshold),
+            )
+            rated_rows = cursor.fetchall()
+
+            cursor.execute(
+                "SELECT mid, pref_type, created_at FROM user_movie_prefs "
+                "WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,),
+            )
+            pref_rows = cursor.fetchall()
+
+        if exclude_mids:
+            rated_rows = [row for row in rated_rows if str(row["mid"]) not in exclude_mids]
+
+        positive_rating_mids = {str(row["mid"]) for row in rated_rows}
+        selected: list[dict] = []
+
+        def _take_rows(rows: list[dict], limit: int, signal_source: str) -> None:
+            if limit <= 0:
+                return
+            for row in rows[:limit]:
+                selected.append(
+                    {
+                        "mid": str(row["mid"]),
+                        "rating": float(row["rating"]),
+                        "signal_source": signal_source,
+                        "signal_timestamp": row.get("rated_at") or row.get("created_at"),
+                    }
+                )
+
+        _take_rows(rated_rows, int(max_positive_ratings), "rating")
+
+        likes = []
+        wishes = []
+        for pref in pref_rows:
+            mid = str(pref["mid"])
+            if exclude_mids and mid in exclude_mids:
+                continue
+            if mid in positive_rating_mids:
+                continue
+            pref_type = str(pref["pref_type"])
+            synthetic_rating = self.PREF_SYNTHETIC_RATING.get(pref_type)
+            if synthetic_rating is None:
+                continue
+            row = {
+                "mid": mid,
+                "rating": float(synthetic_rating),
+                "created_at": pref.get("created_at"),
+            }
+            if pref_type == "like":
+                likes.append(row)
+            elif pref_type == "want_to_watch":
+                wishes.append(row)
+
+        _take_rows(likes, int(max_likes), "like")
+        _take_rows(wishes, int(max_wishes), "want_to_watch")
+
+        selected.sort(key=lambda row: str(row.get("signal_timestamp") or ""), reverse=True)
+        selected.sort(
+            key=lambda row: self.KG_SIGNAL_PRIORITY.get(str(row.get("signal_source")), 99)
+        )
+        selected.sort(key=lambda row: float(row["rating"]), reverse=True)
+        return selected
 
     def get_user_all_rated_mids(self, conn, user_id: int, exclude_mids: set | None = None) -> set:
         """获取用户所有已交互电影的 mid 集合（评分 + 偏好）

@@ -191,6 +191,52 @@ def test_positive_movies_rating_takes_precedence():
     assert result[0]["rating"] == 4.0  # real rating, not synthetic 4.5
 
 
+def test_positive_movies_for_kg_caps_pref_sources():
+    cursor = FakeCursor(fetchall_results=[
+        [
+            {"mid": "r1", "rating": 5.0, "rated_at": "2026-03-10 10:00:00"},
+            {"mid": "r2", "rating": 4.5, "rated_at": "2026-03-09 10:00:00"},
+            {"mid": "r3", "rating": 4.0, "rated_at": "2026-03-08 10:00:00"},
+        ],
+        [
+            {"mid": "l1", "pref_type": "like", "created_at": "2026-03-10 12:00:00"},
+            {"mid": "l2", "pref_type": "like", "created_at": "2026-03-09 12:00:00"},
+            {"mid": "w1", "pref_type": "want_to_watch", "created_at": "2026-03-10 13:00:00"},
+            {"mid": "w2", "pref_type": "want_to_watch", "created_at": "2026-03-09 13:00:00"},
+        ],
+    ])
+    conn = FakeConn(cursor)
+    recommender = DummyRecommender()
+
+    result = recommender.get_user_positive_movies_for_kg(
+        conn,
+        user_id=1,
+        max_positive_ratings=2,
+        max_likes=1,
+        max_wishes=1,
+    )
+
+    assert [row["mid"] for row in result] == ["r1", "r2", "l1", "w1"]
+    assert [row["signal_source"] for row in result] == ["rating", "rating", "like", "want_to_watch"]
+
+
+def test_positive_movies_for_kg_still_prefers_real_ratings_over_duplicate_prefs():
+    cursor = FakeCursor(fetchall_results=[
+        [{"mid": "m1", "rating": 4.5, "rated_at": "2026-03-10 10:00:00"}],
+        [
+            {"mid": "m1", "pref_type": "like", "created_at": "2026-03-10 12:00:00"},
+            {"mid": "m2", "pref_type": "want_to_watch", "created_at": "2026-03-09 13:00:00"},
+        ],
+    ])
+    conn = FakeConn(cursor)
+    recommender = DummyRecommender()
+
+    result = recommender.get_user_positive_movies_for_kg(conn, user_id=1)
+
+    assert [row["mid"] for row in result] == ["m1", "m2"]
+    assert [row["signal_source"] for row in result] == ["rating", "want_to_watch"]
+
+
 def test_all_rated_mids_includes_prefs():
     """get_user_all_rated_mids 包含偏好电影"""
     cursor = FakeCursor(fetchall_results=[

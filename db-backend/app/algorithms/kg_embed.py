@@ -66,6 +66,9 @@ class KGEmbedRecommender(BaseRecommender):
         "centroid_weight": 0.4,
         "max_seed_weight": 0.2,
         "entity_overlap_weight": 0.4,
+        "max_positive_rating_seeds": 30,
+        "max_like_seeds": 10,
+        "max_wish_seeds": 0,
     }
 
     def __init__(self, **config):
@@ -197,6 +200,23 @@ class KGEmbedRecommender(BaseRecommender):
 
         results.sort(key=lambda item: item["score"], reverse=True)
         return results[:n]
+
+    def get_user_positive_movies(
+        self,
+        conn,
+        user_id: int,
+        threshold: float = 3.5,
+        exclude_mids: set | None = None,
+    ) -> list[dict]:
+        return self.get_user_positive_movies_for_kg(
+            conn,
+            user_id,
+            threshold=threshold,
+            exclude_mids=exclude_mids,
+            max_positive_ratings=int(self._config["max_positive_rating_seeds"]),
+            max_likes=int(self._config["max_like_seeds"]),
+            max_wishes=int(self._config["max_wish_seeds"]),
+        )
 
     def _get_user_context(self, user_id: int, exclude_from_training: set[str]) -> tuple[list[dict], set[str]] | None:
         cache_key = (user_id, tuple(sorted(exclude_from_training)))

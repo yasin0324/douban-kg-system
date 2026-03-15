@@ -60,6 +60,20 @@ class CFKGRecommender(BaseRecommender):
         if params:
             self._config.update(params)
 
+    def get_user_positive_movies(
+        self,
+        conn,
+        user_id: int,
+        threshold: float = 3.5,
+        exclude_mids: set | None = None,
+    ) -> list[dict]:
+        return self._kg_embed.get_user_positive_movies(
+            conn,
+            user_id,
+            threshold=threshold,
+            exclude_mids=exclude_mids,
+        )
+
     @classmethod
     def parameter_grid(cls) -> list[dict]:
         grid = []

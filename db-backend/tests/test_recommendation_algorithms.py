@@ -7,6 +7,7 @@ from app.algorithms.graph_cache import (
     GraphMetadataCache,
     MovieGraphProfile,
 )
+from app.algorithms.item_cf import ItemCFRecommender
 from app.algorithms.kg_embed import KGEmbedRecommender
 from app.algorithms.kg_path import KGPathRecommender
 
@@ -220,6 +221,33 @@ class StubRecommender:
         return self.rows[:n]
 
 
+class _FakeCursor:
+    def __init__(self, fetchall_results):
+        self.fetchall_results = list(fetchall_results)
+
+    def execute(self, sql, params=None):
+        return None
+
+    def fetchall(self):
+        if self.fetchall_results:
+            return self.fetchall_results.pop(0)
+        return []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeConn:
+    def __init__(self, fetchall_results):
+        self._cursor = _FakeCursor(fetchall_results)
+
+    def cursor(self):
+        return self._cursor
+
+
 def test_cfkg_merges_candidates_and_prioritizes_kg_reasons():
     recommender = CFKGRecommender()
     recommender._item_cf = StubRecommender(
@@ -283,3 +311,54 @@ def test_cfkg_uses_content_as_fallback_candidates():
     assert results[0]["source_algorithms"] == ["kg_embed"]
     assert results[1]["source_algorithms"] == ["content"]
     assert results[1]["reason"] == "content reason"
+
+
+def test_kg_embed_caps_positive_signals_for_heavy_users():
+    recommender = KGEmbedRecommender(
+        max_positive_rating_seeds=2,
+        max_like_seeds=1,
+        max_wish_seeds=0,
+    )
+    conn = _FakeConn(
+        [
+            [
+                {"mid": "r1", "rating": 5.0, "rated_at": "2026-03-10 10:00:00"},
+                {"mid": "r2", "rating": 4.5, "rated_at": "2026-03-09 10:00:00"},
+                {"mid": "r3", "rating": 4.0, "rated_at": "2026-03-08 10:00:00"},
+            ],
+            [
+                {"mid": "l1", "pref_type": "like", "created_at": "2026-03-10 12:00:00"},
+                {"mid": "w1", "pref_type": "want_to_watch", "created_at": "2026-03-10 13:00:00"},
+            ],
+        ]
+    )
+
+    result = recommender.get_user_positive_movies(conn, user_id=1)
+
+    assert [row["mid"] for row in result] == ["r1", "r2", "l1"]
+    assert [row["signal_source"] for row in result] == ["rating", "rating", "like"]
+
+
+def test_item_cf_caps_positive_signals_for_heavy_users():
+    recommender = ItemCFRecommender()
+    conn = _FakeConn(
+        [
+            [
+                {"mid": "r1", "rating": 5.0, "rated_at": "2026-03-10 10:00:00"},
+                {"mid": "r2", "rating": 4.5, "rated_at": "2026-03-09 10:00:00"},
+                {"mid": "r3", "rating": 4.0, "rated_at": "2026-03-08 10:00:00"},
+            ],
+            [
+                {"mid": "l1", "pref_type": "like", "created_at": "2026-03-10 12:00:00"},
+                {"mid": "w1", "pref_type": "want_to_watch", "created_at": "2026-03-10 13:00:00"},
+            ],
+        ]
+    )
+
+    recommender.MAX_POSITIVE_RATING_SEEDS = 2
+    recommender.MAX_LIKE_SEEDS = 1
+    recommender.MAX_WISH_SEEDS = 0
+    result = recommender.get_user_positive_movies(conn, user_id=1)
+
+    assert [row["mid"] for row in result] == ["r1", "r2", "l1"]
+    assert [row["signal_source"] for row in result] == ["rating", "rating", "like"]
