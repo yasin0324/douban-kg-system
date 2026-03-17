@@ -118,7 +118,7 @@ watch(
     <el-drawer
         v-model="drawerVisible"
         class="insight-drawer"
-        size="min(94vw, 1080px)"
+        size="min(92vw, max(540px, 56vw))"
     >
         <template #header>
             <div v-if="currentMovie" class="drawer-header">
