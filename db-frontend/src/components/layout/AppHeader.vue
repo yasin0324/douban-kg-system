@@ -15,6 +15,7 @@ const handleSearch = () => {
     if (q) {
         router.push({ path: "/search", query: { q } });
     }
+    searchQuery.value = ""
 };
 
 const handleLogout = async () => {
