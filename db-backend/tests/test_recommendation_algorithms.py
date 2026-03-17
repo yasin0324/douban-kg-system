@@ -6,6 +6,8 @@ from app.algorithms.cfkg import CFKGRecommender
 from app.algorithms.graph_cache import (
     GraphMetadataCache,
     MovieGraphProfile,
+    REL_ACTOR,
+    REL_DIRECTOR,
 )
 from app.algorithms.item_cf import ItemCFRecommender
 from app.algorithms.kg_embed import KGEmbedRecommender
@@ -105,6 +107,23 @@ def test_kg_embed_skips_online_training_when_disabled_and_files_missing():
 
     assert artifacts is None
     mock_train.assert_not_called()
+
+
+def test_kg_embed_overlap_reason_uses_person_names():
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._person_name_map = {
+        "p1": "克里斯托弗·诺兰 Christopher Nolan",
+        "p2": "莱昂纳多·迪卡普里奥 Leonardo DiCaprio",
+    }
+
+    recommender = KGEmbedRecommender()
+
+    assert recommender._overlap_reason(REL_DIRECTOR, "p1") == (
+        "偏好相同导演 克里斯托弗·诺兰 Christopher Nolan"
+    )
+    assert recommender._overlap_reason(REL_ACTOR, "p2") == (
+        "偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+    )
 
 
 def test_kg_path_scoring_matches_manual_accumulation():

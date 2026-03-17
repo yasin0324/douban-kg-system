@@ -342,20 +342,24 @@ class KGEmbedRecommender(BaseRecommender):
         return scores, overlap_reasons
 
     def _overlap_reason(self, relation: str, entity_id: str) -> str:
+        entity_name = str(entity_id)
+        if relation in {REL_DIRECTOR, REL_ACTOR}:
+            entity_name = GraphMetadataCache.person_name(str(entity_id))
+
         if relation == REL_DIRECTOR:
-            return f"偏好相同导演 {entity_id}"
+            return f"偏好相同导演 {entity_name}"
         if relation == REL_ACTOR:
-            return f"偏好相同演员 {entity_id}"
+            return f"偏好相同演员 {entity_name}"
         if relation == REL_GENRE:
-            return f"偏好相同类型 {entity_id}"
+            return f"偏好相同类型 {entity_name}"
         if relation == REL_REGION:
-            return f"偏好相同地区 {entity_id}"
+            return f"偏好相同地区 {entity_name}"
         if relation == REL_LANGUAGE:
-            return f"偏好相同语言 {entity_id}"
+            return f"偏好相同语言 {entity_name}"
         if relation == REL_CONTENT_TYPE:
-            return f"偏好相同内容形式 {entity_id}"
+            return f"偏好相同内容形式 {entity_name}"
         if relation == REL_YEAR_BUCKET:
-            return f"偏好相近年代 {entity_id}"
+            return f"偏好相近年代 {entity_name}"
         return "图谱实体重叠"
 
     def _reason_for_movie(
