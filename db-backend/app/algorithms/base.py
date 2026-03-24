@@ -54,16 +54,49 @@ class BaseRecommender(ABC):
             }
         """
 
-    # 偏好类型 → 合成评分映射
-    PREF_SYNTHETIC_RATING = {
-        "like": 4.5,
-        "want_to_watch": 4.0,
+    # 偏好类型 → 兼容评分映射。真正的算法权重应优先使用 signal_weight。
+    PREF_COMPAT_RATING = {
+        "like": 3.5,
+        "want_to_watch": 1.25,
+    }
+    PREF_SIGNAL_WEIGHT = {
+        "like": 0.7,
+        "want_to_watch": 0.25,
     }
     KG_SIGNAL_PRIORITY = {
         "rating": 0,
         "like": 1,
         "want_to_watch": 2,
     }
+
+    @staticmethod
+    def _rating_signal_weight(rating: float | int | None) -> float:
+        try:
+            return max(min(float(rating) / 5.0, 1.0), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _build_rating_signal_row(self, row: dict) -> dict:
+        rating = float(row["rating"])
+        return {
+            "mid": str(row["mid"]),
+            "rating": rating,
+            "signal_source": "rating",
+            "signal_timestamp": row.get("rated_at"),
+            "signal_weight": self._rating_signal_weight(rating),
+        }
+
+    def _build_pref_signal_row(self, mid: str, pref_type: str, timestamp=None) -> dict | None:
+        signal_weight = self.PREF_SIGNAL_WEIGHT.get(pref_type)
+        if signal_weight is None:
+            return None
+        return {
+            "mid": str(mid),
+            "rating": self.PREF_COMPAT_RATING.get(pref_type),
+            "signal_source": pref_type,
+            "signal_timestamp": timestamp,
+            "signal_weight": float(signal_weight),
+        }
 
     def get_user_positive_movies(
         self,
@@ -72,49 +105,54 @@ class BaseRecommender(ABC):
         threshold: float = 3.5,
         exclude_mids: set | None = None,
     ) -> list[dict]:
-        """获取用户正向电影（评分 >= threshold + 偏好融合）
+        """获取用户正向电影（评分 >= threshold + 弱偏好信号）
 
         融合规则：
         - 评分 >= threshold 的电影直接加入，使用真实评分
-        - like（无评分 or 评分 < threshold）→ 合成评分 4.5
-        - want_to_watch（无评分 or 评分 < threshold）→ 合成评分 4.0
-        - 同一电影已有 >= threshold 的评分则不叠加偏好
+        - like（仅在该电影没有任何真实评分时）→ 作为较强弱信号加入
+        - want_to_watch（仅在该电影没有任何真实评分时）→ 作为弱兴趣信号加入
+        - 只要该电影存在任何真实评分（哪怕低于 threshold），偏好信号都不得覆盖它
         """
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT mid, rating FROM user_movie_ratings "
-                "WHERE user_id = %s AND rating >= %s "
-                "ORDER BY rating DESC",
-                (user_id, threshold),
+                "SELECT mid, rating, rated_at FROM user_movie_ratings "
+                "WHERE user_id = %s "
+                "ORDER BY rating DESC, rated_at DESC",
+                (user_id,),
             )
-            rated_rows = cursor.fetchall()
+            all_rating_rows = cursor.fetchall()
 
             cursor.execute(
-                "SELECT mid, pref_type FROM user_movie_prefs WHERE user_id = %s",
+                "SELECT mid, pref_type, created_at FROM user_movie_prefs WHERE user_id = %s",
                 (user_id,),
             )
             pref_rows = cursor.fetchall()
 
         if exclude_mids:
-            rated_rows = [r for r in rated_rows if str(r["mid"]) not in exclude_mids]
+            all_rating_rows = [row for row in all_rating_rows if str(row["mid"]) not in exclude_mids]
 
-        # 已有正向评分的电影 mid 集合
-        rated_mid_set = {str(r["mid"]) for r in rated_rows}
+        rated_mid_set = {str(row["mid"]) for row in all_rating_rows}
+        positive_rating_rows = [
+            row for row in all_rating_rows if float(row["rating"]) >= threshold
+        ]
+        selected = [self._build_rating_signal_row(row) for row in positive_rating_rows]
 
-        # 融合偏好：同一电影若已有正向评分则跳过
         for pref in pref_rows:
             mid = str(pref["mid"])
             if exclude_mids and mid in exclude_mids:
                 continue
             if mid in rated_mid_set:
                 continue
-            synthetic = self.PREF_SYNTHETIC_RATING.get(pref["pref_type"])
-            if synthetic:
-                rated_rows.append({"mid": mid, "rating": synthetic})
+            signal_row = self._build_pref_signal_row(mid, str(pref["pref_type"]), pref.get("created_at"))
+            if signal_row:
+                selected.append(signal_row)
 
-        # 按评分降序
-        rated_rows.sort(key=lambda r: float(r["rating"]), reverse=True)
-        return rated_rows
+        selected.sort(key=lambda row: str(row.get("signal_timestamp") or ""), reverse=True)
+        selected.sort(
+            key=lambda row: self.KG_SIGNAL_PRIORITY.get(str(row.get("signal_source")), 99)
+        )
+        selected.sort(key=lambda row: float(row.get("signal_weight") or 0.0), reverse=True)
+        return selected
 
     def get_user_positive_movies_for_kg(
         self,
@@ -131,11 +169,11 @@ class BaseRecommender(ABC):
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT mid, rating, rated_at FROM user_movie_ratings "
-                "WHERE user_id = %s AND rating >= %s "
+                "WHERE user_id = %s "
                 "ORDER BY rating DESC, rated_at DESC",
-                (user_id, threshold),
+                (user_id,),
             )
-            rated_rows = cursor.fetchall()
+            all_rating_rows = cursor.fetchall()
 
             cursor.execute(
                 "SELECT mid, pref_type, created_at FROM user_movie_prefs "
@@ -145,25 +183,24 @@ class BaseRecommender(ABC):
             pref_rows = cursor.fetchall()
 
         if exclude_mids:
-            rated_rows = [row for row in rated_rows if str(row["mid"]) not in exclude_mids]
+            all_rating_rows = [row for row in all_rating_rows if str(row["mid"]) not in exclude_mids]
 
-        positive_rating_mids = {str(row["mid"]) for row in rated_rows}
+        positive_rating_rows = [
+            row for row in all_rating_rows if float(row["rating"]) >= threshold
+        ]
+        rated_mid_set = {str(row["mid"]) for row in all_rating_rows}
         selected: list[dict] = []
 
-        def _take_rows(rows: list[dict], limit: int, signal_source: str) -> None:
+        def _take_rows(rows: list[dict], limit: int) -> None:
             if limit <= 0:
                 return
             for row in rows[:limit]:
-                selected.append(
-                    {
-                        "mid": str(row["mid"]),
-                        "rating": float(row["rating"]),
-                        "signal_source": signal_source,
-                        "signal_timestamp": row.get("rated_at") or row.get("created_at"),
-                    }
-                )
+                selected.append(row)
 
-        _take_rows(rated_rows, int(max_positive_ratings), "rating")
+        _take_rows(
+            [self._build_rating_signal_row(row) for row in positive_rating_rows],
+            int(max_positive_ratings),
+        )
 
         likes = []
         wishes = []
@@ -171,30 +208,25 @@ class BaseRecommender(ABC):
             mid = str(pref["mid"])
             if exclude_mids and mid in exclude_mids:
                 continue
-            if mid in positive_rating_mids:
+            if mid in rated_mid_set:
                 continue
             pref_type = str(pref["pref_type"])
-            synthetic_rating = self.PREF_SYNTHETIC_RATING.get(pref_type)
-            if synthetic_rating is None:
+            signal_row = self._build_pref_signal_row(mid, pref_type, pref.get("created_at"))
+            if signal_row is None:
                 continue
-            row = {
-                "mid": mid,
-                "rating": float(synthetic_rating),
-                "created_at": pref.get("created_at"),
-            }
             if pref_type == "like":
-                likes.append(row)
+                likes.append(signal_row)
             elif pref_type == "want_to_watch":
-                wishes.append(row)
+                wishes.append(signal_row)
 
-        _take_rows(likes, int(max_likes), "like")
-        _take_rows(wishes, int(max_wishes), "want_to_watch")
+        _take_rows(likes, int(max_likes))
+        _take_rows(wishes, int(max_wishes))
 
         selected.sort(key=lambda row: str(row.get("signal_timestamp") or ""), reverse=True)
         selected.sort(
             key=lambda row: self.KG_SIGNAL_PRIORITY.get(str(row.get("signal_source")), 99)
         )
-        selected.sort(key=lambda row: float(row["rating"]), reverse=True)
+        selected.sort(key=lambda row: float(row.get("signal_weight") or 0.0), reverse=True)
         return selected
 
     def get_user_all_rated_mids(self, conn, user_id: int, exclude_mids: set | None = None) -> set:

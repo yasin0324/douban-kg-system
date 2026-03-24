@@ -17,6 +17,22 @@ from app.algorithms.graph_cache import (
 from app.db.mysql import get_connection
 
 
+def _signal_weight(row: dict) -> float:
+    value = row.get("signal_weight")
+    if value is not None:
+        try:
+            return max(float(value), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    rating = row.get("rating")
+    if rating is None:
+        return 0.0
+    try:
+        return max(float(rating) / 5.0, 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class KGPathRecommender(BaseRecommender):
     name = "kg_path"
     display_name = "基于知识图谱路径的推荐"
@@ -202,9 +218,10 @@ class KGPathRecommender(BaseRecommender):
         seeds = [
             {
                 "mid": str(movie["mid"]),
-                "weight": float(movie["rating"]) / 5.0,
+                "weight": _signal_weight(movie),
             }
             for movie in positive_movies
+            if _signal_weight(movie) > 0
         ]
 
         evidence = self._fetch_evidence_from_graph(

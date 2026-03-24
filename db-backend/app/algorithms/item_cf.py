@@ -14,6 +14,22 @@ from app.algorithms.base import BaseRecommender
 from app.db.mysql import get_connection
 
 
+def _signal_weight(row: dict) -> float:
+    value = row.get("signal_weight")
+    if value is not None:
+        try:
+            return max(float(value), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    rating = row.get("rating")
+    if rating is None:
+        return 0.0
+    try:
+        return max(float(rating) / 5.0, 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class ItemCFRecommender(BaseRecommender):
     name = "item_cf"
     display_name = "基于物品的协同过滤"
@@ -111,7 +127,7 @@ class ItemCFRecommender(BaseRecommender):
             conn.close()
 
         positive_mids = [str(m["mid"]) for m in positive_movies]
-        positive_weights = {str(m["mid"]): float(m["rating"]) for m in positive_movies}
+        positive_weights = {str(m["mid"]): _signal_weight(m) for m in positive_movies}
 
         # 2. 数据泄露修复：临时屏蔽当前用户对 test_mid 的评分
         # 若不屏蔽，当前用户同时评了 seed_mid 和 test_mid，会造成虚假的高共现相似度
@@ -157,7 +173,9 @@ class ItemCFRecommender(BaseRecommender):
                 for seed_mid in positive_mids:
                     sim = item_cosine_sim(seed_mid, candidate_mid)
                     if sim > 0:
-                        weight = positive_weights.get(seed_mid, 1.0) / 5.0
+                        weight = positive_weights.get(seed_mid, 0.0)
+                        if weight <= 0:
+                            continue
                         candidate_scores[candidate_mid] += sim * weight
                         if sim > best_sim:
                             best_sim = sim

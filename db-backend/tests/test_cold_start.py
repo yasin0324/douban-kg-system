@@ -158,10 +158,13 @@ class DummyRecommender(BaseRecommender):
 
 
 def test_positive_movies_includes_prefs():
-    """无评分只有 like → get_user_positive_movies 返回含合成评分 4.5 的条目"""
+    """无评分时，like/want_to_watch 会作为不同强度的弱信号进入画像。"""
     cursor = FakeCursor(fetchall_results=[
         [],  # ratings (empty)
-        [{"mid": "m1", "pref_type": "like"}, {"mid": "m2", "pref_type": "want_to_watch"}],
+        [
+            {"mid": "m1", "pref_type": "like", "created_at": "2026-03-10 12:00:00"},
+            {"mid": "m2", "pref_type": "want_to_watch", "created_at": "2026-03-10 13:00:00"},
+        ],
     ])
     conn = FakeConn(cursor)
     recommender = DummyRecommender()
@@ -171,16 +174,16 @@ def test_positive_movies_includes_prefs():
     mids = [str(r["mid"]) for r in result]
     assert "m1" in mids
     assert "m2" in mids
-    # m1 (like → 4.5) should come before m2 (want_to_watch → 4.0)
-    assert result[0]["rating"] == 4.5
-    assert result[1]["rating"] == 4.0
+    assert result[0]["signal_source"] == "like"
+    assert result[1]["signal_source"] == "want_to_watch"
+    assert result[0]["signal_weight"] > result[1]["signal_weight"]
 
 
 def test_positive_movies_rating_takes_precedence():
     """同电影有评分(>=3.5)和 like → 使用真实评分，不叠加偏好"""
     cursor = FakeCursor(fetchall_results=[
-        [{"mid": "m1", "rating": 4.0}],  # rating exists
-        [{"mid": "m1", "pref_type": "like"}],  # also has like
+        [{"mid": "m1", "rating": 4.0, "rated_at": "2026-03-10 10:00:00"}],
+        [{"mid": "m1", "pref_type": "like", "created_at": "2026-03-10 12:00:00"}],
     ])
     conn = FakeConn(cursor)
     recommender = DummyRecommender()
@@ -188,7 +191,22 @@ def test_positive_movies_rating_takes_precedence():
     result = recommender.get_user_positive_movies(conn, user_id=1)
 
     assert len(result) == 1
-    assert result[0]["rating"] == 4.0  # real rating, not synthetic 4.5
+    assert result[0]["rating"] == 4.0
+    assert result[0]["signal_source"] == "rating"
+
+
+def test_positive_movies_any_real_rating_blocks_want_to_watch_override():
+    """只要存在真实评分，want_to_watch 就不能把该电影补成正反馈。"""
+    cursor = FakeCursor(fetchall_results=[
+        [{"mid": "m1", "rating": 2.0, "rated_at": "2026-03-10 10:00:00"}],
+        [{"mid": "m1", "pref_type": "want_to_watch", "created_at": "2026-03-10 12:00:00"}],
+    ])
+    conn = FakeConn(cursor)
+    recommender = DummyRecommender()
+
+    result = recommender.get_user_positive_movies(conn, user_id=1)
+
+    assert result == []
 
 
 def test_positive_movies_for_kg_caps_pref_sources():
@@ -218,6 +236,7 @@ def test_positive_movies_for_kg_caps_pref_sources():
 
     assert [row["mid"] for row in result] == ["r1", "r2", "l1", "w1"]
     assert [row["signal_source"] for row in result] == ["rating", "rating", "like", "want_to_watch"]
+    assert result[2]["signal_weight"] > result[3]["signal_weight"]
 
 
 def test_positive_movies_for_kg_still_prefers_real_ratings_over_duplicate_prefs():
@@ -235,6 +254,19 @@ def test_positive_movies_for_kg_still_prefers_real_ratings_over_duplicate_prefs(
 
     assert [row["mid"] for row in result] == ["m1", "m2"]
     assert [row["signal_source"] for row in result] == ["rating", "want_to_watch"]
+
+
+def test_positive_movies_for_kg_low_rating_still_blocks_wish_signal():
+    cursor = FakeCursor(fetchall_results=[
+        [{"mid": "m1", "rating": 2.0, "rated_at": "2026-03-10 10:00:00"}],
+        [{"mid": "m1", "pref_type": "want_to_watch", "created_at": "2026-03-10 12:00:00"}],
+    ])
+    conn = FakeConn(cursor)
+    recommender = DummyRecommender()
+
+    result = recommender.get_user_positive_movies_for_kg(conn, user_id=1)
+
+    assert result == []
 
 
 def test_all_rated_mids_includes_prefs():

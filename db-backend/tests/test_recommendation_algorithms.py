@@ -356,6 +356,7 @@ def test_kg_embed_caps_positive_signals_for_heavy_users():
 
     assert [row["mid"] for row in result] == ["r1", "r2", "l1"]
     assert [row["signal_source"] for row in result] == ["rating", "rating", "like"]
+    assert result[-1]["signal_weight"] == recommender.PREF_SIGNAL_WEIGHT["like"]
 
 
 def test_item_cf_caps_positive_signals_for_heavy_users():
@@ -381,3 +382,4 @@ def test_item_cf_caps_positive_signals_for_heavy_users():
 
     assert [row["mid"] for row in result] == ["r1", "r2", "l1"]
     assert [row["signal_source"] for row in result] == ["rating", "rating", "like"]
+    assert result[-1]["signal_weight"] == recommender.PREF_SIGNAL_WEIGHT["like"]

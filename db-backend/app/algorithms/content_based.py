@@ -15,6 +15,22 @@ from app.algorithms.base import BaseRecommender
 from app.db.mysql import get_connection
 
 
+def _signal_weight(row: dict) -> float:
+    value = row.get("signal_weight")
+    if value is not None:
+        try:
+            return max(float(value), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    rating = row.get("rating")
+    if rating is None:
+        return 0.0
+    try:
+        return max(float(rating), 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class ContentBasedRecommender(BaseRecommender):
     name = "content"
     display_name = "基于内容的推荐"
@@ -138,7 +154,7 @@ class ContentBasedRecommender(BaseRecommender):
             conn.close()
 
         positive_mids = [str(m["mid"]) for m in positive_movies]
-        positive_weights = np.array([float(m["rating"]) for m in positive_movies])
+        positive_weights = np.array([_signal_weight(m) for m in positive_movies], dtype=np.float32)
 
         # 获取用户评分电影的向量
         pos_indices = []
@@ -152,7 +168,7 @@ class ContentBasedRecommender(BaseRecommender):
             return []
             
         pos_vectors = self._feature_matrix[pos_indices]
-        valid_weights = np.array(valid_weights)
+        valid_weights = np.array(valid_weights, dtype=np.float32)
         total_weight = valid_weights.sum()
         
         if total_weight == 0:

@@ -36,6 +36,22 @@ logger = logging.getLogger(__name__)
 EMBED_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "embeddings")
 
 
+def _signal_weight(row: dict) -> float:
+    value = row.get("signal_weight")
+    if value is not None:
+        try:
+            return max(float(value), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    rating = row.get("rating")
+    if rating is None:
+        return 0.0
+    try:
+        return max(float(rating) / 5.0, 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class KGEmbedRecommender(BaseRecommender):
     name = "kg_embed"
     display_name = "基于知识图谱嵌入的推荐"
@@ -265,7 +281,7 @@ class KGEmbedRecommender(BaseRecommender):
 
         seed_weights = np.array(
             [
-                float(movie["rating"]) / 5.0
+                _signal_weight(movie)
                 for movie in positive_movies
                 if str(movie["mid"]) in artifacts["mid_to_movie_idx"]
             ],
@@ -310,7 +326,9 @@ class KGEmbedRecommender(BaseRecommender):
             profile = profiles.get(mid)
             if not profile:
                 continue
-            rating_weight = float(movie["rating"]) / 5.0
+            rating_weight = _signal_weight(movie)
+            if rating_weight <= 0:
+                continue
 
             for relation in relations:
                 entity_ids = profile.relation_entities(

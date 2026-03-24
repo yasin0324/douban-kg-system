@@ -211,7 +211,11 @@ def _build_overlap_explanation(
         seed_profile = profiles.get(seed_mid)
         if not seed_profile:
             continue
-        seed_weight = float(movie.get("rating") or 0) / 5.0
+        signal_weight = movie.get("signal_weight")
+        if signal_weight is None:
+            seed_weight = float(movie.get("rating") or 0) / 5.0
+        else:
+            seed_weight = float(signal_weight)
         if seed_weight <= 0:
             continue
 
