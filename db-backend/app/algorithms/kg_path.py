@@ -269,7 +269,7 @@ class KGPathRecommender(BaseRecommender):
                     relation=REL_ACTOR,
                     seed_mid=seed_mid,
                     seed_weight=seed_weight,
-                    seed_entity_ids=seed_profile.actor_ids(actor_order_limit),
+                    seed_entity_ids=seed_profile.ordered_actor_ids(actor_order_limit),
                     inverted_index=actor_index,
                     per_seed_limit=int(self._config["actor_per_seed_limit"]),
                     candidate_profiles=profiles,
@@ -309,13 +309,18 @@ class KGPathRecommender(BaseRecommender):
         relation: str,
         seed_mid: str,
         seed_weight: float,
-        seed_entity_ids: set[str],
+        seed_entity_ids: list[str] | set[str],
         inverted_index: dict[str, set[str]],
         per_seed_limit: int,
         candidate_profiles: dict[str, object] | None = None,
         actor_order_limit: int | None = None,
     ) -> list[dict]:
         candidate_entities: dict[str, set[str]] = defaultdict(set)
+        seed_actor_positions = (
+            {str(entity_id): idx for idx, entity_id in enumerate(seed_entity_ids)}
+            if relation == REL_ACTOR
+            else {}
+        )
         for entity_id in seed_entity_ids:
             for cand_mid in inverted_index.get(entity_id, set()):
                 if cand_mid == seed_mid:
@@ -328,17 +333,25 @@ class KGPathRecommender(BaseRecommender):
 
         records = []
         for cand_mid, shared_entities in candidate_entities.items():
-            shared_ids = sorted(shared_entities)
-            shared_count = len(shared_ids)
+            shared_count = len(shared_entities)
             if shared_count <= 0:
                 continue
 
             if relation == REL_GENRE:
                 strength = seed_weight * min(shared_count / 3.0, 1.0)
-                entity_ids = shared_ids[:3]
+                entity_ids = sorted(shared_entities)[:3]
+            elif relation == REL_ACTOR:
+                cand_profile = candidate_profiles.get(cand_mid) if candidate_profiles else None
+                entity_ids = self._ordered_actor_entity_ids(
+                    shared_entities,
+                    profile=cand_profile,
+                    fallback_positions=seed_actor_positions,
+                    limit=5,
+                )
+                strength = seed_weight * float(shared_count)
             else:
                 strength = seed_weight * float(shared_count)
-                entity_ids = shared_ids[:5]
+                entity_ids = sorted(shared_entities)[:5]
 
             records.append(
                 {
@@ -366,7 +379,9 @@ class KGPathRecommender(BaseRecommender):
         actor_order_limit: int,
     ) -> list[dict]:
         candidate_entities: dict[str, set[str]] = defaultdict(set)
-        seed_actors = seed_profile.actor_ids(actor_order_limit)
+        candidate_actor_positions: dict[str, dict[str, int]] = defaultdict(dict)
+        discovery_order = 0
+        seed_actors = seed_profile.ordered_actor_ids(actor_order_limit)
         for seed_actor in seed_actors:
             for bridge_mid in actor_index.get(seed_actor, set()):
                 if bridge_mid == seed_mid:
@@ -376,7 +391,7 @@ class KGPathRecommender(BaseRecommender):
                     continue
                 if bridge_profile.actor_orders.get(seed_actor, 9999) > actor_order_limit:
                     continue
-                for bridge_actor in bridge_profile.actor_ids(actor_order_limit):
+                for bridge_actor in bridge_profile.ordered_actor_ids(actor_order_limit):
                     if bridge_actor == seed_actor:
                         continue
                     for cand_mid in actor_index.get(bridge_actor, set()):
@@ -386,13 +401,21 @@ class KGPathRecommender(BaseRecommender):
                         if not cand_profile or cand_profile.actor_orders.get(bridge_actor, 9999) > actor_order_limit:
                             continue
                         candidate_entities[cand_mid].add(bridge_actor)
+                        if bridge_actor not in candidate_actor_positions[cand_mid]:
+                            candidate_actor_positions[cand_mid][bridge_actor] = discovery_order
+                            discovery_order += 1
 
         records = []
         for cand_mid, shared_entities in candidate_entities.items():
-            entity_ids = sorted(shared_entities)[:3]
             shared_count = len(shared_entities)
             if shared_count <= 0:
                 continue
+            entity_ids = self._ordered_actor_entity_ids(
+                shared_entities,
+                profile=profiles.get(cand_mid),
+                fallback_positions=candidate_actor_positions.get(cand_mid),
+                limit=3,
+            )
             records.append(
                 {
                     "mid": cand_mid,
@@ -406,6 +429,26 @@ class KGPathRecommender(BaseRecommender):
 
         records.sort(key=lambda item: (item["strength"], item["hits"], item["mid"]), reverse=True)
         return records[:per_seed_limit]
+
+    def _ordered_actor_entity_ids(
+        self,
+        entity_ids: set[str] | list[str],
+        *,
+        profile=None,
+        fallback_positions: dict[str, int] | None = None,
+        limit: int | None = None,
+    ) -> list[str]:
+        ordered = sorted(
+            {str(entity_id) for entity_id in entity_ids if entity_id},
+            key=lambda entity_id: (
+                int(profile.actor_orders.get(entity_id, 9999)) if profile else 9999,
+                fallback_positions.get(entity_id, 9999) if fallback_positions else 9999,
+                entity_id,
+            ),
+        )
+        if limit is None:
+            return ordered
+        return ordered[:limit]
 
     def _append_rows(self, candidate_evidence: dict[str, list[dict]], rows: list[dict]) -> None:
         for row in rows:

@@ -1,6 +1,7 @@
 import json
 import sys
 
+import app.algorithms as algorithms_module
 from app.algorithms.base import BaseRecommender
 from app.algorithms import evaluator
 
@@ -28,6 +29,22 @@ class FakeAlgo(BaseRecommender):
             {"mid": f"neg-{user_id}-1", "score": 0.5, "reason": "other"},
             {"mid": f"neg-{user_id}-2", "score": 0.4, "reason": "other"},
         ]
+
+
+def _fake_eval_summary() -> dict:
+    return {
+        "metrics": {
+            "5": {"precision": 0.1, "precision_std": 0.0, "recall": 0.5, "recall_std": 0.0, "ndcg": 0.4, "ndcg_std": 0.0, "hit_rate": 0.5, "hit_rate_std": 0.0},
+            "10": {"precision": 0.1, "precision_std": 0.0, "recall": 0.6, "recall_std": 0.0, "ndcg": 0.5, "ndcg_std": 0.0, "hit_rate": 0.6, "hit_rate_std": 0.0},
+            "20": {"precision": 0.1, "precision_std": 0.0, "recall": 0.7, "recall_std": 0.0, "ndcg": 0.6, "ndcg_std": 0.0, "hit_rate": 0.7, "hit_rate_std": 0.0},
+        },
+        "per_seed": {},
+        "coverage_at_20": {"mean": 0.2, "std": 0.01},
+        "diversity_at_10": {"mean": 0.3, "std": 0.02},
+        "time_seconds": 1.23,
+        "avg_time_seconds": 0.1234,
+        "n_users": 2,
+    }
 
 
 def test_split_evaluation_users_is_deterministic():
@@ -186,6 +203,14 @@ def test_parse_args_accepts_public(monkeypatch):
     assert args.user_source == "public"
 
 
+def test_parse_args_accepts_algorithm_subset(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["evaluator.py", "--algorithms", "kg_path"])
+
+    args = evaluator.parse_args()
+
+    assert args.algorithms == ["kg_path"]
+
+
 def test_tune_algorithm_progress_labels_include_grid_index(monkeypatch):
     class TunableFakeAlgo(FakeAlgo):
         display_name = "Tunable Fake"
@@ -220,6 +245,47 @@ def test_tune_algorithm_progress_labels_include_grid_index(monkeypatch):
         "  验证[1/2] Tunable Fake",
         "  验证[2/2] Tunable Fake",
     ]
+
+
+def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
+    class SelectedAlgo(FakeAlgo):
+        name = "kg_path"
+        display_name = "KG Path"
+
+    class OtherAlgo(FakeAlgo):
+        name = "content"
+        display_name = "Other"
+
+    monkeypatch.setattr(
+        algorithms_module,
+        "ALGORITHMS",
+        {"kg_path": SelectedAlgo, "content": OtherAlgo},
+    )
+    monkeypatch.setattr(algorithms_module, "ALGORITHM_NAMES", ["kg_path", "content"])
+    monkeypatch.setattr(
+        evaluator,
+        "build_evaluation_users",
+        lambda user_source="all": (
+            [{"user_id": 1, "test_mid": "m1", "sampled_negatives": {seed: ["n1"] for seed in evaluator.NEGATIVE_SAMPLE_SEEDS}}],
+            100,
+        ),
+    )
+    monkeypatch.setattr(evaluator, "split_evaluation_users", lambda evaluation_users: ([], evaluation_users))
+    prewarm_calls = []
+    monkeypatch.setattr(
+        evaluator,
+        "_prewarm_embedding_artifacts",
+        lambda: prewarm_calls.append(True) or {"core": True, "expanded": True},
+    )
+    monkeypatch.setattr(evaluator, "evaluate_algorithm", lambda **kwargs: _fake_eval_summary())
+
+    report_bundle = evaluator.evaluate_suite(user_source="public", algorithms=["kg_path"])
+
+    assert list(report_bundle["main"]["results"]) == ["kg_path"]
+    assert list(report_bundle["legacy"]["results"]) == ["kg_path"]
+    assert report_bundle["main"]["selected_algorithms"] == ["kg_path"]
+    assert report_bundle["legacy"]["selected_algorithms"] == ["kg_path"]
+    assert prewarm_calls == []
 
 
 def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):
@@ -266,3 +332,43 @@ def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):
 
     with open(reports_dir / "eval_results.json", "r", encoding="utf-8") as file_obj:
         assert json.load(file_obj)["generated_at"] == "2026-03-12T10:00:00+08:00"
+
+
+def test_save_results_uses_selected_algorithm_suffix(tmp_path, monkeypatch):
+    monkeypatch.setattr(evaluator, "BACKEND_DIR", str(tmp_path))
+    report_bundle = {
+        "main": {
+            "protocol_version": 2,
+            "generated_at": "2026-03-12T10:00:00+08:00",
+            "eval_method": "main",
+            "negative_sample_seeds": [42],
+            "selected_algorithms": ["kg_path"],
+            "n_validation_users": 1,
+            "n_test_users": 1,
+            "results": {},
+        },
+        "legacy": {
+            "protocol_version": 1,
+            "generated_at": "2026-03-12T10:00:00+08:00",
+            "eval_method": "legacy",
+            "negative_sample_seeds": [42],
+            "selected_algorithms": ["kg_path"],
+            "n_test_users": 1,
+            "results": {},
+        },
+    }
+
+    evaluator._save_results(report_bundle)
+
+    reports_dir = tmp_path / "reports"
+    history_dir = reports_dir / "history"
+    assert (reports_dir / "eval_results_kg_path.json").exists()
+    assert (reports_dir / "eval_results_kg_path.md").exists()
+    assert (reports_dir / "eval_results_kg_path_legacy.json").exists()
+    assert (reports_dir / "eval_results_kg_path_legacy.md").exists()
+
+    history_json = sorted(path.name for path in history_dir.glob("*.json"))
+    assert history_json == [
+        "2026-03-12_100000_eval_results_kg_path.json",
+        "2026-03-12_100000_eval_results_kg_path_legacy.json",
+    ]

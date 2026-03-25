@@ -183,6 +183,18 @@ def test_kg_path_scoring_matches_manual_accumulation():
     assert len(scored["candidate_reasons"]["m2"]) <= 3
 
 
+def test_movie_graph_profile_ordered_actor_ids_respects_order_and_pid_tie_break():
+    profile = MovieGraphProfile(
+        mid="m1",
+        name="Movie 1",
+        actors={"p9", "p3", "p2", "p1"},
+        actor_orders={"p3": 2, "p2": 2, "p1": 1},
+    )
+
+    assert profile.ordered_actor_ids() == ["p1", "p2", "p3", "p9"]
+    assert profile.ordered_actor_ids(2) == ["p1", "p2", "p3"]
+
+
 def test_kg_path_actor_order_limit_filters_candidates():
     recommender = KGPathRecommender()
     GraphMetadataCache._loaded = True
@@ -214,6 +226,79 @@ def test_kg_path_actor_order_limit_filters_candidates():
     )
 
     assert [record["mid"] for record in records] == ["keep"]
+
+
+def test_kg_path_one_hop_shared_actor_ids_follow_candidate_actor_order():
+    recommender = KGPathRecommender()
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._person_name_map = {"p1": "演员A", "p9": "演员B"}
+    candidate_profile = MovieGraphProfile(
+        mid="cand",
+        name="Candidate",
+        actors={"p1", "p9"},
+        top_actors={"p1", "p9"},
+        actor_orders={"p9": 1, "p1": 3},
+    )
+
+    records = recommender._build_one_hop_records(
+        relation="actor",
+        seed_mid="seed",
+        seed_weight=1.0,
+        seed_entity_ids=["p1", "p9"],
+        inverted_index={"p1": {"seed", "cand"}, "p9": {"seed", "cand"}},
+        per_seed_limit=10,
+        candidate_profiles={"cand": candidate_profile},
+        actor_order_limit=5,
+    )
+
+    assert [record["mid"] for record in records] == ["cand"]
+    assert records[0]["entity_ids"] == ["p9", "p1"]
+    assert records[0]["entity_names"] == ["演员B", "演员A"]
+
+
+def test_kg_path_two_hop_shared_actor_ids_follow_candidate_actor_order():
+    recommender = KGPathRecommender()
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._person_name_map = {"p1": "演员A", "p2": "演员B", "p3": "演员C"}
+    seed_profile = MovieGraphProfile(
+        mid="seed",
+        name="Seed",
+        actors={"p1"},
+        top_actors={"p1"},
+        actor_orders={"p1": 1},
+    )
+    bridge_profile = MovieGraphProfile(
+        mid="bridge",
+        name="Bridge",
+        actors={"p1", "p2", "p3"},
+        top_actors={"p1", "p2", "p3"},
+        actor_orders={"p1": 1, "p2": 2, "p3": 5},
+    )
+    candidate_profile = MovieGraphProfile(
+        mid="cand",
+        name="Candidate",
+        actors={"p2", "p3"},
+        top_actors={"p2", "p3"},
+        actor_orders={"p3": 1, "p2": 4},
+    )
+
+    records = recommender._build_two_hop_records(
+        seed_mid="seed",
+        seed_profile=seed_profile,
+        seed_weight=1.0,
+        actor_index={
+            "p1": {"seed", "bridge"},
+            "p2": {"bridge", "cand"},
+            "p3": {"bridge", "cand"},
+        },
+        profiles={"seed": seed_profile, "bridge": bridge_profile, "cand": candidate_profile},
+        per_seed_limit=10,
+        actor_order_limit=5,
+    )
+
+    assert [record["mid"] for record in records] == ["cand"]
+    assert records[0]["entity_ids"] == ["p3", "p2"]
+    assert records[0]["entity_names"] == ["演员C", "演员B"]
 
 
 def test_kg_path_select_genres_prefers_rare_entities():

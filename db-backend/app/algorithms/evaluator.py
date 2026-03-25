@@ -76,6 +76,48 @@ def describe_user_source(user_source: str) -> str:
         raise ValueError(f"Unsupported user source: {user_source}") from exc
 
 
+def _parse_algorithms_arg(raw: str) -> list[str]:
+    from app.algorithms import ALGORITHM_NAMES
+
+    requested = []
+    seen = set()
+    for item in raw.split(","):
+        name = item.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        requested.append(name)
+
+    if not requested:
+        raise argparse.ArgumentTypeError("`--algorithms` 不能为空")
+
+    invalid = [name for name in requested if name not in ALGORITHM_NAMES]
+    if invalid:
+        raise argparse.ArgumentTypeError(
+            f"不支持的算法: {', '.join(invalid)}; 可选值: {', '.join(ALGORITHM_NAMES)}"
+        )
+    return requested
+
+
+def _resolve_selected_algorithms(algorithms: list[str] | None) -> tuple[list[str], dict[str, type]]:
+    from app.algorithms import ALGORITHMS, ALGORITHM_NAMES
+
+    selected_names = list(algorithms or ALGORITHM_NAMES)
+    missing = [name for name in selected_names if name not in ALGORITHMS]
+    if missing:
+        raise ValueError(f"Unsupported algorithms: {', '.join(missing)}")
+    return selected_names, {name: ALGORITHMS[name] for name in selected_names}
+
+
+def _selected_algorithm_suffix(selected_algorithms: list[str] | None) -> str:
+    from app.algorithms import ALGORITHM_NAMES
+
+    selected = list(selected_algorithms or [])
+    if not selected or selected == list(ALGORITHM_NAMES):
+        return ""
+    return "_" + "_".join(selected)
+
+
 def _prewarm_embedding_artifacts() -> dict[str, bool]:
     from app.algorithms.kg_embed import KGEmbedRecommender
 
@@ -406,8 +448,8 @@ def tune_algorithm(algo_class, validation_users: list[dict], all_movie_count: in
     return select_best_config(validation_results)
 
 
-def evaluate_suite(*, user_source: str = "all") -> dict:
-    from app.algorithms import ALGORITHMS
+def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = None) -> dict:
+    selected_algorithm_names, selected_algorithms = _resolve_selected_algorithms(algorithms)
 
     print("=" * 78)
     print("🧪 推荐算法离线评估 (Validation + 5-seed Sampled Leave-One-Out)")
@@ -415,6 +457,7 @@ def evaluate_suite(*, user_source: str = "all") -> dict:
     print(f"  评估方法: 1 正样本 + {NUM_NEGATIVES} 随机负样本，共 {NUM_NEGATIVES + 1} 个候选")
     print(f"  测试负采样 seeds: {NEGATIVE_SAMPLE_SEEDS}")
     print(f"  用户来源: {describe_user_source(user_source)}")
+    print(f"  评估算法: {', '.join(selected_algorithm_names)}")
 
     print("\n📊 准备评估数据...")
     evaluation_users, all_movie_count = build_evaluation_users(user_source=user_source)
@@ -426,12 +469,13 @@ def evaluate_suite(*, user_source: str = "all") -> dict:
     if not test_users:
         raise RuntimeError("没有足够的用户用于离线评估")
 
-    _prewarm_embedding_artifacts()
+    if "kg_embed" in selected_algorithm_names:
+        _prewarm_embedding_artifacts()
 
     main_results = {}
     legacy_results = {}
 
-    for algo_name, algo_class in ALGORITHMS.items():
+    for algo_name, algo_class in selected_algorithms.items():
         print(f"\n🔄 评估算法: {algo_class.display_name} ({algo_name})...")
         best_params = {}
         validation_summary = {}
@@ -530,6 +574,7 @@ def evaluate_suite(*, user_source: str = "all") -> dict:
         "user_source_display": describe_user_source(user_source),
         "user_split_seed": USER_SPLIT_SEED,
         "negative_sample_seeds": NEGATIVE_SAMPLE_SEEDS,
+        "selected_algorithms": selected_algorithm_names,
         "n_total_users": len(evaluation_users),
         "n_validation_users": len(validation_users),
         "n_test_users": len(test_users),
@@ -542,6 +587,7 @@ def evaluate_suite(*, user_source: str = "all") -> dict:
         "user_source": user_source,
         "user_source_display": describe_user_source(user_source),
         "negative_sample_seeds": [LEGACY_NEGATIVE_SEED],
+        "selected_algorithms": selected_algorithm_names,
         "n_test_users": len(test_users),
         "results": legacy_results,
     }
@@ -619,8 +665,12 @@ def _save_results(report_bundle: dict):
     history_dir = os.path.join(reports_dir, "history")
     os.makedirs(history_dir, exist_ok=True)
 
-    main_json_path = os.path.join(reports_dir, "eval_results.json")
-    main_md_path = os.path.join(reports_dir, "eval_results.md")
+    suffix = _selected_algorithm_suffix(report_bundle["main"].get("selected_algorithms"))
+    main_base = f"eval_results{suffix}"
+    legacy_base = "eval_results_legacy" if not suffix else f"{main_base}_legacy"
+
+    main_json_path = os.path.join(reports_dir, f"{main_base}.json")
+    main_md_path = os.path.join(reports_dir, f"{main_base}.md")
     _write_report_files(
         json_path=main_json_path,
         markdown_path=main_md_path,
@@ -628,8 +678,8 @@ def _save_results(report_bundle: dict):
         include_ablations=True,
     )
 
-    legacy_json_path = os.path.join(reports_dir, "eval_results_legacy.json")
-    legacy_md_path = os.path.join(reports_dir, "eval_results_legacy.md")
+    legacy_json_path = os.path.join(reports_dir, f"{legacy_base}.json")
+    legacy_md_path = os.path.join(reports_dir, f"{legacy_base}.md")
     _write_report_files(
         json_path=legacy_json_path,
         markdown_path=legacy_md_path,
@@ -639,7 +689,7 @@ def _save_results(report_bundle: dict):
 
     stamp = _report_stamp(report_bundle["main"])
     history_main_json_path = _next_available_path(
-        os.path.join(history_dir, f"{stamp}_eval_results.json")
+        os.path.join(history_dir, f"{stamp}_{main_base}.json")
     )
     history_main_md_path = os.path.splitext(history_main_json_path)[0] + ".md"
     _write_report_files(
@@ -650,7 +700,7 @@ def _save_results(report_bundle: dict):
     )
 
     history_legacy_json_path = _next_available_path(
-        os.path.join(history_dir, f"{stamp}_eval_results_legacy.json")
+        os.path.join(history_dir, f"{stamp}_{legacy_base}.json")
     )
     history_legacy_md_path = os.path.splitext(history_legacy_json_path)[0] + ".md"
     _write_report_files(
@@ -677,6 +727,9 @@ def build_markdown_report(report: dict, *, include_ablations: bool) -> str:
         f"- 用户来源: **{report.get('user_source_display', describe_user_source(report.get('user_source', 'all')))}**",
         f"- 负采样 seeds: **{report['negative_sample_seeds']}**",
     ]
+    selected_algorithms = report.get("selected_algorithms")
+    if selected_algorithms:
+        lines.append(f"- 选定算法: **{selected_algorithms}**")
     if "n_validation_users" in report:
         lines.append(f"- 验证集用户数: **{report['n_validation_users']}**")
     lines.append(f"- 测试集用户数: **{report['n_test_users']}**")
@@ -748,11 +801,22 @@ def parse_args() -> argparse.Namespace:
         default="all",
         help="评估用户来源：all=全量，public=公开豆瓣用户，seed_cfkg=历史 mock 用户，non_public=排除公开导入用户。",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--algorithms",
+        type=_parse_algorithms_arg,
+        default=None,
+        help="逗号分隔的算法子集，例如 kg_path 或 kg_path,kg_embed；默认评估全量算法。",
+    )
+    args = parser.parse_args()
+    if args.algorithms is None:
+        from app.algorithms import ALGORITHM_NAMES
+
+        args.algorithms = list(ALGORITHM_NAMES)
+    return args
 
 
-def run_evaluation(*, user_source: str = "all"):
-    report_bundle = evaluate_suite(user_source=user_source)
+def run_evaluation(*, user_source: str = "all", algorithms: list[str] | None = None):
+    report_bundle = evaluate_suite(user_source=user_source, algorithms=algorithms)
     _print_comparison_table(report_bundle["main"]["results"])
     _save_results(report_bundle)
 
@@ -764,7 +828,7 @@ if __name__ == "__main__":
     Neo4jConnection.get_driver()
 
     try:
-        run_evaluation(user_source=args.user_source)
+        run_evaluation(user_source=args.user_source, algorithms=args.algorithms)
     finally:
         from app.db.mysql import close_pool
 

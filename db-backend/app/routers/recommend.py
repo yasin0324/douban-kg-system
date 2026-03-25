@@ -364,7 +364,8 @@ def _build_target_context_explanation(target_movie: dict) -> dict:
             }
         )
 
-    actors = sorted(target_profile.top_actors or target_profile.actors)[:3]
+    actors = target_profile.ordered_actor_ids(5) or target_profile.ordered_actor_ids()
+    actors = actors[:3]
     if actors:
         names = []
         for pid in actors:

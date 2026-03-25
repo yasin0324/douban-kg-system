@@ -137,6 +137,16 @@ class MovieGraphProfile:
             if int(order) <= int(order_limit)
         }
 
+    def ordered_actor_ids(self, order_limit: int | None = None) -> list[str]:
+        if order_limit is None:
+            actor_ids = set(self.actors)
+        else:
+            actor_ids = self.actor_ids(order_limit)
+        return sorted(
+            actor_ids,
+            key=lambda pid: (int(self.actor_orders.get(pid, 9999)), pid),
+        )
+
 
 class GraphMetadataCache:
     _lock = Lock()

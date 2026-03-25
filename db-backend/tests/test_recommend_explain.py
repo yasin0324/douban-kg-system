@@ -131,3 +131,38 @@ def test_build_recommendation_explain_payload_falls_back_to_target_context(monke
     assert "DIRECTED" in edge_types
     assert "HAS_GENRE" in edge_types
     assert payload["reason_paths"]
+
+
+def test_build_target_context_explanation_orders_actors_by_actor_order(monkeypatch):
+    profiles = {
+        "target1": MovieGraphProfile(
+            mid="target1",
+            name="Target 1",
+            year=2024,
+            directors={"p1"},
+            actors={"p2", "p3", "p4"},
+            top_actors={"p2", "p3", "p4"},
+            actor_orders={"p3": 1, "p4": 2, "p2": 3},
+            genres={"剧情"},
+        ),
+    }
+    _prime_graph_cache(
+        monkeypatch,
+        profiles,
+        person_names={"p1": "导演甲", "p2": "演员乙", "p3": "演员丙", "p4": "演员丁"},
+    )
+
+    payload = recommend._build_target_context_explanation(
+        {
+            "mid": "target1",
+            "title": "Target 1",
+            "year": 2024,
+            "rating": 8.6,
+        }
+    )
+
+    actor_group = next(group for group in payload["matched_entities"] if group["type"] == "演员")
+    actor_reason = next(path for path in payload["reason_paths"] if path["relation_type"] == REL_ACTOR)
+
+    assert actor_group["items"] == ["演员丙", "演员丁", "演员乙"]
+    assert actor_reason["matched_entities"] == ["演员丙", "演员丁", "演员乙"]
