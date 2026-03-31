@@ -20,7 +20,9 @@ BEST_KG_PATH_PARAMS = {
     "director_weight": 1.0,
     "enable_two_hop": True,
     "genre_weight": 0.6,
-    "two_hop_weight": 0.4,
+    "two_hop_weight": 0.2,
+    "two_hop_seed_actor_limit": 3,
+    "two_hop_bridge_actor_limit": 3,
     "use_degree_penalty": True,
 }
 

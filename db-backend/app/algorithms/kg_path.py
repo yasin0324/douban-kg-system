@@ -43,6 +43,8 @@ class KGPathRecommender(BaseRecommender):
         "genre_weight": 0.4,
         "two_hop_weight": 0.2,
         "actor_order_limit": 5,
+        "two_hop_seed_actor_limit": 3,
+        "two_hop_bridge_actor_limit": 3,
         "director_per_seed_limit": 30,
         "actor_per_seed_limit": 50,
         "genre_per_seed_limit": 50,
@@ -80,6 +82,8 @@ class KGPathRecommender(BaseRecommender):
                                     "genre_weight": genre_weight,
                                     "two_hop_weight": two_hop_weight,
                                     "actor_order_limit": actor_order_limit,
+                                    "two_hop_seed_actor_limit": 3,
+                                    "two_hop_bridge_actor_limit": 3,
                                     "enable_two_hop": True,
                                     "use_degree_penalty": True,
                                 }
@@ -205,6 +209,8 @@ class KGPathRecommender(BaseRecommender):
             tuple(sorted(exclude_from_training)),
             actor_order_limit,
             bool(self._config["enable_two_hop"]) and float(self._config["two_hop_weight"]) > 0,
+            int(self._config["two_hop_seed_actor_limit"]),
+            int(self._config["two_hop_bridge_actor_limit"]),
             int(self._config["director_per_seed_limit"]),
             int(self._config["actor_per_seed_limit"]),
             int(self._config["genre_per_seed_limit"]),
@@ -381,7 +387,11 @@ class KGPathRecommender(BaseRecommender):
         candidate_entities: dict[str, set[str]] = defaultdict(set)
         candidate_actor_positions: dict[str, dict[str, int]] = defaultdict(dict)
         discovery_order = 0
-        seed_actors = seed_profile.ordered_actor_ids(actor_order_limit)
+        seed_actors = self._select_informative_actors(
+            seed_profile,
+            order_limit=actor_order_limit,
+            limit=int(self._config["two_hop_seed_actor_limit"]),
+        )
         for seed_actor in seed_actors:
             for bridge_mid in actor_index.get(seed_actor, set()):
                 if bridge_mid == seed_mid:
@@ -391,7 +401,11 @@ class KGPathRecommender(BaseRecommender):
                     continue
                 if bridge_profile.actor_orders.get(seed_actor, 9999) > actor_order_limit:
                     continue
-                for bridge_actor in bridge_profile.ordered_actor_ids(actor_order_limit):
+                for bridge_actor in self._select_informative_actors(
+                    bridge_profile,
+                    order_limit=actor_order_limit,
+                    limit=int(self._config["two_hop_bridge_actor_limit"]),
+                ):
                     if bridge_actor == seed_actor:
                         continue
                     for cand_mid in actor_index.get(bridge_actor, set()):
@@ -429,6 +443,30 @@ class KGPathRecommender(BaseRecommender):
 
         records.sort(key=lambda item: (item["strength"], item["hits"], item["mid"]), reverse=True)
         return records[:per_seed_limit]
+
+    def _select_informative_actors(
+        self,
+        profile,
+        *,
+        order_limit: int,
+        limit: int,
+    ) -> list[str]:
+        ordered = profile.ordered_actor_ids(order_limit)
+        if limit <= 0 or len(ordered) <= limit:
+            return ordered
+
+        selected = sorted(
+            ordered,
+            key=lambda pid: (
+                GraphMetadataCache.entity_degree(REL_ACTOR, pid),
+                int(profile.actor_orders.get(pid, 9999)),
+                pid,
+            ),
+        )[:limit]
+        return sorted(
+            selected,
+            key=lambda pid: (int(profile.actor_orders.get(pid, 9999)), pid),
+        )
 
     def _ordered_actor_entity_ids(
         self,
