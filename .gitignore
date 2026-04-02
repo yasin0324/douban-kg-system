@@ -60,6 +60,7 @@ db-backend/data/embeddings/transe_embeddings_core.npz
 db-backend/data/embeddings/transe_embeddings_expanded.npz
 db-backend/data/embeddings/transe_meta_core.json
 db-backend/data/embeddings/transe_meta_expanded.json
+db-backend/data/embeddings/backup_*/
 db-backend/reports/eval_results.json
 db-backend/reports/eval_results.md
 db-backend/reports/eval_results_legacy.json
@@ -67,6 +68,7 @@ db-backend/reports/eval_results_legacy.md
 db-backend/reports/history/*_eval_results*.json
 db-backend/reports/history/*_eval_results*.md
 db-backend/reports/public_douban_*.json
+db-backend/reports/public_growth_runs/
 db-backend/app/seed/public_douban_*.json
 
 tmp/cfkg/
