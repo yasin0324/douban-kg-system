@@ -67,6 +67,10 @@ class KGPathRecommender(BaseRecommender):
         if params:
             self._config.update(params)
 
+    def clear_runtime_caches(self):
+        self._evidence_cache.clear()
+        self._user_context_cache.clear()
+
     @classmethod
     def parameter_grid(cls) -> list[dict]:
         grid = []

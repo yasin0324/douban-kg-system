@@ -39,6 +39,9 @@ MIN_USABLE_COLLECT = 20
 MIN_USABLE_TOTAL = 30
 DEFAULT_CAPPED_COLLECT = 300
 DEFAULT_CAPPED_WISH = 200
+# Screen a small window first so imports can start quickly without waiting for
+# every discovered candidate to finish profile classification.
+SCREEN_IMPORT_BATCH_SIZE = 25
 
 
 def _now_iso() -> str:
@@ -388,6 +391,12 @@ def _select_candidates(
     ]
 
 
+def _yield_batches(rows: list[dict], batch_size: int):
+    step = max(int(batch_size), 1)
+    for start in range(0, len(rows), step):
+        yield rows[start : start + step]
+
+
 def _maybe_sleep_between_users(delay_seconds: float, slug: str, has_more: bool) -> None:
     if delay_seconds <= 0 or not has_more:
         return
@@ -531,105 +540,142 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(f"Discovered candidates: {len(discovered_candidates)}")
 
-                screened_candidates, screen_errors = _screen_candidates(
-                    client=client,
-                    candidates=discovered_candidates,
-                    delay_seconds=args.screen_delay_seconds,
-                )
-                print(f"Screened candidates: {len(screened_candidates)}")
-
-                selected_candidates = _select_candidates(
-                    screened_candidates,
-                    candidate_categories=args.candidate_categories,
-                    max_collect_items=args.max_collect_items,
-                    max_wish_items=args.max_wish_items,
-                )
-                print(f"Selected candidates: {len(selected_candidates)}")
-
-                if not selected_candidates:
+                if not discovered_candidates:
                     stop_reason = "candidate_exhausted"
-                    print("No candidates left after screening and category filtering.")
+                    print("No candidates discovered from current seeds.")
                 else:
-                    for index, candidate in enumerate(selected_candidates):
-                        has_more = index < len(selected_candidates) - 1
-                        slug = candidate["slug"]
-                        try:
-                            bundle = harvest_public_user(
-                                client=client,
-                                spec=DoubanUserSpec(profile_url=candidate["profile_url"]),
-                                delay_seconds=args.import_delay_seconds,
-                                page_limit=None,
-                                max_collect_items=candidate["selected_max_collect_items"],
-                                max_wish_items=candidate["selected_max_wish_items"],
-                            )
-                            conn = get_connection()
-                            try:
-                                db_result = upsert_bundle_to_db(
-                                    conn,
-                                    bundle,
-                                    known_mids=known_mids,
-                                )
-                            finally:
-                                conn.close()
+                    total_batches = (
+                        len(discovered_candidates) + SCREEN_IMPORT_BATCH_SIZE - 1
+                    ) // SCREEN_IMPORT_BATCH_SIZE
+                    for batch_index, candidate_batch in enumerate(
+                        _yield_batches(discovered_candidates, SCREEN_IMPORT_BATCH_SIZE),
+                        start=1,
+                    ):
+                        batch_screened, batch_screen_errors = _screen_candidates(
+                            client=client,
+                            candidates=candidate_batch,
+                            delay_seconds=args.screen_delay_seconds,
+                        )
+                        screened_candidates.extend(batch_screened)
+                        screen_errors.extend(batch_screen_errors)
 
-                            eligible_after = _count_eligible_public_users()
-                            result = {
-                                "slug": slug,
-                                "category": candidate["category"],
-                                "collect_total": candidate["collect_total"],
-                                "wish_total": candidate["wish_total"],
-                                "selected_max_collect_items": candidate["selected_max_collect_items"],
-                                "selected_max_wish_items": candidate["selected_max_wish_items"],
-                                "status": "imported",
-                                "db_result": db_result,
-                                "eligible_users_after": eligible_after,
-                            }
-                            import_results.append(result)
-                            print(
-                                f"Imported {slug}: category={candidate['category']} "
-                                f"collect={candidate['collect_total']} wish={candidate['wish_total']} "
-                                f"user_id={db_result['user_id']} ratings={db_result['ratings_written']} "
-                                f"prefs={db_result['prefs_written']} "
-                                f"eligible={eligible_after}/{args.target_eligible_users}"
+                        batch_selected = _select_candidates(
+                            batch_screened,
+                            candidate_categories=args.candidate_categories,
+                            max_collect_items=args.max_collect_items,
+                            max_wish_items=args.max_wish_items,
+                        )
+                        selected_candidates.extend(batch_selected)
+                        print(
+                            f"Screen batch {batch_index}/{total_batches}: "
+                            f"screened={len(batch_screened)} selected={len(batch_selected)} "
+                            f"totals(screened={len(screened_candidates)}, "
+                            f"selected={len(selected_candidates)})"
+                        )
+                        _write_json(
+                            screened_path,
+                            {
+                                "generated_at": _now_iso(),
+                                "candidates": screened_candidates,
+                                "errors": screen_errors,
+                            },
+                        )
+                        _write_json(
+                            selected_path,
+                            {
+                                "generated_at": _now_iso(),
+                                "candidates": selected_candidates,
+                            },
+                        )
+
+                        for index, candidate in enumerate(batch_selected):
+                            has_more = (
+                                index < len(batch_selected) - 1
+                                or batch_index < total_batches
                             )
-                            if eligible_after >= args.target_eligible_users:
-                                stop_reason = "target_reached"
-                                print("Target reached during import.")
-                                break
-                        except Exception as exc:
-                            import_results.append(
-                                {
+                            slug = candidate["slug"]
+                            try:
+                                bundle = harvest_public_user(
+                                    client=client,
+                                    spec=DoubanUserSpec(profile_url=candidate["profile_url"]),
+                                    delay_seconds=args.import_delay_seconds,
+                                    page_limit=None,
+                                    max_collect_items=candidate["selected_max_collect_items"],
+                                    max_wish_items=candidate["selected_max_wish_items"],
+                                )
+                                conn = get_connection()
+                                try:
+                                    db_result = upsert_bundle_to_db(
+                                        conn,
+                                        bundle,
+                                        known_mids=known_mids,
+                                    )
+                                finally:
+                                    conn.close()
+
+                                eligible_after = _count_eligible_public_users()
+                                result = {
                                     "slug": slug,
                                     "category": candidate["category"],
                                     "collect_total": candidate["collect_total"],
                                     "wish_total": candidate["wish_total"],
                                     "selected_max_collect_items": candidate["selected_max_collect_items"],
                                     "selected_max_wish_items": candidate["selected_max_wish_items"],
-                                    "status": "failed",
-                                    "error": str(exc),
+                                    "status": "imported",
+                                    "db_result": db_result,
+                                    "eligible_users_after": eligible_after,
                                 }
-                            )
-                            print(
-                                f"Failed {slug}: category={candidate['category']} "
-                                f"collect={candidate['collect_total']} wish={candidate['wish_total']} "
-                                f"error={exc}"
-                            )
-                        finally:
-                            _write_json(
-                                import_results_path,
-                                {
-                                    "generated_at": _now_iso(),
-                                    "results": import_results,
-                                },
-                            )
-                            if stop_reason != "target_reached":
-                                _maybe_sleep_between_users(
-                                    args.between_users_seconds,
-                                    slug,
-                                    has_more=has_more,
+                                import_results.append(result)
+                                print(
+                                    f"Imported {slug}: category={candidate['category']} "
+                                    f"collect={candidate['collect_total']} wish={candidate['wish_total']} "
+                                    f"user_id={db_result['user_id']} ratings={db_result['ratings_written']} "
+                                    f"prefs={db_result['prefs_written']} "
+                                    f"eligible={eligible_after}/{args.target_eligible_users}"
                                 )
+                                if eligible_after >= args.target_eligible_users:
+                                    stop_reason = "target_reached"
+                                    print("Target reached during import.")
+                                    break
+                            except Exception as exc:
+                                import_results.append(
+                                    {
+                                        "slug": slug,
+                                        "category": candidate["category"],
+                                        "collect_total": candidate["collect_total"],
+                                        "wish_total": candidate["wish_total"],
+                                        "selected_max_collect_items": candidate["selected_max_collect_items"],
+                                        "selected_max_wish_items": candidate["selected_max_wish_items"],
+                                        "status": "failed",
+                                        "error": str(exc),
+                                    }
+                                )
+                                print(
+                                    f"Failed {slug}: category={candidate['category']} "
+                                    f"collect={candidate['collect_total']} wish={candidate['wish_total']} "
+                                    f"error={exc}"
+                                )
+                            finally:
+                                _write_json(
+                                    import_results_path,
+                                    {
+                                        "generated_at": _now_iso(),
+                                        "results": import_results,
+                                    },
+                                )
+                                if stop_reason != "target_reached":
+                                    _maybe_sleep_between_users(
+                                        args.between_users_seconds,
+                                        slug,
+                                        has_more=has_more,
+                                    )
+
+                        if stop_reason == "target_reached":
+                            break
 
                     if stop_reason != "target_reached":
+                        if not selected_candidates:
+                            print("No candidates left after screening and category filtering.")
                         stop_reason = "candidate_exhausted"
 
     except Exception as exc:

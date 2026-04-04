@@ -99,6 +99,16 @@ def _parse_algorithms_arg(raw: str) -> list[str]:
     return requested
 
 
+def _positive_int_arg(raw: str) -> int:
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("必须是正整数") from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError("必须是正整数")
+    return value
+
+
 def _resolve_selected_algorithms(algorithms: list[str] | None) -> tuple[list[str], dict[str, type]]:
     from app.algorithms import ALGORITHMS, ALGORITHM_NAMES
 
@@ -109,13 +119,22 @@ def _resolve_selected_algorithms(algorithms: list[str] | None) -> tuple[list[str
     return selected_names, {name: ALGORITHMS[name] for name in selected_names}
 
 
-def _selected_algorithm_suffix(selected_algorithms: list[str] | None) -> str:
+def _selected_algorithm_suffix(
+    selected_algorithms: list[str] | None,
+    *,
+    num_negatives: int = NUM_NEGATIVES,
+) -> str:
     from app.algorithms import ALGORITHM_NAMES
 
+    suffix_parts = []
     selected = list(selected_algorithms or [])
-    if not selected or selected == list(ALGORITHM_NAMES):
+    if selected and selected != list(ALGORITHM_NAMES):
+        suffix_parts.extend(selected)
+    if int(num_negatives) != NUM_NEGATIVES:
+        suffix_parts.append(f"neg{int(num_negatives)}")
+    if not suffix_parts:
         return ""
-    return "_" + "_".join(selected)
+    return "_" + "_".join(suffix_parts)
 
 
 def _prewarm_embedding_artifacts() -> dict[str, bool]:
@@ -189,7 +208,13 @@ def _diversity_at_k(ranked_list: list[str], k: int) -> float:
     return sum(pair_scores) / len(pair_scores) if pair_scores else 0.0
 
 
-def build_evaluation_users(*, user_source: str = "all") -> tuple[list[dict], int]:
+def build_evaluation_users(
+    *,
+    user_source: str = "all",
+    num_negatives: int = NUM_NEGATIVES,
+    negative_seeds: list[int] | None = None,
+) -> tuple[list[dict], int]:
+    negative_seeds = list(negative_seeds or NEGATIVE_SAMPLE_SEEDS)
     conn = get_connection()
     try:
         ratings_query, ratings_params = _ratings_query_for_user_source(user_source)
@@ -220,13 +245,13 @@ def build_evaluation_users(*, user_source: str = "all") -> tuple[list[dict], int
         test_mid = str(test_item["mid"])
         user_rated_mids = {str(row["mid"]) for row in ratings if str(row["mid"]) != test_mid}
         candidate_negatives = sorted(all_movie_mids_set - user_rated_mids - {test_mid})
-        if len(candidate_negatives) < NUM_NEGATIVES:
+        if len(candidate_negatives) < num_negatives:
             continue
 
         sampled_negatives = {}
-        for seed in NEGATIVE_SAMPLE_SEEDS:
+        for seed in negative_seeds:
             rng = random.Random(seed + uid)
-            sampled_negatives[seed] = rng.sample(candidate_negatives, NUM_NEGATIVES)
+            sampled_negatives[seed] = rng.sample(candidate_negatives, num_negatives)
 
         evaluation_users.append(
             {
@@ -303,6 +328,8 @@ def evaluate_algorithm(
         except Exception as exc:
             logger.warning("算法 %s 对用户 %s 推荐失败: %s", algo.name, user_id, exc)
             continue
+        finally:
+            algo.clear_runtime_caches()
 
         for seed in negative_seeds:
             ranked_mids = rank_sampled_candidates(
@@ -322,6 +349,8 @@ def evaluate_algorithm(
                 per_seed[seed]["k"][k]["precision_sum"] += hit / k
                 per_seed[seed]["k"][k]["recall_sum"] += hit
                 per_seed[seed]["k"][k]["ndcg_sum"] += _ndcg_at_k(ranked_mids, relevant, k)
+
+    algo.clear_runtime_caches()
 
     return summarize_metrics(
         per_seed=per_seed,
@@ -416,7 +445,13 @@ def select_best_config(validation_results: dict) -> tuple[dict, dict]:
     return deepcopy(best[4]["params"]), best[4]
 
 
-def tune_algorithm(algo_class, validation_users: list[dict], all_movie_count: int) -> tuple[dict, dict]:
+def tune_algorithm(
+    algo_class,
+    validation_users: list[dict],
+    all_movie_count: int,
+    *,
+    negative_seeds: list[int],
+) -> tuple[dict, dict]:
     param_grid = algo_class.parameter_grid()
     if len(param_grid) <= 1:
         return {}, {}
@@ -432,7 +467,7 @@ def tune_algorithm(algo_class, validation_users: list[dict], all_movie_count: in
         result = evaluate_algorithm(
             algo=algo,
             evaluation_users=validation_users,
-            negative_seeds=NEGATIVE_SAMPLE_SEEDS,
+            negative_seeds=negative_seeds,
             k_values=K_VALUES,
             all_movie_count=all_movie_count,
             progress_label=_build_progress_label(
@@ -448,19 +483,29 @@ def tune_algorithm(algo_class, validation_users: list[dict], all_movie_count: in
     return select_best_config(validation_results)
 
 
-def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = None) -> dict:
+def evaluate_suite(
+    *,
+    user_source: str = "all",
+    algorithms: list[str] | None = None,
+    num_negatives: int = NUM_NEGATIVES,
+) -> dict:
     selected_algorithm_names, selected_algorithms = _resolve_selected_algorithms(algorithms)
+    negative_sample_seeds = list(NEGATIVE_SAMPLE_SEEDS)
 
     print("=" * 78)
     print("🧪 推荐算法离线评估 (Validation + 5-seed Sampled Leave-One-Out)")
     print("=" * 78)
-    print(f"  评估方法: 1 正样本 + {NUM_NEGATIVES} 随机负样本，共 {NUM_NEGATIVES + 1} 个候选")
-    print(f"  测试负采样 seeds: {NEGATIVE_SAMPLE_SEEDS}")
+    print(f"  评估方法: 1 正样本 + {num_negatives} 随机负样本，共 {num_negatives + 1} 个候选")
+    print(f"  测试负采样 seeds: {negative_sample_seeds}")
     print(f"  用户来源: {describe_user_source(user_source)}")
     print(f"  评估算法: {', '.join(selected_algorithm_names)}")
 
     print("\n📊 准备评估数据...")
-    evaluation_users, all_movie_count = build_evaluation_users(user_source=user_source)
+    evaluation_users, all_movie_count = build_evaluation_users(
+        user_source=user_source,
+        num_negatives=num_negatives,
+        negative_seeds=negative_sample_seeds,
+    )
     validation_users, test_users = split_evaluation_users(evaluation_users)
     print(f"  符合条件用户数: {len(evaluation_users)}")
     print(f"  验证集用户数: {len(validation_users)}")
@@ -484,6 +529,7 @@ def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = N
                 algo_class=algo_class,
                 validation_users=validation_users,
                 all_movie_count=all_movie_count,
+                negative_seeds=negative_sample_seeds,
             )
             print(f"  🎯 验证集最优参数: {best_params}")
 
@@ -491,11 +537,11 @@ def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = N
         if best_params:
             algo.set_params(**best_params)
 
-        print(f"  🧪 测试集评估: {len(test_users)} 用户 × {len(NEGATIVE_SAMPLE_SEEDS)} 个负采样 seed")
+        print(f"  🧪 测试集评估: {len(test_users)} 用户 × {len(negative_sample_seeds)} 个负采样 seed")
         test_summary = evaluate_algorithm(
             algo=algo,
             evaluation_users=test_users,
-            negative_seeds=NEGATIVE_SAMPLE_SEEDS,
+            negative_seeds=negative_sample_seeds,
             k_values=K_VALUES,
             all_movie_count=all_movie_count,
             progress_label=_build_progress_label("测试", algo.display_name, detail="main"),
@@ -513,7 +559,7 @@ def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = N
             ablations[label] = evaluate_algorithm(
                 algo=ablation_algo,
                 evaluation_users=test_users,
-                negative_seeds=NEGATIVE_SAMPLE_SEEDS,
+                negative_seeds=negative_sample_seeds,
                 k_values=K_VALUES,
                 all_movie_count=all_movie_count,
                 progress_label=_build_progress_label(
@@ -569,11 +615,12 @@ def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = N
     report = {
         "protocol_version": 2,
         "generated_at": generated_at,
-        "eval_method": f"validation_and_test_sampled_leave_one_out (1_positive + {NUM_NEGATIVES}_negatives)",
+        "eval_method": f"validation_and_test_sampled_leave_one_out (1_positive + {num_negatives}_negatives)",
         "user_source": user_source,
         "user_source_display": describe_user_source(user_source),
+        "num_negatives": int(num_negatives),
         "user_split_seed": USER_SPLIT_SEED,
-        "negative_sample_seeds": NEGATIVE_SAMPLE_SEEDS,
+        "negative_sample_seeds": negative_sample_seeds,
         "selected_algorithms": selected_algorithm_names,
         "n_total_users": len(evaluation_users),
         "n_validation_users": len(validation_users),
@@ -583,9 +630,13 @@ def evaluate_suite(*, user_source: str = "all", algorithms: list[str] | None = N
     legacy_report = {
         "protocol_version": 1,
         "generated_at": generated_at,
-        "eval_method": f"single_seed_sampled_leave_one_out (seed={LEGACY_NEGATIVE_SEED})",
+        "eval_method": (
+            f"single_seed_sampled_leave_one_out "
+            f"(1_positive + {num_negatives}_negatives, seed={LEGACY_NEGATIVE_SEED})"
+        ),
         "user_source": user_source,
         "user_source_display": describe_user_source(user_source),
+        "num_negatives": int(num_negatives),
         "negative_sample_seeds": [LEGACY_NEGATIVE_SEED],
         "selected_algorithms": selected_algorithm_names,
         "n_test_users": len(test_users),
@@ -665,7 +716,10 @@ def _save_results(report_bundle: dict):
     history_dir = os.path.join(reports_dir, "history")
     os.makedirs(history_dir, exist_ok=True)
 
-    suffix = _selected_algorithm_suffix(report_bundle["main"].get("selected_algorithms"))
+    suffix = _selected_algorithm_suffix(
+        report_bundle["main"].get("selected_algorithms"),
+        num_negatives=int(report_bundle["main"].get("num_negatives", NUM_NEGATIVES)),
+    )
     main_base = f"eval_results{suffix}"
     legacy_base = "eval_results_legacy" if not suffix else f"{main_base}_legacy"
 
@@ -807,6 +861,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="逗号分隔的算法子集，例如 kg_path 或 kg_path,kg_embed；默认评估全量算法。",
     )
+    parser.add_argument(
+        "--num-negatives",
+        type=_positive_int_arg,
+        default=NUM_NEGATIVES,
+        help=f"每个用户采样多少个随机负样本；默认 {NUM_NEGATIVES}。",
+    )
     args = parser.parse_args()
     if args.algorithms is None:
         from app.algorithms import ALGORITHM_NAMES
@@ -815,8 +875,17 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def run_evaluation(*, user_source: str = "all", algorithms: list[str] | None = None):
-    report_bundle = evaluate_suite(user_source=user_source, algorithms=algorithms)
+def run_evaluation(
+    *,
+    user_source: str = "all",
+    algorithms: list[str] | None = None,
+    num_negatives: int = NUM_NEGATIVES,
+):
+    report_bundle = evaluate_suite(
+        user_source=user_source,
+        algorithms=algorithms,
+        num_negatives=num_negatives,
+    )
     _print_comparison_table(report_bundle["main"]["results"])
     _save_results(report_bundle)
 
@@ -828,7 +897,11 @@ if __name__ == "__main__":
     Neo4jConnection.get_driver()
 
     try:
-        run_evaluation(user_source=args.user_source, algorithms=args.algorithms)
+        run_evaluation(
+            user_source=args.user_source,
+            algorithms=args.algorithms,
+            num_negatives=args.num_negatives,
+        )
     finally:
         from app.db.mysql import close_pool
 

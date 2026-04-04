@@ -17,6 +17,10 @@ class BaseRecommender(ABC):
             return
         raise NotImplementedError(f"{self.__class__.__name__} 不支持动态参数更新")
 
+    def clear_runtime_caches(self):
+        """释放仅对当前评估过程有意义的临时缓存。"""
+        return
+
     @classmethod
     def parameter_grid(cls) -> list[dict]:
         """返回验证集调参搜索空间。默认不调参。"""

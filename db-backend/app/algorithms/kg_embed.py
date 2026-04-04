@@ -101,6 +101,10 @@ class KGEmbedRecommender(BaseRecommender):
             # Scope change requires different embedding artifacts, but caches of other scopes remain reusable.
             return
 
+    def clear_runtime_caches(self):
+        self._user_component_cache.clear()
+        self._user_context_cache.clear()
+
     @classmethod
     def parameter_grid(cls) -> list[dict]:
         grid = []

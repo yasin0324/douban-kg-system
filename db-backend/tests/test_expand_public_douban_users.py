@@ -298,6 +298,7 @@ def test_main_stops_after_target_reached_mid_import(tmp_path, monkeypatch):
     module = _load_script_module()
     output_dir = tmp_path / "run"
     eligible_counts = iter([210, 500])
+    screen_calls = []
 
     monkeypatch.setattr(
         module,
@@ -317,6 +318,7 @@ def test_main_stops_after_target_reached_mid_import(tmp_path, monkeypatch):
             output_dir=str(output_dir),
         ),
     )
+    monkeypatch.setattr(module, "SCREEN_IMPORT_BATCH_SIZE", 1)
     monkeypatch.setattr(module, "init_pool", lambda: None)
     monkeypatch.setattr(module, "close_pool", lambda: None)
     monkeypatch.setattr(
@@ -334,48 +336,38 @@ def test_main_stops_after_target_reached_mid_import(tmp_path, monkeypatch):
     monkeypatch.setattr(
         module,
         "_discover_candidates",
-        lambda **kwargs: ([{"slug": "c1", "profile_url": "https://www.douban.com/people/c1/"}], []),
-    )
-    monkeypatch.setattr(
-        module,
-        "_screen_candidates",
         lambda **kwargs: (
             [
-                {
-                    "slug": "c1",
-                    "profile_url": "https://www.douban.com/people/c1/",
-                    "category": "medium_native",
-                    "collect_total": 200,
-                    "wish_total": 80,
-                    "recommended_max_collect_items": 200,
-                    "recommended_max_wish_items": 80,
-                },
-                {
-                    "slug": "c2",
-                    "profile_url": "https://www.douban.com/people/c2/",
-                    "category": "medium_native",
-                    "collect_total": 180,
-                    "wish_total": 70,
-                    "recommended_max_collect_items": 180,
-                    "recommended_max_wish_items": 70,
-                },
+                {"slug": "c1", "profile_url": "https://www.douban.com/people/c1/"},
+                {"slug": "c2", "profile_url": "https://www.douban.com/people/c2/"},
             ],
             [],
         ),
     )
 
-    def fake_select_candidates(screened_candidates, **kwargs):
-        return [
-            module._apply_import_caps(
-                row,
-                max_collect_items=300,
-                max_wish_items=120,
+    def fake_screen_candidates(*, candidates, **kwargs):
+        screen_calls.append([row["slug"] for row in candidates])
+        screened = []
+        for row in candidates:
+            screened.append(
+                {
+                    "slug": row["slug"],
+                    "profile_url": row["profile_url"],
+                    "category": "medium_native",
+                    "collect_total": 200 if row["slug"] == "c1" else 180,
+                    "wish_total": 80 if row["slug"] == "c1" else 70,
+                    "recommended_max_collect_items": 200 if row["slug"] == "c1" else 180,
+                    "recommended_max_wish_items": 80 if row["slug"] == "c1" else 70,
+                }
             )
-            for row in screened_candidates
-        ]
+        return screened, []
 
-    monkeypatch.setattr(module, "_select_candidates", fake_select_candidates)
-    monkeypatch.setattr(module, "harvest_public_user", lambda **kwargs: {"profile": {"slug": "c1"}})
+    monkeypatch.setattr(module, "_screen_candidates", fake_screen_candidates)
+    monkeypatch.setattr(
+        module,
+        "harvest_public_user",
+        lambda **kwargs: {"profile": {"slug": module.extract_slug(kwargs["spec"].profile_url)}},
+    )
 
     class FakeConn:
         def close(self):
@@ -387,7 +379,7 @@ def test_main_stops_after_target_reached_mid_import(tmp_path, monkeypatch):
         "upsert_bundle_to_db",
         lambda conn, bundle, known_mids=None: {
             "user_id": 1,
-            "username": "douban_public_c1",
+            "username": f"douban_public_{bundle['profile']['slug']}",
             "ratings_written": 10,
             "prefs_written": 3,
         },
@@ -401,6 +393,8 @@ def test_main_stops_after_target_reached_mid_import(tmp_path, monkeypatch):
     assert len(results["results"]) == 1
     assert summary["imported_count"] == 1
     assert summary["stop_reason"] == "target_reached"
+    assert summary["screened_count"] == 1
+    assert screen_calls == [["c1"]]
 
 
 def test_main_continues_after_import_failure(tmp_path, monkeypatch):
@@ -426,6 +420,7 @@ def test_main_continues_after_import_failure(tmp_path, monkeypatch):
             output_dir=str(output_dir),
         ),
     )
+    monkeypatch.setattr(module, "SCREEN_IMPORT_BATCH_SIZE", 1)
     monkeypatch.setattr(module, "init_pool", lambda: None)
     monkeypatch.setattr(module, "close_pool", lambda: None)
     monkeypatch.setattr(
@@ -443,47 +438,38 @@ def test_main_continues_after_import_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(
         module,
         "_discover_candidates",
-        lambda **kwargs: ([{"slug": "c1", "profile_url": "https://www.douban.com/people/c1/"}], []),
-    )
-    monkeypatch.setattr(
-        module,
-        "_screen_candidates",
         lambda **kwargs: (
             [
                 {
                     "slug": "c1",
                     "profile_url": "https://www.douban.com/people/c1/",
-                    "category": "medium_native",
-                    "collect_total": 200,
-                    "wish_total": 80,
-                    "recommended_max_collect_items": 200,
-                    "recommended_max_wish_items": 80,
                 },
                 {
                     "slug": "c2",
                     "profile_url": "https://www.douban.com/people/c2/",
-                    "category": "medium_native",
-                    "collect_total": 180,
-                    "wish_total": 70,
-                    "recommended_max_collect_items": 180,
-                    "recommended_max_wish_items": 70,
                 },
             ],
             [],
         ),
     )
 
-    def fake_select_candidates(screened_candidates, **kwargs):
-        return [
-            module._apply_import_caps(
-                row,
-                max_collect_items=300,
-                max_wish_items=120,
+    def fake_screen_candidates(*, candidates, **kwargs):
+        screened = []
+        for row in candidates:
+            screened.append(
+                {
+                    "slug": row["slug"],
+                    "profile_url": row["profile_url"],
+                    "category": "medium_native",
+                    "collect_total": 200 if row["slug"] == "c1" else 180,
+                    "wish_total": 80 if row["slug"] == "c1" else 70,
+                    "recommended_max_collect_items": 200 if row["slug"] == "c1" else 180,
+                    "recommended_max_wish_items": 80 if row["slug"] == "c1" else 70,
+                }
             )
-            for row in screened_candidates
-        ]
+        return screened, []
 
-    monkeypatch.setattr(module, "_select_candidates", fake_select_candidates)
+    monkeypatch.setattr(module, "_screen_candidates", fake_screen_candidates)
 
     calls = {"count": 0}
 
@@ -491,7 +477,7 @@ def test_main_continues_after_import_failure(tmp_path, monkeypatch):
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("403")
-        return {"profile": {"slug": "c2"}}
+        return {"profile": {"slug": module.extract_slug(kwargs["spec"].profile_url)}}
 
     monkeypatch.setattr(module, "harvest_public_user", fake_harvest_public_user)
 

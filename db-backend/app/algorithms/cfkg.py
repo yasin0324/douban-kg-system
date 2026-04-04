@@ -62,6 +62,12 @@ class CFKGRecommender(BaseRecommender):
         if params:
             self._config.update(params)
 
+    def clear_runtime_caches(self):
+        self._item_cf.clear_runtime_caches()
+        self._kg_embed.clear_runtime_caches()
+        self._kg_path.clear_runtime_caches()
+        self._content.clear_runtime_caches()
+
     def get_user_positive_movies(
         self,
         conn,

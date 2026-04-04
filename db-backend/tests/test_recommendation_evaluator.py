@@ -12,6 +12,7 @@ class FakeAlgo(BaseRecommender):
 
     def __init__(self):
         self.calls = []
+        self.clear_calls = 0
 
     def recommend(self, user_id, n=20, exclude_mids=None, exclude_from_training=None):
         exclude_from_training = exclude_from_training or set()
@@ -29,6 +30,9 @@ class FakeAlgo(BaseRecommender):
             {"mid": f"neg-{user_id}-1", "score": 0.5, "reason": "other"},
             {"mid": f"neg-{user_id}-2", "score": 0.4, "reason": "other"},
         ]
+
+    def clear_runtime_caches(self):
+        self.clear_calls += 1
 
 
 def _fake_eval_summary() -> dict:
@@ -108,6 +112,34 @@ def test_evaluate_algorithm_is_deterministic_and_passes_exclude_from_training(mo
     assert all(call["exclude_from_training"] == {f"m{call['user_id']}"} for call in algo.calls)
 
 
+def test_evaluate_algorithm_clears_runtime_caches_per_user(monkeypatch):
+    monkeypatch.setattr(evaluator, "_diversity_at_k", lambda ranked_list, k: 0.0)
+    algo = FakeAlgo()
+    evaluation_users = [
+        {
+            "user_id": 1,
+            "test_mid": "m1",
+            "sampled_negatives": {42: ["neg-1-1", "neg-1-2"]},
+        },
+        {
+            "user_id": 2,
+            "test_mid": "m2",
+            "sampled_negatives": {42: ["neg-2-1", "neg-2-2"]},
+        },
+    ]
+
+    evaluator.evaluate_algorithm(
+        algo=algo,
+        evaluation_users=evaluation_users,
+        negative_seeds=[42],
+        k_values=[5],
+        all_movie_count=100,
+        progress_label="fake",
+    )
+
+    assert algo.clear_calls == len(evaluation_users) + 1
+
+
 def test_build_markdown_report_includes_ablation_section():
     report = {
         "protocol_version": 2,
@@ -163,6 +195,56 @@ def test_user_source_helpers_cover_public_filter():
     assert evaluator.describe_user_source("seed_cfkg") == "历史 mock 用户（seed_cfkg_*)"
 
 
+def test_build_evaluation_users_respects_num_negatives(monkeypatch):
+    ratings_rows = [
+        {"user_id": 1, "mid": "m1", "rating": 5.0, "rated_at": "2026-04-01"},
+        {"user_id": 1, "mid": "m2", "rating": 4.0, "rated_at": "2026-04-02"},
+        {"user_id": 1, "mid": "m3", "rating": 2.0, "rated_at": "2026-04-03"},
+    ]
+    movie_rows = [{"douban_id": f"m{idx}"} for idx in range(1, 12)]
+
+    class FakeCursor:
+        def __init__(self):
+            self._result = None
+
+        def execute(self, query, params=()):
+            if "FROM user_movie_ratings" in query:
+                self._result = ratings_rows
+            elif "SELECT douban_id FROM movies" in query:
+                self._result = movie_rows
+            else:
+                raise AssertionError(query)
+
+        def fetchall(self):
+            return list(self._result or [])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(evaluator, "get_connection", lambda: FakeConn())
+
+    users, movie_count = evaluator.build_evaluation_users(
+        user_source="public",
+        num_negatives=5,
+        negative_seeds=[42, 52],
+    )
+
+    assert movie_count == 11
+    assert len(users) == 1
+    assert sorted(users[0]["sampled_negatives"]) == [42, 52]
+    assert all(len(rows) == 5 for rows in users[0]["sampled_negatives"].values())
+
+
 def test_prewarm_embedding_artifacts_invokes_kg_embed_preload(monkeypatch, capsys):
     from app.algorithms.kg_embed import KGEmbedRecommender
 
@@ -193,6 +275,7 @@ def test_parse_args_defaults_to_all(monkeypatch):
     args = evaluator.parse_args()
 
     assert args.user_source == "all"
+    assert args.num_negatives == evaluator.NUM_NEGATIVES
 
 
 def test_parse_args_accepts_public(monkeypatch):
@@ -209,6 +292,14 @@ def test_parse_args_accepts_algorithm_subset(monkeypatch):
     args = evaluator.parse_args()
 
     assert args.algorithms == ["kg_path"]
+
+
+def test_parse_args_accepts_num_negatives(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["evaluator.py", "--num-negatives", "499"])
+
+    args = evaluator.parse_args()
+
+    assert args.num_negatives == 499
 
 
 def test_tune_algorithm_progress_labels_include_grid_index(monkeypatch):
@@ -239,6 +330,7 @@ def test_tune_algorithm_progress_labels_include_grid_index(monkeypatch):
         algo_class=TunableFakeAlgo,
         validation_users=[{"user_id": 1, "test_mid": "m1", "sampled_negatives": {}}],
         all_movie_count=100,
+        negative_seeds=[42, 52],
     )
 
     assert labels == [
@@ -262,11 +354,19 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
         {"kg_path": SelectedAlgo, "content": OtherAlgo},
     )
     monkeypatch.setattr(algorithms_module, "ALGORITHM_NAMES", ["kg_path", "content"])
+    builder_calls = []
     monkeypatch.setattr(
         evaluator,
         "build_evaluation_users",
-        lambda user_source="all": (
-            [{"user_id": 1, "test_mid": "m1", "sampled_negatives": {seed: ["n1"] for seed in evaluator.NEGATIVE_SAMPLE_SEEDS}}],
+        lambda user_source="all", num_negatives=evaluator.NUM_NEGATIVES, negative_seeds=None: (
+            builder_calls.append(
+                {
+                    "user_source": user_source,
+                    "num_negatives": num_negatives,
+                    "negative_seeds": list(negative_seeds or []),
+                }
+            )
+            or [{"user_id": 1, "test_mid": "m1", "sampled_negatives": {seed: ["n1"] for seed in evaluator.NEGATIVE_SAMPLE_SEEDS}}],
             100,
         ),
     )
@@ -279,13 +379,26 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
     )
     monkeypatch.setattr(evaluator, "evaluate_algorithm", lambda **kwargs: _fake_eval_summary())
 
-    report_bundle = evaluator.evaluate_suite(user_source="public", algorithms=["kg_path"])
+    report_bundle = evaluator.evaluate_suite(
+        user_source="public",
+        algorithms=["kg_path"],
+        num_negatives=499,
+    )
 
     assert list(report_bundle["main"]["results"]) == ["kg_path"]
     assert list(report_bundle["legacy"]["results"]) == ["kg_path"]
     assert report_bundle["main"]["selected_algorithms"] == ["kg_path"]
     assert report_bundle["legacy"]["selected_algorithms"] == ["kg_path"]
+    assert report_bundle["main"]["num_negatives"] == 499
+    assert report_bundle["legacy"]["num_negatives"] == 499
     assert prewarm_calls == []
+    assert builder_calls == [
+        {
+            "user_source": "public",
+            "num_negatives": 499,
+            "negative_seeds": evaluator.NEGATIVE_SAMPLE_SEEDS,
+        }
+    ]
 
 
 def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):
@@ -371,4 +484,44 @@ def test_save_results_uses_selected_algorithm_suffix(tmp_path, monkeypatch):
     assert history_json == [
         "2026-03-12_100000_eval_results_kg_path.json",
         "2026-03-12_100000_eval_results_kg_path_legacy.json",
+    ]
+
+
+def test_save_results_uses_negative_suffix_for_non_default_protocol(tmp_path, monkeypatch):
+    monkeypatch.setattr(evaluator, "BACKEND_DIR", str(tmp_path))
+    report_bundle = {
+        "main": {
+            "protocol_version": 2,
+            "generated_at": "2026-03-12T10:00:00+08:00",
+            "eval_method": "main",
+            "negative_sample_seeds": [42],
+            "num_negatives": 499,
+            "n_validation_users": 1,
+            "n_test_users": 1,
+            "results": {},
+        },
+        "legacy": {
+            "protocol_version": 1,
+            "generated_at": "2026-03-12T10:00:00+08:00",
+            "eval_method": "legacy",
+            "negative_sample_seeds": [42],
+            "num_negatives": 499,
+            "n_test_users": 1,
+            "results": {},
+        },
+    }
+
+    evaluator._save_results(report_bundle)
+
+    reports_dir = tmp_path / "reports"
+    history_dir = reports_dir / "history"
+    assert (reports_dir / "eval_results_neg499.json").exists()
+    assert (reports_dir / "eval_results_neg499.md").exists()
+    assert (reports_dir / "eval_results_neg499_legacy.json").exists()
+    assert (reports_dir / "eval_results_neg499_legacy.md").exists()
+
+    history_json = sorted(path.name for path in history_dir.glob("*.json"))
+    assert history_json == [
+        "2026-03-12_100000_eval_results_neg499.json",
+        "2026-03-12_100000_eval_results_neg499_legacy.json",
     ]
