@@ -149,6 +149,7 @@ def test_build_markdown_report_includes_ablation_section():
         "negative_sample_seeds": [42, 52],
         "n_validation_users": 1,
         "n_test_users": 2,
+        "suite_elapsed_seconds": 12.34,
         "results": {
             "kg_path": {
                 "display_name": "基于知识图谱路径的推荐",
@@ -160,6 +161,7 @@ def test_build_markdown_report_includes_ablation_section():
                 "coverage_at_20": {"mean": 0.2, "std": 0.01},
                 "diversity_at_10": {"mean": 0.3, "std": 0.02},
                 "avg_time_seconds": 0.1234,
+                "total_elapsed_seconds": 45.67,
                 "best_params": {"actor_weight": 0.6},
                 "ablations": {
                     "1-hop": {
@@ -184,6 +186,9 @@ def test_build_markdown_report_includes_ablation_section():
     assert "Precision@5" not in markdown
     assert "Recall@K 与 Hit Rate@K 数值恒等" in markdown
     assert "公开豆瓣用户（douban_public_*)" in markdown
+    assert "Avg Main Test Time (s)" in markdown
+    assert "Total Elapsed (s)" in markdown
+    assert "全流程总耗时" in markdown
 
 
 def test_user_source_helpers_cover_public_filter():
@@ -391,6 +396,7 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
     assert report_bundle["legacy"]["selected_algorithms"] == ["kg_path"]
     assert report_bundle["main"]["num_negatives"] == 499
     assert report_bundle["legacy"]["num_negatives"] == 499
+    assert "suite_elapsed_seconds" in report_bundle["main"]
     assert prewarm_calls == []
     assert builder_calls == [
         {
@@ -399,6 +405,12 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
             "negative_seeds": evaluator.NEGATIVE_SAMPLE_SEEDS,
         }
     ]
+    payload = report_bundle["main"]["results"]["kg_path"]
+    assert "total_elapsed_seconds" in payload
+    assert "validation_elapsed_seconds" in payload
+    assert "main_test_elapsed_seconds" in payload
+    assert "ablation_elapsed_seconds" in payload
+    assert "legacy_elapsed_seconds" in payload
 
 
 def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):

@@ -489,6 +489,7 @@ def evaluate_suite(
     algorithms: list[str] | None = None,
     num_negatives: int = NUM_NEGATIVES,
 ) -> dict:
+    suite_started_at = time.perf_counter()
     selected_algorithm_names, selected_algorithms = _resolve_selected_algorithms(algorithms)
     negative_sample_seeds = list(NEGATIVE_SAMPLE_SEEDS)
 
@@ -521,16 +522,20 @@ def evaluate_suite(
     legacy_results = {}
 
     for algo_name, algo_class in selected_algorithms.items():
+        algo_started_at = time.perf_counter()
         print(f"\n🔄 评估算法: {algo_class.display_name} ({algo_name})...")
         best_params = {}
         validation_summary = {}
+        validation_elapsed_seconds = 0.0
         if len(algo_class.parameter_grid()) > 1 and validation_users:
+            validation_started_at = time.perf_counter()
             best_params, validation_summary = tune_algorithm(
                 algo_class=algo_class,
                 validation_users=validation_users,
                 all_movie_count=all_movie_count,
                 negative_seeds=negative_sample_seeds,
             )
+            validation_elapsed_seconds = round(time.perf_counter() - validation_started_at, 2)
             print(f"  🎯 验证集最优参数: {best_params}")
 
         algo = algo_class()
@@ -538,6 +543,7 @@ def evaluate_suite(
             algo.set_params(**best_params)
 
         print(f"  🧪 测试集评估: {len(test_users)} 用户 × {len(negative_sample_seeds)} 个负采样 seed")
+        main_test_started_at = time.perf_counter()
         test_summary = evaluate_algorithm(
             algo=algo,
             evaluation_users=test_users,
@@ -546,9 +552,11 @@ def evaluate_suite(
             all_movie_count=all_movie_count,
             progress_label=_build_progress_label("测试", algo.display_name, detail="main"),
         )
+        main_test_elapsed_seconds = round(time.perf_counter() - main_test_started_at, 2)
 
         ablations = {}
         ablation_items = list(algo_class.ablation_configs().items())
+        ablation_elapsed_seconds = 0.0
         if ablation_items:
             print(f"  🧩 消融实验: {len(ablation_items)} 组配置 × {len(test_users)} 用户")
         for idx, (label, ablation_params) in enumerate(ablation_items, start=1):
@@ -556,6 +564,7 @@ def evaluate_suite(
             merged_params = {**best_params, **ablation_params}
             if merged_params:
                 ablation_algo.set_params(**merged_params)
+            ablation_started_at = time.perf_counter()
             ablations[label] = evaluate_algorithm(
                 algo=ablation_algo,
                 evaluation_users=test_users,
@@ -570,9 +579,12 @@ def evaluate_suite(
                     detail=label,
                 ),
             )
+            ablation_elapsed_seconds += time.perf_counter() - ablation_started_at
             ablations[label]["params"] = merged_params
+        ablation_elapsed_seconds = round(ablation_elapsed_seconds, 2)
 
         print(f"  📎 Legacy 对照: {len(test_users)} 用户 × seed {LEGACY_NEGATIVE_SEED}")
+        legacy_started_at = time.perf_counter()
         legacy_summary = evaluate_algorithm(
             algo=algo,
             evaluation_users=test_users,
@@ -585,6 +597,8 @@ def evaluate_suite(
                 detail=f"seed={LEGACY_NEGATIVE_SEED}",
             ),
         )
+        legacy_elapsed_seconds = round(time.perf_counter() - legacy_started_at, 2)
+        total_elapsed_seconds = round(time.perf_counter() - algo_started_at, 2)
 
         main_results[algo_name] = {
             "display_name": algo_class.display_name,
@@ -593,6 +607,11 @@ def evaluate_suite(
             "diversity_at_10": test_summary["diversity_at_10"],
             "time_seconds": test_summary["time_seconds"],
             "avg_time_seconds": test_summary["avg_time_seconds"],
+            "total_elapsed_seconds": total_elapsed_seconds,
+            "validation_elapsed_seconds": validation_elapsed_seconds,
+            "main_test_elapsed_seconds": main_test_elapsed_seconds,
+            "ablation_elapsed_seconds": ablation_elapsed_seconds,
+            "legacy_elapsed_seconds": legacy_elapsed_seconds,
             "n_test_users": test_summary["n_users"],
             "best_params": best_params,
             "validation_summary": validation_summary,
@@ -606,10 +625,18 @@ def evaluate_suite(
             "diversity_at_10": legacy_summary["diversity_at_10"],
             "time_seconds": legacy_summary["time_seconds"],
             "avg_time_seconds": legacy_summary["avg_time_seconds"],
+            "elapsed_seconds": legacy_elapsed_seconds,
             "n_test_users": legacy_summary["n_users"],
             "negative_seed": LEGACY_NEGATIVE_SEED,
         }
-        print(f"  ✅ 完成 ({test_summary['time_seconds']}s)")
+        print(
+            "  ✅ 完成 "
+            f"(total={total_elapsed_seconds:.2f}s, "
+            f"validation={validation_elapsed_seconds:.2f}s, "
+            f"main={main_test_elapsed_seconds:.2f}s, "
+            f"ablation={ablation_elapsed_seconds:.2f}s, "
+            f"legacy={legacy_elapsed_seconds:.2f}s)"
+        )
 
     generated_at = datetime.now(timezone.utc).astimezone().isoformat()
     report = {
@@ -625,6 +652,7 @@ def evaluate_suite(
         "n_total_users": len(evaluation_users),
         "n_validation_users": len(validation_users),
         "n_test_users": len(test_users),
+        "suite_elapsed_seconds": round(time.perf_counter() - suite_started_at, 2),
         "results": main_results,
     }
     legacy_report = {
@@ -670,7 +698,8 @@ def _print_comparison_table(results: dict):
             f"  {payload['display_name']:<24}"
             f" coverage@20={payload['coverage_at_20']['mean']:.4f}±{payload['coverage_at_20']['std']:.4f}"
             f" diversity@10={payload['diversity_at_10']['mean']:.4f}±{payload['diversity_at_10']['std']:.4f}"
-            f" avg_time={payload['avg_time_seconds']:.4f}s"
+            f" avg_main_test_time={payload['avg_time_seconds']:.4f}s"
+            f" total={payload.get('total_elapsed_seconds', payload.get('time_seconds', 0.0)):.2f}s"
         )
 
 
@@ -787,6 +816,8 @@ def build_markdown_report(report: dict, *, include_ablations: bool) -> str:
     if "n_validation_users" in report:
         lines.append(f"- 验证集用户数: **{report['n_validation_users']}**")
     lines.append(f"- 测试集用户数: **{report['n_test_users']}**")
+    if "suite_elapsed_seconds" in report:
+        lines.append(f"- 全流程总耗时: **{report['suite_elapsed_seconds']:.2f}s**")
     lines.append(f"- 指标说明: **{SINGLE_POSITIVE_METRIC_NOTE}**")
     lines.append("")
 
@@ -808,14 +839,15 @@ def build_markdown_report(report: dict, *, include_ablations: bool) -> str:
 
     lines.append("## Coverage / Diversity / Time")
     lines.append("")
-    lines.append("| 算法 | Coverage@20 | Diversity@10 | Avg Time (s) |")
-    lines.append("|------|-------------|--------------|--------------|")
+    lines.append("| 算法 | Coverage@20 | Diversity@10 | Avg Main Test Time (s) | Total Elapsed (s) |")
+    lines.append("|------|-------------|--------------|-------------------------|-------------------|")
     for payload in report["results"].values():
         lines.append(
             f"| {payload['display_name']} "
             f"| {payload['coverage_at_20']['mean']:.4f} ± {payload['coverage_at_20']['std']:.4f} "
             f"| {payload['diversity_at_10']['mean']:.4f} ± {payload['diversity_at_10']['std']:.4f} "
-            f"| {payload['avg_time_seconds']:.4f} |"
+            f"| {payload['avg_time_seconds']:.4f} "
+            f"| {payload.get('total_elapsed_seconds', payload.get('time_seconds', 0.0)):.2f} |"
         )
     lines.append("")
 
