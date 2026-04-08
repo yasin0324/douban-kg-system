@@ -1,0 +1,256 @@
+{
+  "protocol_version": 1,
+  "generated_at": "2026-04-06T23:39:02.310094+08:00",
+  "eval_method": "single_seed_sampled_leave_one_out (1_positive + 499_negatives, seed=42)",
+  "user_source": "public",
+  "user_source_display": "公开豆瓣用户（douban_public_*)",
+  "num_negatives": 499,
+  "negative_sample_seeds": [
+    42
+  ],
+  "selected_algorithms": [
+    "cfkg",
+    "content",
+    "item_cf",
+    "kg_path",
+    "kg_embed"
+  ],
+  "n_test_users": 400,
+  "results": {
+    "cfkg": {
+      "display_name": "CFKG 主链路推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.0715,
+          "precision_std": 0.0,
+          "recall": 0.3575,
+          "recall_std": 0.0,
+          "ndcg": 0.3227,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.3575,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.036,
+          "precision_std": 0.0,
+          "recall": 0.36,
+          "recall_std": 0.0,
+          "ndcg": 0.3234,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.36,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0201,
+          "precision_std": 0.0,
+          "recall": 0.4025,
+          "recall_std": 0.0,
+          "ndcg": 0.3337,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.4025,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0282,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.8997,
+        "std": 0.0
+      },
+      "time_seconds": 5041.98,
+      "avg_time_seconds": 12.6049,
+      "n_test_users": 400,
+      "negative_seed": 42
+    },
+    "content": {
+      "display_name": "基于内容的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.0095,
+          "precision_std": 0.0,
+          "recall": 0.0475,
+          "recall_std": 0.0,
+          "ndcg": 0.0297,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.0475,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.011,
+          "precision_std": 0.0,
+          "recall": 0.11,
+          "recall_std": 0.0,
+          "ndcg": 0.05,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.11,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0094,
+          "precision_std": 0.0,
+          "recall": 0.1875,
+          "recall_std": 0.0,
+          "ndcg": 0.0694,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.1875,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0365,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.7563,
+        "std": 0.0
+      },
+      "time_seconds": 98.94,
+      "avg_time_seconds": 0.2474,
+      "n_test_users": 400,
+      "negative_seed": 42
+    },
+    "item_cf": {
+      "display_name": "基于物品的协同过滤",
+      "metrics": {
+        "5": {
+          "precision": 0.107,
+          "precision_std": 0.0,
+          "recall": 0.535,
+          "recall_std": 0.0,
+          "ndcg": 0.4004,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.535,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0708,
+          "precision_std": 0.0,
+          "recall": 0.7075,
+          "recall_std": 0.0,
+          "ndcg": 0.4557,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.7075,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0413,
+          "precision_std": 0.0,
+          "recall": 0.825,
+          "recall_std": 0.0,
+          "ndcg": 0.4854,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.825,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0286,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.9088,
+        "std": 0.0
+      },
+      "time_seconds": 400.41,
+      "avg_time_seconds": 1.001,
+      "n_test_users": 400,
+      "negative_seed": 42
+    },
+    "kg_path": {
+      "display_name": "基于知识图谱路径的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.04,
+          "precision_std": 0.0,
+          "recall": 0.2,
+          "recall_std": 0.0,
+          "ndcg": 0.1615,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.2,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0215,
+          "precision_std": 0.0,
+          "recall": 0.215,
+          "recall_std": 0.0,
+          "ndcg": 0.1665,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.215,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.012,
+          "precision_std": 0.0,
+          "recall": 0.24,
+          "recall_std": 0.0,
+          "ndcg": 0.1726,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.24,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0314,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.9069,
+        "std": 0.0
+      },
+      "time_seconds": 1678.25,
+      "avg_time_seconds": 4.1956,
+      "n_test_users": 400,
+      "negative_seed": 42
+    },
+    "kg_embed": {
+      "display_name": "基于知识图谱嵌入的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.045,
+          "precision_std": 0.0,
+          "recall": 0.225,
+          "recall_std": 0.0,
+          "ndcg": 0.1717,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.225,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.031,
+          "precision_std": 0.0,
+          "recall": 0.31,
+          "recall_std": 0.0,
+          "ndcg": 0.1988,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.31,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0196,
+          "precision_std": 0.0,
+          "recall": 0.3925,
+          "recall_std": 0.0,
+          "ndcg": 0.2195,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.3925,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0384,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.7959,
+        "std": 0.0
+      },
+      "time_seconds": 3410.03,
+      "avg_time_seconds": 8.5251,
+      "n_test_users": 400,
+      "negative_seed": 42
+    }
+  }
+}

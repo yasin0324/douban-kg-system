@@ -4,6 +4,7 @@ Knowledge-graph embedding recommender with expanded structural triples.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -19,6 +20,7 @@ from app.algorithms.graph_cache import (
     CORE_RELATIONS,
     EXPANDED_RELATIONS,
     GraphMetadataCache,
+    RATED_POSITIVE_RELATION,
     REL_ACTOR,
     REL_CONTENT_TYPE,
     REL_DIRECTOR,
@@ -82,6 +84,10 @@ class KGEmbedRecommender(BaseRecommender):
         "centroid_weight": 0.4,
         "max_seed_weight": 0.2,
         "entity_overlap_weight": 0.4,
+        "use_user_rating_relations": False,
+        "user_relation_weight": 0.0,
+        "artifact_profile": None,
+        "behavior_user_source": "all",
         "max_positive_rating_seeds": 30,
         "max_like_seeds": 10,
         "max_wish_seeds": 0,
@@ -108,17 +114,21 @@ class KGEmbedRecommender(BaseRecommender):
     @classmethod
     def parameter_grid(cls) -> list[dict]:
         grid = []
-        values = (0.2, 0.4, 0.6)
-        for centroid_weight in values:
-            for max_seed_weight in values:
-                for entity_overlap_weight in values:
-                    total = centroid_weight + max_seed_weight + entity_overlap_weight
-                    if abs(total - 1.0) > 1e-8:
+        for user_relation_weight in (0.4, 0.6, 0.8):
+            for entity_overlap_weight in (0.1, 0.2, 0.3):
+                for centroid_weight in (0.0, 0.1, 0.2):
+                    max_seed_weight = round(
+                        1.0 - user_relation_weight - entity_overlap_weight - centroid_weight,
+                        4,
+                    )
+                    if max_seed_weight < 0:
                         continue
                     grid.append(
                         {
                             "use_expanded_relations": True,
                             "use_fusion_ranking": True,
+                            "use_user_rating_relations": True,
+                            "user_relation_weight": user_relation_weight,
                             "centroid_weight": centroid_weight,
                             "max_seed_weight": max_seed_weight,
                             "entity_overlap_weight": entity_overlap_weight,
@@ -129,26 +139,32 @@ class KGEmbedRecommender(BaseRecommender):
     @classmethod
     def ablation_configs(cls) -> dict[str, dict]:
         return {
-            "原始三关系": {
-                "use_expanded_relations": False,
-                "use_fusion_ranking": False,
-                "centroid_weight": 1.0,
-                "max_seed_weight": 0.0,
-                "entity_overlap_weight": 0.0,
-            },
-            "扩图三元组": {
-                "use_expanded_relations": True,
-                "use_fusion_ranking": False,
-                "centroid_weight": 1.0,
-                "max_seed_weight": 0.0,
-                "entity_overlap_weight": 0.0,
-            },
-            "扩图三元组+融合排序": {
+            "结构嵌入": {
                 "use_expanded_relations": True,
                 "use_fusion_ranking": True,
+                "use_user_rating_relations": False,
+                "user_relation_weight": 0.0,
                 "centroid_weight": 0.4,
                 "max_seed_weight": 0.2,
                 "entity_overlap_weight": 0.4,
+            },
+            "结构嵌入+用户三元组": {
+                "use_expanded_relations": True,
+                "use_fusion_ranking": True,
+                "use_user_rating_relations": True,
+                "user_relation_weight": 1.0,
+                "centroid_weight": 0.0,
+                "max_seed_weight": 0.0,
+                "entity_overlap_weight": 0.0,
+            },
+            "全量融合": {
+                "use_expanded_relations": True,
+                "use_fusion_ranking": True,
+                "use_user_rating_relations": True,
+                "user_relation_weight": 0.6,
+                "centroid_weight": 0.1,
+                "max_seed_weight": 0.1,
+                "entity_overlap_weight": 0.2,
             },
         }
 
@@ -186,13 +202,15 @@ class KGEmbedRecommender(BaseRecommender):
         if not np.any(valid_mask):
             return []
 
+        user_relation_scores = self._normalize_vector(user_components["user_relation_scores"], valid_mask)
         centroid_scores = self._normalize_vector(user_components["centroid_scores"], valid_mask)
         max_seed_scores = self._normalize_vector(user_components["max_seed_scores"], valid_mask)
         overlap_scores = self._normalize_vector(user_components["entity_overlap_scores"], valid_mask)
 
         if self._config["use_fusion_ranking"]:
             final_scores = (
-                float(self._config["centroid_weight"]) * centroid_scores
+                float(self._config["user_relation_weight"]) * user_relation_scores
+                + float(self._config["centroid_weight"]) * centroid_scores
                 + float(self._config["max_seed_weight"]) * max_seed_scores
                 + float(self._config["entity_overlap_weight"]) * overlap_scores
             )
@@ -210,6 +228,7 @@ class KGEmbedRecommender(BaseRecommender):
                     "score": round(float(final_score), 4),
                     "reason": self._reason_for_movie(
                         mid=mid,
+                        user_relation_score=float(user_relation_scores[idx]),
                         centroid_score=float(centroid_scores[idx]),
                         max_seed_score=float(max_seed_scores[idx]),
                         overlap_score=float(overlap_scores[idx]),
@@ -309,8 +328,14 @@ class KGEmbedRecommender(BaseRecommender):
             positive_movies=positive_movies,
             artifacts=artifacts,
         )
+        user_relation_scores = self._user_relation_components(
+            user_id=user_id,
+            artifacts=artifacts,
+            exclude_from_training=exclude_from_training,
+        )
 
         payload = {
+            "user_relation_scores": user_relation_scores,
             "centroid_scores": centroid_scores,
             "max_seed_scores": max_seed_scores,
             "entity_overlap_scores": overlap_scores,
@@ -318,6 +343,51 @@ class KGEmbedRecommender(BaseRecommender):
         }
         self._user_component_cache[cache_key] = payload
         return payload
+
+    def _user_relation_components(
+        self,
+        *,
+        user_id: int,
+        artifacts: dict,
+        exclude_from_training: set[str],
+    ) -> np.ndarray:
+        scores = np.zeros(len(artifacts["movie_mid_list"]), dtype=np.float32)
+        if not self._config["use_user_rating_relations"]:
+            return scores
+        if exclude_from_training and not self._artifact_supports_holdout(user_id, exclude_from_training, artifacts):
+            return scores
+
+        user_idx = artifacts.get("entity_to_idx", {}).get(f"user_{user_id}")
+        relation_idx = artifacts.get("relation_to_idx", {}).get(RATED_POSITIVE_RELATION)
+        entity_embeddings = artifacts.get("entity_embeddings")
+        relation_embeddings = artifacts.get("relation_embeddings")
+        if (
+            user_idx is None
+            or relation_idx is None
+            or entity_embeddings is None
+            or relation_embeddings is None
+        ):
+            return scores
+
+        target_vec = entity_embeddings[user_idx] + relation_embeddings[relation_idx]
+        target_norm = float(np.linalg.norm(target_vec))
+        if target_norm <= 0:
+            return scores
+        target_vec = target_vec / target_norm
+        return np.maximum(artifacts["movie_matrix"] @ target_vec, 0.0)
+
+    def _artifact_supports_holdout(
+        self,
+        user_id: int,
+        exclude_from_training: set[str],
+        artifacts: dict,
+    ) -> bool:
+        if not exclude_from_training:
+            return True
+        expected_mid = (artifacts.get("holdout_positive_by_user") or {}).get(str(user_id))
+        if not expected_mid:
+            return False
+        return {str(expected_mid)} == {str(mid) for mid in exclude_from_training if mid}
 
     def _entity_overlap_components(self, positive_movies: list[dict], artifacts: dict) -> tuple[np.ndarray, dict[str, list[str]]]:
         scores = np.zeros(len(artifacts["movie_mid_list"]), dtype=np.float32)
@@ -388,11 +458,14 @@ class KGEmbedRecommender(BaseRecommender):
         self,
         *,
         mid: str,
+        user_relation_score: float,
         centroid_score: float,
         max_seed_score: float,
         overlap_score: float,
         overlap_reasons: list[str],
     ) -> str:
+        if user_relation_score >= max(centroid_score, max_seed_score, overlap_score):
+            return "与具有相似正反馈轨迹的用户兴趣一致"
         if self._config["use_fusion_ranking"] and overlap_score >= max(centroid_score, max_seed_score):
             if overlap_reasons:
                 return f"基于知识图谱实体重叠推荐：{overlap_reasons[0]}"
@@ -418,7 +491,48 @@ class KGEmbedRecommender(BaseRecommender):
         return normalized
 
     def _scope_name(self) -> str:
-        return "expanded" if self._config["use_expanded_relations"] else "core"
+        return self._artifact_scope()
+
+    def _artifact_scope(self, *, use_expanded_relations: bool | None = None) -> str:
+        base = "expanded" if (
+            self._config["use_expanded_relations"] if use_expanded_relations is None else use_expanded_relations
+        ) else "core"
+        profile = self._resolved_artifact_profile()
+        if not profile["include_user_positive_relations"]:
+            return base
+
+        digest = hashlib.sha1(
+            json.dumps(
+                profile,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()[:12]
+        return (
+            f"{base}_userpos_{profile['user_source']}_"
+            f"{profile['holdout_strategy']}_{profile['version']}_{digest}"
+        )
+
+    def _resolved_artifact_profile(self) -> dict:
+        raw_profile = self._config.get("artifact_profile") or {}
+        holdout_positive_by_user = {
+            str(user_id): str(mid)
+            for user_id, mid in sorted(
+                (raw_profile.get("holdout_positive_by_user") or {}).items(),
+                key=lambda item: (str(item[0]), str(item[1])),
+            )
+            if mid
+        }
+        return {
+            "version": str(raw_profile.get("version", "v1")),
+            "user_source": str(raw_profile.get("user_source", self._config["behavior_user_source"])),
+            "holdout_strategy": str(raw_profile.get("holdout_strategy", "none")),
+            "include_user_positive_relations": bool(
+                raw_profile.get("include_user_positive_relations", self._config["use_user_rating_relations"])
+            ),
+            "holdout_positive_by_user": holdout_positive_by_user,
+        }
 
     def _artifact_paths(self, scope: str) -> tuple[str, str]:
         os.makedirs(EMBED_DIR, exist_ok=True)
@@ -433,11 +547,26 @@ class KGEmbedRecommender(BaseRecommender):
             cls._shared_artifacts_by_scope = {}
 
     @classmethod
-    def preload_artifacts(cls, *, allow_training: bool | None = None) -> dict[str, bool]:
-        recommender = cls()
+    def preload_artifacts(
+        cls,
+        *,
+        allow_training: bool | None = None,
+        artifact_profile: dict | None = None,
+    ) -> dict[str, bool]:
+        profile = artifact_profile or {}
+        recommender = cls(
+            artifact_profile=artifact_profile,
+            use_user_rating_relations=bool(
+                profile.get(
+                    "include_user_positive_relations",
+                    profile.get("holdout_positive_by_user"),
+                )
+            ),
+            behavior_user_source=str(profile.get("user_source", "all")),
+        )
         readiness = {}
         for use_expanded_relations in (False, True):
-            scope = "expanded" if use_expanded_relations else "core"
+            scope = recommender._artifact_scope(use_expanded_relations=use_expanded_relations)
             readiness[scope] = (
                 recommender._load_or_train(
                     use_expanded_relations=use_expanded_relations,
@@ -448,8 +577,8 @@ class KGEmbedRecommender(BaseRecommender):
         return readiness
 
     @classmethod
-    def preload_existing_artifacts(cls):
-        return cls.preload_artifacts(allow_training=False)
+    def preload_existing_artifacts(cls, *, artifact_profile: dict | None = None):
+        return cls.preload_artifacts(allow_training=False, artifact_profile=artifact_profile)
 
     def _load_or_train(
         self,
@@ -457,9 +586,7 @@ class KGEmbedRecommender(BaseRecommender):
         use_expanded_relations: bool | None = None,
         allow_training: bool | None = None,
     ) -> dict | None:
-        scope = self._scope_name() if use_expanded_relations is None else (
-            "expanded" if use_expanded_relations else "core"
-        )
+        scope = self._artifact_scope(use_expanded_relations=use_expanded_relations)
         with self._shared_artifacts_lock:
             artifacts = self._shared_artifacts_by_scope.get(scope)
         if artifacts is not None:
@@ -480,7 +607,13 @@ class KGEmbedRecommender(BaseRecommender):
             return None
 
         logger.info("未找到 %s TransE 嵌入文件，开始训练...", scope)
-        artifacts = self._train_transe(use_expanded_relations=(scope == "expanded"))
+        artifacts = self._train_transe(
+            use_expanded_relations=(
+                self._config["use_expanded_relations"]
+                if use_expanded_relations is None
+                else use_expanded_relations
+            )
+        )
         if artifacts is None:
             return None
         with self._shared_artifacts_lock:
@@ -493,7 +626,13 @@ class KGEmbedRecommender(BaseRecommender):
             meta = json.load(file_obj)
 
         entity_embeddings = data["entity_embeddings"].astype(np.float32)
+        relation_embeddings = (
+            data["relation_embeddings"].astype(np.float32)
+            if "relation_embeddings" in data
+            else None
+        )
         entity_to_idx = meta["entity_to_idx"]
+        relation_to_idx = meta.get("relation_to_idx", {})
         idx_to_entity = {int(key): value for key, value in meta["idx_to_entity"].items()}
         movie_mid_list = meta["movie_mid_list"]
 
@@ -514,11 +653,15 @@ class KGEmbedRecommender(BaseRecommender):
 
         return {
             "entity_embeddings": entity_embeddings,
+            "relation_embeddings": relation_embeddings,
             "entity_to_idx": entity_to_idx,
+            "relation_to_idx": relation_to_idx,
             "idx_to_entity": idx_to_entity,
             "movie_mid_list": filtered_movie_mids,
             "mid_to_movie_idx": {mid: idx for idx, mid in enumerate(filtered_movie_mids)},
             "movie_matrix": movie_matrix.astype(np.float32),
+            "artifact_profile": meta.get("artifact_profile", {}),
+            "holdout_positive_by_user": (meta.get("artifact_profile", {}) or {}).get("holdout_positive_by_user", {}),
         }
 
     def _train_transe(self, *, use_expanded_relations: bool) -> dict | None:
@@ -526,7 +669,7 @@ class KGEmbedRecommender(BaseRecommender):
             use_expanded_relations=use_expanded_relations
         )
         if not triples:
-            logger.warning("没有结构三元组数据，无法训练 TransE")
+            logger.warning("没有可用三元组数据，无法训练 TransE")
             return None
 
         rng = np.random.default_rng(self.RANDOM_SEED)
@@ -567,9 +710,10 @@ class KGEmbedRecommender(BaseRecommender):
         best_val_loss = float("inf")
         patience = 0
 
+        scope = self._artifact_scope(use_expanded_relations=use_expanded_relations)
         logger.info(
             "开始训练 %s TransE: triples=%s, train=%s, val=%s",
-            "expanded" if use_expanded_relations else "core",
+            scope,
             len(triple_indices),
             len(train_triples),
             len(val_triples),
@@ -625,15 +769,16 @@ class KGEmbedRecommender(BaseRecommender):
                     logger.info("  验证集无提升，提前停止训练")
                     break
 
-        scope = "expanded" if use_expanded_relations else "core"
         embed_path, meta_path = self._artifact_paths(scope)
         np.savez(embed_path, entity_embeddings=best_entity_emb, relation_embeddings=best_relation_emb)
         with open(meta_path, "w", encoding="utf-8") as file_obj:
             json.dump(
                 {
                     "entity_to_idx": entity_to_idx,
+                    "relation_to_idx": relation_to_idx,
                     "idx_to_entity": {str(idx): entity for idx, entity in idx_to_entity.items()},
                     "movie_mid_list": sorted(movie_mids),
+                    "artifact_profile": self._resolved_artifact_profile(),
                 },
                 file_obj,
                 ensure_ascii=False,
@@ -700,9 +845,13 @@ class KGEmbedRecommender(BaseRecommender):
         use_expanded_relations: bool | None = None,
     ) -> tuple[list[tuple[str, str, str]], set[str], dict[str, str], dict[str, tuple[str, str]]]:
         scope = self._config["use_expanded_relations"] if use_expanded_relations is None else use_expanded_relations
+        artifact_profile = self._resolved_artifact_profile()
         return GraphMetadataCache.build_triples(
             use_expanded_relations=scope,
             include_inverse=True,
+            include_user_positive_relations=bool(artifact_profile["include_user_positive_relations"]),
+            user_source=artifact_profile["user_source"],
+            holdout_positive_by_user=artifact_profile["holdout_positive_by_user"],
         )
 
     def _margin_loss(

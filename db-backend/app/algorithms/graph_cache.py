@@ -4,6 +4,7 @@ Shared graph metadata cache for recommendation algorithms.
 
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -92,8 +93,24 @@ def inverse_relation_name(rel_name: str) -> str:
     return f"{rel_name}_REV"
 
 
+RATED_POSITIVE_RELATION = "RATED_POSITIVE"
+RATED_POSITIVE_RELATION_REV = inverse_relation_name(RATED_POSITIVE_RELATION)
+
+
 def safe_idf(degree: int) -> float:
     return 1.0 / math.log(2.0 + max(degree, 1))
+
+
+def _user_source_filter_clause(user_source: str) -> tuple[str, tuple[str, ...]]:
+    if user_source == "all":
+        return "", ()
+    if user_source == "public":
+        return "WHERE u.username LIKE %s", ("douban_public_%",)
+    if user_source == "seed_cfkg":
+        return "WHERE u.username LIKE %s", ("seed_cfkg_%",)
+    if user_source == "non_public":
+        return "WHERE u.username NOT LIKE %s", ("douban_public_%",)
+    raise ValueError(f"Unsupported user source: {user_source}")
 
 
 @dataclass(slots=True)
@@ -157,7 +174,10 @@ class GraphMetadataCache:
     _person_name_map: dict[str, str] = {}
     _relation_inverted_index: dict[str, dict[str, set[str]]] = {}
     _relation_degrees: dict[str, dict[str, int]] = {}
-    _triples_cache: dict[tuple[bool, bool], tuple[list[tuple[str, str, str]], set[str], dict[str, str], dict[str, tuple[str, str]]]] = {}
+    _triples_cache: dict[
+        tuple[bool, bool, bool, str, str],
+        tuple[list[tuple[str, str, str]], set[str], dict[str, str], dict[str, tuple[str, str]]],
+    ] = {}
 
     @classmethod
     def clear(cls):
@@ -242,9 +262,20 @@ class GraphMetadataCache:
         *,
         use_expanded_relations: bool = True,
         include_inverse: bool = True,
+        include_user_positive_relations: bool = False,
+        user_source: str = "all",
+        holdout_positive_by_user: dict[int | str, str] | None = None,
     ) -> tuple[list[tuple[str, str, str]], set[str], dict[str, str], dict[str, tuple[str, str]]]:
         cls.ensure_loaded()
-        cache_key = (use_expanded_relations, include_inverse)
+        holdout_map = cls._canonical_holdout_map(holdout_positive_by_user)
+        holdout_signature = json.dumps(holdout_map, ensure_ascii=False, sort_keys=True)
+        cache_key = (
+            use_expanded_relations,
+            include_inverse,
+            include_user_positive_relations,
+            str(user_source),
+            holdout_signature,
+        )
         if cache_key in cls._triples_cache:
             return cls._triples_cache[cache_key]
 
@@ -277,9 +308,105 @@ class GraphMetadataCache:
                         if include_inverse:
                             triples.append((movie_key, inverse_relation_name(rel_name), entity_key))
 
+        if include_user_positive_relations:
+            relation_types[RATED_POSITIVE_RELATION] = ("user", "movie")
+            if include_inverse:
+                relation_types[RATED_POSITIVE_RELATION_REV] = ("movie", "user")
+            for user_key, movie_key in cls._load_user_positive_edges(
+                user_source=user_source,
+                holdout_positive_by_user=holdout_map,
+            ):
+                if movie_key not in entity_types:
+                    continue
+                entity_types[user_key] = "user"
+                triples.append((user_key, RATED_POSITIVE_RELATION, movie_key))
+                if include_inverse:
+                    triples.append((movie_key, RATED_POSITIVE_RELATION_REV, user_key))
+
         payload = (triples, movie_mids, entity_types, relation_types)
         cls._triples_cache[cache_key] = payload
         return payload
+
+    @classmethod
+    def _canonical_holdout_map(
+        cls,
+        holdout_positive_by_user: dict[int | str, str] | None,
+    ) -> dict[str, str]:
+        if not holdout_positive_by_user:
+            return {}
+        return {
+            str(user_id): str(mid)
+            for user_id, mid in sorted(
+                holdout_positive_by_user.items(),
+                key=lambda item: (str(item[0]), str(item[1])),
+            )
+            if mid
+        }
+
+    @classmethod
+    def _load_user_positive_edges(
+        cls,
+        *,
+        user_source: str,
+        holdout_positive_by_user: dict[str, str],
+    ) -> set[tuple[str, str]]:
+        clause, params = _user_source_filter_clause(user_source)
+        rating_query = (
+            "SELECT r.user_id, r.mid, r.rating "
+            "FROM user_movie_ratings r "
+            "JOIN users u ON u.id = r.user_id "
+            f"{clause}"
+        )
+        pref_query = (
+            "SELECT p.user_id, p.mid, p.pref_type "
+            "FROM user_movie_prefs p "
+            "JOIN users u ON u.id = p.user_id "
+            f"{clause}"
+        )
+
+        conn = get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(rating_query, params)
+                rating_rows = cursor.fetchall()
+            with conn.cursor() as cursor:
+                cursor.execute(pref_query, params)
+                pref_rows = cursor.fetchall()
+        finally:
+            conn.close()
+
+        user_edges: set[tuple[str, str]] = set()
+        valid_movie_keys = {embed_entity_key("movie", mid) for mid in cls._movie_mids}
+
+        for row in rating_rows:
+            try:
+                is_positive = float(row["rating"]) >= 3.5
+            except (TypeError, ValueError):
+                is_positive = False
+            if not is_positive:
+                continue
+            user_id = str(row["user_id"])
+            mid = str(row["mid"])
+            if holdout_positive_by_user.get(user_id) == mid:
+                continue
+            movie_key = embed_entity_key("movie", mid)
+            if movie_key not in valid_movie_keys:
+                continue
+            user_edges.add((embed_entity_key("user", user_id), movie_key))
+
+        for row in pref_rows:
+            if str(row.get("pref_type") or "") != "like":
+                continue
+            user_id = str(row["user_id"])
+            mid = str(row["mid"])
+            if holdout_positive_by_user.get(user_id) == mid:
+                continue
+            movie_key = embed_entity_key("movie", mid)
+            if movie_key not in valid_movie_keys:
+                continue
+            user_edges.add((embed_entity_key("user", user_id), movie_key))
+
+        return user_edges
 
     @classmethod
     def _load(cls):

@@ -137,12 +137,50 @@ def _selected_algorithm_suffix(
     return "_" + "_".join(suffix_parts)
 
 
-def _prewarm_embedding_artifacts() -> dict[str, bool]:
+def _build_kg_embed_artifact_profile(
+    evaluation_users: list[dict],
+    *,
+    user_source: str,
+) -> dict | None:
+    if user_source != "public":
+        return None
+    holdout_positive_by_user = {
+        str(item["user_id"]): str(item["test_mid"])
+        for item in evaluation_users
+        if item.get("user_id") is not None and item.get("test_mid")
+    }
+    if not holdout_positive_by_user:
+        return None
+    return {
+        "version": "offline_public_v1",
+        "user_source": "public",
+        "holdout_strategy": "last_positive_removed",
+        "holdout_positive_by_user": holdout_positive_by_user,
+    }
+
+
+def _kg_embed_init_kwargs(artifact_profile: dict | None) -> dict:
+    if not artifact_profile:
+        return {}
+    return {
+        "artifact_profile": artifact_profile,
+        "behavior_user_source": artifact_profile.get("user_source", "all"),
+        "use_user_rating_relations": True,
+        "use_expanded_relations": True,
+        "use_fusion_ranking": True,
+        "user_relation_weight": 0.6,
+        "entity_overlap_weight": 0.2,
+        "centroid_weight": 0.1,
+        "max_seed_weight": 0.1,
+    }
+
+
+def _prewarm_embedding_artifacts(*, artifact_profile: dict | None = None) -> dict[str, bool]:
     from app.algorithms.kg_embed import KGEmbedRecommender
 
     print("\n♨️ 预热 KG-Embed 嵌入工件（core + expanded）...")
     started_at = time.perf_counter()
-    readiness = KGEmbedRecommender.preload_artifacts()
+    readiness = KGEmbedRecommender.preload_artifacts(artifact_profile=artifact_profile)
     ready_scopes = [scope for scope, ready in readiness.items() if ready]
     elapsed = time.perf_counter() - started_at
     if ready_scopes:
@@ -451,12 +489,13 @@ def tune_algorithm(
     all_movie_count: int,
     *,
     negative_seeds: list[int],
+    init_kwargs: dict | None = None,
 ) -> tuple[dict, dict]:
     param_grid = algo_class.parameter_grid()
     if len(param_grid) <= 1:
         return {}, {}
 
-    algo = algo_class()
+    algo = algo_class(**(init_kwargs or {}))
     validation_results = {}
     print(
         f"  🔍 验证集网格搜索: {len(param_grid)} 组参数 × {len(validation_users)} 用户"
@@ -507,6 +546,10 @@ def evaluate_suite(
         num_negatives=num_negatives,
         negative_seeds=negative_sample_seeds,
     )
+    kg_embed_artifact_profile = _build_kg_embed_artifact_profile(
+        evaluation_users,
+        user_source=user_source,
+    )
     validation_users, test_users = split_evaluation_users(evaluation_users)
     print(f"  符合条件用户数: {len(evaluation_users)}")
     print(f"  验证集用户数: {len(validation_users)}")
@@ -516,13 +559,18 @@ def evaluate_suite(
         raise RuntimeError("没有足够的用户用于离线评估")
 
     if "kg_embed" in selected_algorithm_names:
-        _prewarm_embedding_artifacts()
+        _prewarm_embedding_artifacts(artifact_profile=kg_embed_artifact_profile)
 
     main_results = {}
     legacy_results = {}
 
     for algo_name, algo_class in selected_algorithms.items():
         algo_started_at = time.perf_counter()
+        init_kwargs = (
+            _kg_embed_init_kwargs(kg_embed_artifact_profile)
+            if algo_name == "kg_embed"
+            else {}
+        )
         print(f"\n🔄 评估算法: {algo_class.display_name} ({algo_name})...")
         best_params = {}
         validation_summary = {}
@@ -534,11 +582,12 @@ def evaluate_suite(
                 validation_users=validation_users,
                 all_movie_count=all_movie_count,
                 negative_seeds=negative_sample_seeds,
+                init_kwargs=init_kwargs,
             )
             validation_elapsed_seconds = round(time.perf_counter() - validation_started_at, 2)
             print(f"  🎯 验证集最优参数: {best_params}")
 
-        algo = algo_class()
+        algo = algo_class(**init_kwargs)
         if best_params:
             algo.set_params(**best_params)
 
@@ -560,7 +609,7 @@ def evaluate_suite(
         if ablation_items:
             print(f"  🧩 消融实验: {len(ablation_items)} 组配置 × {len(test_users)} 用户")
         for idx, (label, ablation_params) in enumerate(ablation_items, start=1):
-            ablation_algo = algo_class()
+            ablation_algo = algo_class(**init_kwargs)
             merged_params = {**best_params, **ablation_params}
             if merged_params:
                 ablation_algo.set_params(**merged_params)

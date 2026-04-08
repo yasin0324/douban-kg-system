@@ -58,6 +58,7 @@ Desktop.ini
 
 db-backend/data/embeddings/transe_embeddings_core.npz
 db-backend/data/embeddings/transe_embeddings_expanded.npz
+db-backend/data/embeddings/*.npz
 db-backend/data/embeddings/transe_meta_core.json
 db-backend/data/embeddings/transe_meta_expanded.json
 db-backend/data/embeddings/backup_*/

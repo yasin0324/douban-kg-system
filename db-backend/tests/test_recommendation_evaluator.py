@@ -250,13 +250,31 @@ def test_build_evaluation_users_respects_num_negatives(monkeypatch):
     assert all(len(rows) == 5 for rows in users[0]["sampled_negatives"].values())
 
 
+def test_build_kg_embed_artifact_profile_for_public_users():
+    profile = evaluator._build_kg_embed_artifact_profile(
+        [
+            {"user_id": 1, "test_mid": "m1"},
+            {"user_id": 2, "test_mid": "m2"},
+        ],
+        user_source="public",
+    )
+
+    assert profile == {
+        "version": "offline_public_v1",
+        "user_source": "public",
+        "holdout_strategy": "last_positive_removed",
+        "holdout_positive_by_user": {"1": "m1", "2": "m2"},
+    }
+    assert evaluator._build_kg_embed_artifact_profile([], user_source="all") is None
+
+
 def test_prewarm_embedding_artifacts_invokes_kg_embed_preload(monkeypatch, capsys):
     from app.algorithms.kg_embed import KGEmbedRecommender
 
     calls = []
 
-    def fake_preload(cls, *, allow_training=None):
-        calls.append(allow_training)
+    def fake_preload(cls, *, allow_training=None, artifact_profile=None):
+        calls.append((allow_training, artifact_profile))
         return {"core": True, "expanded": True}
 
     monkeypatch.setattr(
@@ -265,11 +283,13 @@ def test_prewarm_embedding_artifacts_invokes_kg_embed_preload(monkeypatch, capsy
         classmethod(fake_preload),
     )
 
-    readiness = evaluator._prewarm_embedding_artifacts()
+    readiness = evaluator._prewarm_embedding_artifacts(
+        artifact_profile={"user_source": "public", "holdout_positive_by_user": {"1": "m1"}}
+    )
     captured = capsys.readouterr()
 
     assert readiness == {"core": True, "expanded": True}
-    assert calls == [None]
+    assert calls == [(None, {"user_source": "public", "holdout_positive_by_user": {"1": "m1"}})]
     assert "预热 KG-Embed 嵌入工件" in captured.out
     assert "KG-Embed 预热完成" in captured.out
 
@@ -380,7 +400,7 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
     monkeypatch.setattr(
         evaluator,
         "_prewarm_embedding_artifacts",
-        lambda: prewarm_calls.append(True) or {"core": True, "expanded": True},
+        lambda artifact_profile=None: prewarm_calls.append(artifact_profile) or {"core": True, "expanded": True},
     )
     monkeypatch.setattr(evaluator, "evaluate_algorithm", lambda **kwargs: _fake_eval_summary())
 
@@ -411,6 +431,67 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
     assert "main_test_elapsed_seconds" in payload
     assert "ablation_elapsed_seconds" in payload
     assert "legacy_elapsed_seconds" in payload
+
+
+def test_evaluate_suite_passes_holdout_profile_to_kg_embed(monkeypatch):
+    class SelectedAlgo(FakeAlgo):
+        name = "kg_embed"
+        display_name = "KG Embed"
+        init_calls = []
+
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.init_kwargs = kwargs
+            self.__class__.init_calls.append(kwargs)
+
+        @classmethod
+        def parameter_grid(cls):
+            return [{}]
+
+        @classmethod
+        def ablation_configs(cls):
+            return {}
+
+    monkeypatch.setattr(
+        algorithms_module,
+        "ALGORITHMS",
+        {"kg_embed": SelectedAlgo},
+    )
+    monkeypatch.setattr(algorithms_module, "ALGORITHM_NAMES", ["kg_embed"])
+    monkeypatch.setattr(
+        evaluator,
+        "build_evaluation_users",
+        lambda user_source="all", num_negatives=evaluator.NUM_NEGATIVES, negative_seeds=None: (
+            [{"user_id": 1, "test_mid": "m1", "sampled_negatives": {seed: ["n1"] for seed in evaluator.NEGATIVE_SAMPLE_SEEDS}}],
+            100,
+        ),
+    )
+    monkeypatch.setattr(evaluator, "split_evaluation_users", lambda evaluation_users: ([], evaluation_users))
+    prewarm_calls = []
+    monkeypatch.setattr(
+        evaluator,
+        "_prewarm_embedding_artifacts",
+        lambda artifact_profile=None: prewarm_calls.append(artifact_profile) or {"core": True, "expanded": True},
+    )
+    monkeypatch.setattr(evaluator, "evaluate_algorithm", lambda **kwargs: _fake_eval_summary())
+
+    evaluator.evaluate_suite(
+        user_source="public",
+        algorithms=["kg_embed"],
+        num_negatives=499,
+    )
+
+    assert prewarm_calls == [
+        {
+            "version": "offline_public_v1",
+            "user_source": "public",
+            "holdout_strategy": "last_positive_removed",
+            "holdout_positive_by_user": {"1": "m1"},
+        }
+    ]
+    assert SelectedAlgo.init_calls
+    assert any(call["use_user_rating_relations"] is True for call in SelectedAlgo.init_calls)
+    assert all(call["artifact_profile"]["holdout_positive_by_user"] == {"1": "m1"} for call in SelectedAlgo.init_calls)
 
 
 def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):

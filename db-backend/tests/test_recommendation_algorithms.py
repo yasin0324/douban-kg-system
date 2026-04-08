@@ -6,6 +6,8 @@ from app.algorithms.cfkg import CFKGRecommender
 from app.algorithms.graph_cache import (
     GraphMetadataCache,
     MovieGraphProfile,
+    RATED_POSITIVE_RELATION,
+    RATED_POSITIVE_RELATION_REV,
     REL_ACTOR,
     REL_DIRECTOR,
 )
@@ -60,6 +62,74 @@ def test_graph_cache_build_triples_excludes_user_and_rated_relations():
     assert "IN_LANGUAGE" in relation_types
     assert "HAS_CONTENT_TYPE" in relation_types
     assert "IN_YEAR_BUCKET" in relation_types
+
+
+def test_graph_cache_build_triples_can_include_user_positive_relations_and_holdouts(monkeypatch):
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._movie_profiles = {
+        "m1": MovieGraphProfile(mid="m1", name="Movie 1"),
+        "m2": MovieGraphProfile(mid="m2", name="Movie 2"),
+    }
+    GraphMetadataCache._movie_mids = ["m1", "m2"]
+    GraphMetadataCache._movie_name_map = {"m1": "Movie 1", "m2": "Movie 2"}
+    GraphMetadataCache._triples_cache = {}
+
+    rating_rows = [
+        {"user_id": 1, "mid": "m1", "rating": 5.0},
+        {"user_id": 1, "mid": "m2", "rating": 4.0},
+        {"user_id": 2, "mid": "m2", "rating": 4.5},
+    ]
+    pref_rows = [
+        {"user_id": 2, "mid": "m1", "pref_type": "like"},
+        {"user_id": 3, "mid": "m1", "pref_type": "want_to_watch"},
+    ]
+
+    class FakeCursor:
+        def __init__(self):
+            self._result = []
+
+        def execute(self, query, params=()):
+            if "FROM user_movie_ratings" in query:
+                self._result = rating_rows
+            elif "FROM user_movie_prefs" in query:
+                self._result = pref_rows
+            else:
+                raise AssertionError(query)
+
+        def fetchall(self):
+            return list(self._result)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.algorithms.graph_cache.get_connection", lambda: FakeConn())
+
+    triples, _, entity_types, relation_types = GraphMetadataCache.build_triples(
+        include_user_positive_relations=True,
+        user_source="public",
+        holdout_positive_by_user={"1": "m2"},
+    )
+
+    triple_set = set(triples)
+    assert ("user_1", RATED_POSITIVE_RELATION, "movie_m1") in triple_set
+    assert ("movie_m1", RATED_POSITIVE_RELATION_REV, "user_1") in triple_set
+    assert ("user_1", RATED_POSITIVE_RELATION, "movie_m2") not in triple_set
+    assert ("user_2", RATED_POSITIVE_RELATION, "movie_m2") in triple_set
+    assert ("user_2", RATED_POSITIVE_RELATION, "movie_m1") in triple_set
+    assert ("user_3", RATED_POSITIVE_RELATION, "movie_m1") not in triple_set
+    assert relation_types[RATED_POSITIVE_RELATION] == ("user", "movie")
+    assert relation_types[RATED_POSITIVE_RELATION_REV] == ("movie", "user")
+    assert entity_types["user_1"] == "user"
 
 
 def test_kg_embed_negative_sampling_respects_entity_types():
@@ -124,6 +194,104 @@ def test_kg_embed_overlap_reason_uses_person_names():
     assert recommender._overlap_reason(REL_ACTOR, "p2") == (
         "偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
     )
+
+
+def test_kg_embed_load_artifacts_includes_relation_indexes(tmp_path):
+    embed_path = tmp_path / "embeddings.npz"
+    meta_path = tmp_path / "meta.json"
+    np.savez(
+        embed_path,
+        entity_embeddings=np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+        relation_embeddings=np.array([[0.5, 0.5]], dtype=np.float32),
+    )
+    meta_path.write_text(
+        '{"entity_to_idx":{"movie_m1":0,"user_1":1},'
+        '"relation_to_idx":{"RATED_POSITIVE":0},'
+        '"idx_to_entity":{"0":"movie_m1","1":"user_1"},'
+        '"movie_mid_list":["m1"],'
+        '"artifact_profile":{"holdout_positive_by_user":{"1":"m9"}}}',
+        encoding="utf-8",
+    )
+
+    recommender = KGEmbedRecommender()
+    artifacts = recommender._load_artifacts(str(embed_path), str(meta_path))
+
+    assert artifacts["relation_embeddings"].shape == (1, 2)
+    assert artifacts["relation_to_idx"][RATED_POSITIVE_RELATION] == 0
+    assert artifacts["holdout_positive_by_user"] == {"1": "m9"}
+
+
+def test_kg_embed_user_relation_components_use_user_and_relation_embeddings():
+    recommender = KGEmbedRecommender(use_user_rating_relations=True)
+    artifacts = {
+        "movie_mid_list": ["m1", "m2"],
+        "entity_to_idx": {"user_1": 0},
+        "relation_to_idx": {RATED_POSITIVE_RELATION: 0},
+        "entity_embeddings": np.array([[1.0, 0.0]], dtype=np.float32),
+        "relation_embeddings": np.array([[0.0, 1.0]], dtype=np.float32),
+        "movie_matrix": np.array(
+            [
+                [1 / np.sqrt(2), 1 / np.sqrt(2)],
+                [0.0, 1.0],
+            ],
+            dtype=np.float32,
+        ),
+        "holdout_positive_by_user": {"1": "m9"},
+    }
+
+    scores = recommender._user_relation_components(
+        user_id=1,
+        artifacts=artifacts,
+        exclude_from_training={"m9"},
+    )
+
+    assert scores[0] == pytest.approx(1.0, rel=1e-4)
+    assert scores[1] == pytest.approx(1 / np.sqrt(2), rel=1e-4)
+
+
+def test_kg_embed_user_relation_components_returns_zero_without_matching_holdout():
+    recommender = KGEmbedRecommender(use_user_rating_relations=True)
+    artifacts = {
+        "movie_mid_list": ["m1"],
+        "entity_to_idx": {"user_1": 0},
+        "relation_to_idx": {RATED_POSITIVE_RELATION: 0},
+        "entity_embeddings": np.array([[1.0, 0.0]], dtype=np.float32),
+        "relation_embeddings": np.array([[0.0, 1.0]], dtype=np.float32),
+        "movie_matrix": np.array([[1.0, 0.0]], dtype=np.float32),
+        "holdout_positive_by_user": {},
+    }
+
+    scores = recommender._user_relation_components(
+        user_id=1,
+        artifacts=artifacts,
+        exclude_from_training={"m9"},
+    )
+
+    assert np.count_nonzero(scores) == 0
+
+
+def test_kg_embed_scope_changes_with_holdout_profile():
+    recommender_a = KGEmbedRecommender(
+        use_user_rating_relations=True,
+        artifact_profile={
+            "version": "offline_public_v1",
+            "user_source": "public",
+            "holdout_strategy": "last_positive_removed",
+            "holdout_positive_by_user": {"1": "m1"},
+        },
+    )
+    recommender_b = KGEmbedRecommender(
+        use_user_rating_relations=True,
+        artifact_profile={
+            "version": "offline_public_v1",
+            "user_source": "public",
+            "holdout_strategy": "last_positive_removed",
+            "holdout_positive_by_user": {"1": "m2"},
+        },
+    )
+
+    assert recommender_a._scope_name() != recommender_b._scope_name()
+    assert recommender_a._scope_name().startswith("expanded_userpos_public")
 
 
 def test_kg_path_scoring_matches_manual_accumulation():
