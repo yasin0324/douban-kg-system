@@ -178,6 +178,10 @@ class GraphMetadataCache:
         tuple[bool, bool, bool, str, str],
         tuple[list[tuple[str, str, str]], set[str], dict[str, str], dict[str, tuple[str, str]]],
     ] = {}
+    _user_positive_path_cache: dict[
+        tuple[str, str],
+        tuple[dict[str, dict[str, float]], dict[str, dict[str, float]], dict[str, int]],
+    ] = {}
 
     @classmethod
     def clear(cls):
@@ -190,6 +194,7 @@ class GraphMetadataCache:
             cls._relation_inverted_index = {}
             cls._relation_degrees = {}
             cls._triples_cache = {}
+            cls._user_positive_path_cache = {}
 
     @classmethod
     def ensure_loaded(cls):
@@ -328,6 +333,46 @@ class GraphMetadataCache:
         return payload
 
     @classmethod
+    def build_user_positive_path_index(
+        cls,
+        *,
+        user_source: str = "all",
+        holdout_positive_by_user: dict[int | str, str] | None = None,
+    ) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]], dict[str, int]]:
+        cls.ensure_loaded()
+        holdout_map = cls._canonical_holdout_map(holdout_positive_by_user)
+        holdout_signature = json.dumps(holdout_map, ensure_ascii=False, sort_keys=True)
+        cache_key = (str(user_source), holdout_signature)
+        if cache_key in cls._user_positive_path_cache:
+            return cls._user_positive_path_cache[cache_key]
+
+        user_to_movies_raw = cls._load_user_positive_signal_weights(
+            user_source=user_source,
+            holdout_positive_by_user=holdout_map,
+        )
+        user_to_movies = {
+            user_id: {mid: movies[mid] for mid in sorted(movies)}
+            for user_id, movies in sorted(user_to_movies_raw.items())
+            if movies
+        }
+        movie_to_users_raw: dict[str, dict[str, float]] = defaultdict(dict)
+        user_positive_degree: dict[str, int] = {}
+
+        for user_id, movie_weights in user_to_movies.items():
+            user_positive_degree[user_id] = len(movie_weights)
+            for mid, weight in movie_weights.items():
+                movie_to_users_raw[mid][user_id] = float(weight)
+
+        movie_to_users = {
+            mid: {user_id: user_weights[user_id] for user_id in sorted(user_weights)}
+            for mid, user_weights in sorted(movie_to_users_raw.items())
+            if user_weights
+        }
+        payload = (user_to_movies, movie_to_users, user_positive_degree)
+        cls._user_positive_path_cache[cache_key] = payload
+        return payload
+
+    @classmethod
     def _canonical_holdout_map(
         cls,
         holdout_positive_by_user: dict[int | str, str] | None,
@@ -350,6 +395,23 @@ class GraphMetadataCache:
         user_source: str,
         holdout_positive_by_user: dict[str, str],
     ) -> set[tuple[str, str]]:
+        user_to_movies = cls._load_user_positive_signal_weights(
+            user_source=user_source,
+            holdout_positive_by_user=holdout_positive_by_user,
+        )
+        return {
+            (embed_entity_key("user", user_id), embed_entity_key("movie", mid))
+            for user_id, movie_weights in user_to_movies.items()
+            for mid in movie_weights
+        }
+
+    @classmethod
+    def _load_user_positive_signal_weights(
+        cls,
+        *,
+        user_source: str,
+        holdout_positive_by_user: dict[str, str],
+    ) -> dict[str, dict[str, float]]:
         clause, params = _user_source_filter_clause(user_source)
         rating_query = (
             "SELECT r.user_id, r.mid, r.rating "
@@ -375,8 +437,8 @@ class GraphMetadataCache:
         finally:
             conn.close()
 
-        user_edges: set[tuple[str, str]] = set()
-        valid_movie_keys = {embed_entity_key("movie", mid) for mid in cls._movie_mids}
+        user_movie_weights: dict[str, dict[str, float]] = defaultdict(dict)
+        valid_movie_mids = set(cls._movie_mids)
 
         for row in rating_rows:
             try:
@@ -389,10 +451,13 @@ class GraphMetadataCache:
             mid = str(row["mid"])
             if holdout_positive_by_user.get(user_id) == mid:
                 continue
-            movie_key = embed_entity_key("movie", mid)
-            if movie_key not in valid_movie_keys:
+            if mid not in valid_movie_mids:
                 continue
-            user_edges.add((embed_entity_key("user", user_id), movie_key))
+            weight = max(float(row["rating"]) / 5.0, 0.0)
+            user_movie_weights[user_id][mid] = max(
+                float(user_movie_weights[user_id].get(mid, 0.0)),
+                weight,
+            )
 
         for row in pref_rows:
             if str(row.get("pref_type") or "") != "like":
@@ -401,12 +466,14 @@ class GraphMetadataCache:
             mid = str(row["mid"])
             if holdout_positive_by_user.get(user_id) == mid:
                 continue
-            movie_key = embed_entity_key("movie", mid)
-            if movie_key not in valid_movie_keys:
+            if mid not in valid_movie_mids:
                 continue
-            user_edges.add((embed_entity_key("user", user_id), movie_key))
+            user_movie_weights[user_id][mid] = max(
+                float(user_movie_weights[user_id].get(mid, 0.0)),
+                0.7,
+            )
 
-        return user_edges
+        return user_movie_weights
 
     @classmethod
     def _load(cls):

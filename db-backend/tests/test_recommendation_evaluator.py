@@ -268,6 +268,24 @@ def test_build_kg_embed_artifact_profile_for_public_users():
     assert evaluator._build_kg_embed_artifact_profile([], user_source="all") is None
 
 
+def test_build_kg_path_behavior_profile_for_public_users():
+    profile = evaluator._build_kg_path_behavior_profile(
+        [
+            {"user_id": 1, "test_mid": "m1"},
+            {"user_id": 2, "test_mid": "m2"},
+        ],
+        user_source="public",
+    )
+
+    assert profile == {
+        "version": "offline_public_v1",
+        "user_source": "public",
+        "holdout_strategy": "last_positive_removed",
+        "holdout_positive_by_user": {"1": "m1", "2": "m2"},
+    }
+    assert evaluator._build_kg_path_behavior_profile([], user_source="all") is None
+
+
 def test_prewarm_embedding_artifacts_invokes_kg_embed_preload(monkeypatch, capsys):
     from app.algorithms.kg_embed import KGEmbedRecommender
 
@@ -369,9 +387,17 @@ def test_evaluate_suite_limits_selected_algorithms(monkeypatch):
         name = "kg_path"
         display_name = "KG Path"
 
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.init_kwargs = kwargs
+
     class OtherAlgo(FakeAlgo):
         name = "content"
         display_name = "Other"
+
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.init_kwargs = kwargs
 
     monkeypatch.setattr(
         algorithms_module,
@@ -492,6 +518,53 @@ def test_evaluate_suite_passes_holdout_profile_to_kg_embed(monkeypatch):
     assert SelectedAlgo.init_calls
     assert any(call["use_user_rating_relations"] is True for call in SelectedAlgo.init_calls)
     assert all(call["artifact_profile"]["holdout_positive_by_user"] == {"1": "m1"} for call in SelectedAlgo.init_calls)
+
+
+def test_evaluate_suite_passes_holdout_profile_to_kg_path(monkeypatch):
+    class SelectedAlgo(FakeAlgo):
+        name = "kg_path"
+        display_name = "KG Path"
+        init_calls = []
+
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.init_kwargs = kwargs
+            self.__class__.init_calls.append(kwargs)
+
+        @classmethod
+        def parameter_grid(cls):
+            return [{}]
+
+        @classmethod
+        def ablation_configs(cls):
+            return {}
+
+    monkeypatch.setattr(
+        algorithms_module,
+        "ALGORITHMS",
+        {"kg_path": SelectedAlgo},
+    )
+    monkeypatch.setattr(algorithms_module, "ALGORITHM_NAMES", ["kg_path"])
+    monkeypatch.setattr(
+        evaluator,
+        "build_evaluation_users",
+        lambda user_source="all", num_negatives=evaluator.NUM_NEGATIVES, negative_seeds=None: (
+            [{"user_id": 1, "test_mid": "m1", "sampled_negatives": {seed: ["n1"] for seed in evaluator.NEGATIVE_SAMPLE_SEEDS}}],
+            100,
+        ),
+    )
+    monkeypatch.setattr(evaluator, "split_evaluation_users", lambda evaluation_users: ([], evaluation_users))
+    monkeypatch.setattr(evaluator, "evaluate_algorithm", lambda **kwargs: _fake_eval_summary())
+
+    evaluator.evaluate_suite(
+        user_source="public",
+        algorithms=["kg_path"],
+        num_negatives=499,
+    )
+
+    assert SelectedAlgo.init_calls
+    assert any(call["use_user_behavior_paths"] is True for call in SelectedAlgo.init_calls)
+    assert all(call["behavior_profile"]["holdout_positive_by_user"] == {"1": "m1"} for call in SelectedAlgo.init_calls)
 
 
 def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):

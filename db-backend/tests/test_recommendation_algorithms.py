@@ -9,11 +9,15 @@ from app.algorithms.graph_cache import (
     RATED_POSITIVE_RELATION,
     RATED_POSITIVE_RELATION_REV,
     REL_ACTOR,
+    REL_CONTENT_TYPE,
     REL_DIRECTOR,
+    REL_LANGUAGE,
+    REL_REGION,
+    REL_YEAR_BUCKET,
 )
 from app.algorithms.item_cf import ItemCFRecommender
 from app.algorithms.kg_embed import KGEmbedRecommender
-from app.algorithms.kg_path import KGPathRecommender
+from app.algorithms.kg_path import KGPathRecommender, REL_SHARED_AUDIENCE
 
 
 def setup_function():
@@ -130,6 +134,72 @@ def test_graph_cache_build_triples_can_include_user_positive_relations_and_holdo
     assert relation_types[RATED_POSITIVE_RELATION] == ("user", "movie")
     assert relation_types[RATED_POSITIVE_RELATION_REV] == ("movie", "user")
     assert entity_types["user_1"] == "user"
+
+
+def test_graph_cache_build_user_positive_path_index_respects_holdouts(monkeypatch):
+    GraphMetadataCache._loaded = True
+    GraphMetadataCache._movie_profiles = {
+        "m1": MovieGraphProfile(mid="m1", name="Movie 1"),
+        "m2": MovieGraphProfile(mid="m2", name="Movie 2"),
+    }
+    GraphMetadataCache._movie_mids = ["m1", "m2"]
+    GraphMetadataCache._movie_name_map = {"m1": "Movie 1", "m2": "Movie 2"}
+    GraphMetadataCache._user_positive_path_cache = {}
+
+    rating_rows = [
+        {"user_id": 1, "mid": "m1", "rating": 5.0},
+        {"user_id": 1, "mid": "m2", "rating": 4.0},
+        {"user_id": 2, "mid": "m2", "rating": 4.5},
+    ]
+    pref_rows = [
+        {"user_id": 2, "mid": "m1", "pref_type": "like"},
+        {"user_id": 3, "mid": "m1", "pref_type": "want_to_watch"},
+    ]
+
+    class FakeCursor:
+        def __init__(self):
+            self._result = []
+
+        def execute(self, query, params=()):
+            if "FROM user_movie_ratings" in query:
+                self._result = rating_rows
+            elif "FROM user_movie_prefs" in query:
+                self._result = pref_rows
+            else:
+                raise AssertionError(query)
+
+        def fetchall(self):
+            return list(self._result)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.algorithms.graph_cache.get_connection", lambda: FakeConn())
+
+    user_to_movies, movie_to_users, user_positive_degree = GraphMetadataCache.build_user_positive_path_index(
+        user_source="public",
+        holdout_positive_by_user={"1": "m2"},
+    )
+
+    assert user_to_movies == {
+        "1": {"m1": 1.0},
+        "2": {"m1": 0.7, "m2": 0.9},
+    }
+    assert movie_to_users == {
+        "m1": {"1": 1.0, "2": 0.7},
+        "m2": {"2": 0.9},
+    }
+    assert user_positive_degree == {"1": 1, "2": 2}
 
 
 def test_kg_embed_negative_sampling_respects_entity_types():
@@ -296,10 +366,15 @@ def test_kg_embed_scope_changes_with_holdout_profile():
 
 def test_kg_path_scoring_matches_manual_accumulation():
     recommender = KGPathRecommender(
+        shared_audience_weight=0.6,
         director_weight=1.0,
         actor_weight=0.6,
         genre_weight=0.4,
         two_hop_weight=0.2,
+        region_weight=0.1,
+        language_weight=0.1,
+        content_type_weight=0.05,
+        year_bucket_weight=0.05,
         enable_two_hop=True,
         use_degree_penalty=False,
     )
@@ -349,6 +424,95 @@ def test_kg_path_scoring_matches_manual_accumulation():
     assert scored["candidate_scores"]["m2"] == pytest.approx((0.9 * 0.4) + (0.4 * 0.2))
     assert len(scored["candidate_reasons"]["m1"]) <= 3
     assert len(scored["candidate_reasons"]["m2"]) <= 3
+
+
+def test_kg_path_shared_audience_records_penalize_heavy_bridge_users():
+    recommender = KGPathRecommender(use_user_activity_penalty=True)
+
+    records = recommender._build_shared_audience_records(
+        user_id=1,
+        seed_mid="seed",
+        seed_weight=1.0,
+        user_to_movies={
+            "1": {"seed": 1.0, "seen": 1.0},
+            "2": {"seed": 1.0, "cand_low": 1.0},
+            "3": {"seed": 1.0, "cand_high": 1.0},
+        },
+        movie_to_users={"seed": {"1": 1.0, "2": 1.0, "3": 1.0}},
+        user_positive_degree={"1": 2, "2": 2, "3": 20},
+        per_seed_limit=10,
+    )
+
+    assert [record["mid"] for record in records] == ["cand_low", "cand_high"]
+    assert records[0]["relation"] == REL_SHARED_AUDIENCE
+    assert records[0]["strength"] > records[1]["strength"]
+    assert all(record["mid"] != "seed" for record in records)
+
+
+def test_kg_path_fetch_evidence_includes_expanded_one_hop_relations():
+    recommender = KGPathRecommender(
+        use_expanded_relations=True,
+        use_user_behavior_paths=False,
+        enable_two_hop=False,
+    )
+    GraphMetadataCache._loaded = True
+    seed_profile = MovieGraphProfile(
+        mid="seed",
+        name="Seed",
+        regions={"中国"},
+        languages={"汉语"},
+        content_type="movie",
+        year_bucket="2010s",
+    )
+    candidate_profile = MovieGraphProfile(
+        mid="cand",
+        name="Candidate",
+        regions={"中国"},
+        languages={"汉语"},
+        content_type="movie",
+        year_bucket="2010s",
+    )
+    GraphMetadataCache._movie_profiles = {"seed": seed_profile, "cand": candidate_profile}
+    GraphMetadataCache._relation_inverted_index = {
+        REL_REGION: {"中国": {"seed", "cand"}},
+        REL_LANGUAGE: {"汉语": {"seed", "cand"}},
+        REL_CONTENT_TYPE: {"movie": {"seed", "cand"}},
+        REL_YEAR_BUCKET: {"2010s": {"seed", "cand"}},
+        REL_DIRECTOR: {},
+        REL_ACTOR: {},
+        "genre": {},
+    }
+
+    evidence = recommender._fetch_evidence_from_graph(
+        user_id=1,
+        seeds=[{"mid": "seed", "weight": 1.0}],
+        actor_order_limit=5,
+        include_two_hop=False,
+        include_user_behavior_paths=False,
+    )
+
+    candidate_relations = {row["relation"] for row in evidence["candidate_evidence"]["cand"]}
+    assert REL_REGION in candidate_relations
+    assert REL_LANGUAGE in candidate_relations
+    assert REL_CONTENT_TYPE in candidate_relations
+    assert REL_YEAR_BUCKET in candidate_relations
+
+
+def test_kg_path_shared_audience_reason_does_not_expose_user_ids():
+    recommender = KGPathRecommender()
+
+    reason = recommender._reason_for_record(
+        {
+            "relation": REL_SHARED_AUDIENCE,
+            "entity_ids": ["2", "3"],
+            "entity_names": [],
+            "hits": 2,
+        }
+    )
+
+    assert reason == "与多位同样喜欢该类电影的用户兴趣重合"
+    assert "2" not in reason
+    assert "3" not in reason
 
 
 def test_movie_graph_profile_ordered_actor_ids_respects_order_and_pid_tie_break():

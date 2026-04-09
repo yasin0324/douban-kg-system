@@ -159,6 +159,28 @@ def _build_kg_embed_artifact_profile(
     }
 
 
+def _build_kg_path_behavior_profile(
+    evaluation_users: list[dict],
+    *,
+    user_source: str,
+) -> dict | None:
+    if user_source != "public":
+        return None
+    holdout_positive_by_user = {
+        str(item["user_id"]): str(item["test_mid"])
+        for item in evaluation_users
+        if item.get("user_id") is not None and item.get("test_mid")
+    }
+    if not holdout_positive_by_user:
+        return None
+    return {
+        "version": "offline_public_v1",
+        "user_source": "public",
+        "holdout_strategy": "last_positive_removed",
+        "holdout_positive_by_user": holdout_positive_by_user,
+    }
+
+
 def _kg_embed_init_kwargs(artifact_profile: dict | None) -> dict:
     if not artifact_profile:
         return {}
@@ -172,6 +194,29 @@ def _kg_embed_init_kwargs(artifact_profile: dict | None) -> dict:
         "entity_overlap_weight": 0.2,
         "centroid_weight": 0.1,
         "max_seed_weight": 0.1,
+    }
+
+
+def _kg_path_init_kwargs(behavior_profile: dict | None) -> dict:
+    if not behavior_profile:
+        return {}
+    return {
+        "behavior_profile": behavior_profile,
+        "behavior_user_source": behavior_profile.get("user_source", "all"),
+        "use_user_behavior_paths": True,
+        "use_expanded_relations": True,
+        "shared_audience_weight": 0.6,
+        "director_weight": 0.4,
+        "actor_weight": 0.4,
+        "genre_weight": 0.2,
+        "two_hop_weight": 0.1,
+        "region_weight": 0.1,
+        "language_weight": 0.1,
+        "content_type_weight": 0.05,
+        "year_bucket_weight": 0.05,
+        "enable_two_hop": True,
+        "use_degree_penalty": True,
+        "use_user_activity_penalty": True,
     }
 
 
@@ -550,6 +595,10 @@ def evaluate_suite(
         evaluation_users,
         user_source=user_source,
     )
+    kg_path_behavior_profile = _build_kg_path_behavior_profile(
+        evaluation_users,
+        user_source=user_source,
+    )
     validation_users, test_users = split_evaluation_users(evaluation_users)
     print(f"  符合条件用户数: {len(evaluation_users)}")
     print(f"  验证集用户数: {len(validation_users)}")
@@ -566,11 +615,12 @@ def evaluate_suite(
 
     for algo_name, algo_class in selected_algorithms.items():
         algo_started_at = time.perf_counter()
-        init_kwargs = (
-            _kg_embed_init_kwargs(kg_embed_artifact_profile)
-            if algo_name == "kg_embed"
-            else {}
-        )
+        if algo_name == "kg_embed":
+            init_kwargs = _kg_embed_init_kwargs(kg_embed_artifact_profile)
+        elif algo_name == "kg_path":
+            init_kwargs = _kg_path_init_kwargs(kg_path_behavior_profile)
+        else:
+            init_kwargs = {}
         print(f"\n🔄 评估算法: {algo_class.display_name} ({algo_name})...")
         best_params = {}
         validation_summary = {}
