@@ -1,0 +1,1344 @@
+{
+  "generated_at": "2026-04-12T15:07:54.118036",
+  "environment": {
+    "mode": "local_real_data_testclient",
+    "users": {
+      "cold": {
+        "id": 578,
+        "username": "codex_ui_test_20260308"
+      },
+      "light": {
+        "id": 580,
+        "username": "tester1"
+      },
+      "heavy": {
+        "id": 591,
+        "username": "douban_public_28743113"
+      }
+    },
+    "algorithms": [
+      "cfkg",
+      "kg_embed",
+      "kg_path"
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "algorithms_list",
+      "cohort": null,
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0048,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/algorithms"
+      },
+      "details": {
+        "algorithms": [
+          {
+            "name": "cfkg",
+            "display_name": "CFKG 主链路推荐",
+            "type": "KG"
+          },
+          {
+            "name": "content",
+            "display_name": "基于内容的推荐",
+            "type": "基线"
+          },
+          {
+            "name": "item_cf",
+            "display_name": "基于物品的协同过滤",
+            "type": "基线"
+          },
+          {
+            "name": "kg_path",
+            "display_name": "基于知识图谱路径的推荐",
+            "type": "KG"
+          },
+          {
+            "name": "kg_embed",
+            "display_name": "基于知识图谱嵌入的推荐",
+            "type": "KG"
+          }
+        ]
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "cold",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0158,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 0,
+          "want_to_watch_count": 0,
+          "rating_count": 0,
+          "effective_signal_count": 0,
+          "cold_start": true,
+          "meets_personalization_threshold": false
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.008,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 3,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "heavy",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.046,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1899,
+          "want_to_watch_count": 1109,
+          "rating_count": 5830,
+          "effective_signal_count": 6939,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 3.5408,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "cfkg",
+          "limit": 20
+        }
+      },
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "score": 1.0,
+            "reasons": [
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "score": 0.9153,
+            "reasons": [
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1291561",
+            "title": "千与千寻 千と千尋の神隠し",
+            "score": 0.8101,
+            "reasons": [
+              "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 3.9658,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_embed",
+          "limit": 20
+        }
+      },
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 0.8629,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1292553",
+            "title": "真实的谎言 True Lies",
+            "score": 0.8306,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1306154",
+            "title": "罗密欧与朱丽叶 Romeo + Juliet",
+            "score": 0.7993,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 504,
+      "elapsed_s": 12.0797,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_path",
+          "limit": 20
+        }
+      },
+      "details": {
+        "error": "http 504",
+        "top3": [],
+        "cold_start": null,
+        "total": null
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 0.8824,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "cfkg",
+          "limit": 20
+        }
+      },
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "35376457",
+            "title": "爱情神话",
+            "score": 1.0,
+            "reasons": [
+              "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "30314848",
+            "title": "瞬息全宇宙 Everything Everywhere All at Once",
+            "score": 0.9439,
+            "reasons": [
+              "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "30318116",
+            "title": "利刃出鞘 Knives Out",
+            "score": 0.9328,
+            "reasons": [
+              "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 504,
+      "elapsed_s": 14.0358,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_embed",
+          "limit": 20
+        }
+      },
+      "details": {
+        "error": "http 504",
+        "top3": [],
+        "cold_start": null,
+        "total": null
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 504,
+      "elapsed_s": 14.2281,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_path",
+          "limit": 20
+        }
+      },
+      "details": {
+        "error": "http 504",
+        "top3": [],
+        "cold_start": null,
+        "total": null
+      }
+    },
+    {
+      "name": "personal_default",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 504,
+      "elapsed_s": 14.9441,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "limit": 20
+        }
+      },
+      "details": {
+        "compare_same_top10": false,
+        "top3": []
+      }
+    },
+    {
+      "name": "personal_cold",
+      "cohort": "cold",
+      "algorithm": "cfkg",
+      "status_code": 503,
+      "elapsed_s": 2.9872,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "cfkg",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [],
+        "cold_start": null,
+        "total": null
+      }
+    },
+    {
+      "name": "personal_cold",
+      "cohort": "cold",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 5.077,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_embed",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [],
+        "cold_start": true,
+        "total": 0
+      }
+    },
+    {
+      "name": "personal_cold",
+      "cohort": "cold",
+      "algorithm": "kg_path",
+      "status_code": 503,
+      "elapsed_s": 0.2718,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_path",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [],
+        "cold_start": null,
+        "total": null
+      }
+    },
+    {
+      "name": "explain_top1",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 87.3056,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "cfkg",
+          "target_mid": "35376457"
+        }
+      },
+      "details": {
+        "error": "explain too slow: 87.31s",
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "35376457"
+      }
+    },
+    {
+      "name": "explain_top5",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 25.1058,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "cfkg",
+          "target_mid": "30337388"
+        }
+      },
+      "details": {
+        "error": "explain too slow: 25.11s",
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "30337388"
+      }
+    },
+    {
+      "name": "explain_top1",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 24.959,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "kg_embed",
+          "target_mid": "35376457"
+        }
+      },
+      "details": {
+        "error": "explain too slow: 24.96s",
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "35376457"
+      }
+    },
+    {
+      "name": "explain_top5",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 17.8364,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "kg_embed",
+          "target_mid": "30337388"
+        }
+      },
+      "details": {
+        "error": "explain too slow: 17.84s",
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "30337388"
+      }
+    },
+    {
+      "name": "explain_top1",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 4.1287,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "kg_path",
+          "target_mid": "35376457"
+        }
+      },
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "35376457"
+      }
+    },
+    {
+      "name": "explain_top5",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 0.0892,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "kg_path",
+          "target_mid": "30337388"
+        }
+      },
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "30337388"
+      }
+    },
+    {
+      "name": "explain_graph_evidence_gate",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": null,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "at least one explain sample has graph evidence",
+        "has_graph_evidence": true
+      }
+    },
+    {
+      "name": "explain_graph_evidence_gate",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": null,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "at least one explain sample has graph evidence",
+        "has_graph_evidence": true
+      }
+    },
+    {
+      "name": "explain_graph_evidence_gate",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": null,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "at least one explain sample has graph evidence",
+        "has_graph_evidence": true
+      }
+    },
+    {
+      "name": "invalid_algorithm",
+      "cohort": "heavy",
+      "algorithm": "invalid_algo",
+      "status_code": 400,
+      "elapsed_s": 0.0072,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "invalid_algo",
+          "limit": 20
+        }
+      },
+      "details": {
+        "message": "不支持的算法: invalid_algo，可选: cfkg, content, item_cf, kg_path, kg_embed"
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0063,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 3,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "rating_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.1712,
+      "passed": true,
+      "request": {
+        "path": "/api/users/ratings",
+        "json": {
+          "mid": "1292720",
+          "rating": 5.0
+        }
+      },
+      "details": {
+        "message": {
+          "id": 131765,
+          "mid": "1292720",
+          "rating": 5.0,
+          "comment_short": "codex acceptance rating",
+          "rated_at": "2026-04-12T15:12:24"
+        },
+        "target_mid": "1292720"
+      }
+    },
+    {
+      "name": "rating_lookup_after_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0115,
+      "passed": true,
+      "request": {
+        "path": "/api/users/ratings/1292720"
+      },
+      "details": {
+        "message": {
+          "mid": "1292720",
+          "has_rating": true,
+          "id": 131765,
+          "rating": 5.0,
+          "comment_short": "codex acceptance rating",
+          "rated_at": "2026-04-12T15:12:24"
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0034,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 2,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "rating_activity_delta",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0,
+      "passed": true,
+      "request": {},
+      "details": {
+        "before": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 3,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        },
+        "after": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 2,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "personal_after_rating_add",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 3.129,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "cfkg",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [
+          {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "score": 1.0,
+            "reasons": [
+              "因为你喜欢《阿甘正传 Forrest Gump》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1291561",
+            "title": "千与千寻 千と千尋の神隠し",
+            "score": 0.8945,
+            "reasons": [
+              "因为你喜欢《阿甘正传 Forrest Gump》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1292063",
+            "title": "美丽人生 La vita è bella",
+            "score": 0.8728,
+            "reasons": [
+              "因为你喜欢《阿甘正传 Forrest Gump》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 2.1664,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_embed",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 0.8966,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1295647",
+            "title": "超时空接触 Contact",
+            "score": 0.8352,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同导演 罗伯特·泽米吉斯 Robert Zemeckis"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1293354",
+            "title": "凤舞红尘 Moll Flanders",
+            "score": 0.831,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同演员 罗宾·怀特 Robin Wright"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 504,
+      "elapsed_s": 13.3125,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_path",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [],
+        "total": null
+      }
+    },
+    {
+      "name": "explain_after_rating_add",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 2.5391,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "cfkg",
+          "target_mid": "1295644"
+        }
+      },
+      "details": {
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "1295644"
+      }
+    },
+    {
+      "name": "explain_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 2.7756,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/explain",
+        "params": {
+          "algorithm": "kg_embed",
+          "target_mid": "1300374"
+        }
+      },
+      "details": {
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "1300374"
+      }
+    },
+    {
+      "name": "rating_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.1135,
+      "passed": true,
+      "request": {
+        "path": "/api/users/ratings/1292720"
+      },
+      "details": {
+        "message": {
+          "message": "已删除"
+        }
+      }
+    },
+    {
+      "name": "rating_lookup_after_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.004,
+      "passed": true,
+      "request": {
+        "path": "/api/users/ratings/1292720"
+      },
+      "details": {
+        "message": {
+          "mid": "1292720",
+          "has_rating": false,
+          "id": null,
+          "rating": null,
+          "comment_short": null,
+          "rated_at": null
+        }
+      }
+    },
+    {
+      "name": "preference_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0098,
+      "passed": true,
+      "request": {
+        "path": "/api/users/preferences",
+        "json": {
+          "mid": "1295644",
+          "pref_type": "like"
+        }
+      },
+      "details": {
+        "message": {
+          "id": 96938,
+          "mid": "1295644",
+          "pref_type": "like",
+          "created_at": "2026-04-12T15:12:48"
+        },
+        "target_mid": "1295644"
+      }
+    },
+    {
+      "name": "preference_check_after_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0039,
+      "passed": true,
+      "request": {
+        "path": "/api/users/preferences/check/1295644"
+      },
+      "details": {
+        "message": {
+          "mid": "1295644",
+          "is_liked": true,
+          "is_want_to_watch": false
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0028,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 2,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "preference_activity_snapshot",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0,
+      "passed": true,
+      "request": {},
+      "details": {
+        "activity_summary": {
+          "liked_count": 2,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "personal_after_preference_add",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 2.8925,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "cfkg",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [
+          {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "score": 1.0,
+            "reasons": [
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1292063",
+            "title": "美丽人生 La vita è bella",
+            "score": 0.8233,
+            "reasons": [
+              "因为你喜欢《这个杀手不太冷 Léon》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1291561",
+            "title": "千与千寻 千と千尋の神隠し",
+            "score": 0.8063,
+            "reasons": [
+              "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "item_cf"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_preference_add",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 3.6679,
+      "passed": true,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_embed",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 0.8855,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1292553",
+            "title": "真实的谎言 True Lies",
+            "score": 0.8414,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1420063",
+            "title": "在各方面 Six Ways to Sunday",
+            "score": 0.8264,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同演员 彼得·阿佩尔 Peter Appel"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_preference_add",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 504,
+      "elapsed_s": 13.532,
+      "passed": false,
+      "request": {
+        "path": "/api/recommend/personal",
+        "params": {
+          "algorithm": "kg_path",
+          "limit": 20
+        }
+      },
+      "details": {
+        "top3": [],
+        "total": null
+      }
+    },
+    {
+      "name": "preference_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 2.711,
+      "passed": true,
+      "request": {
+        "path": "/api/users/preferences/1295644"
+      },
+      "details": {
+        "message": {
+          "message": "已取消"
+        }
+      }
+    },
+    {
+      "name": "preference_check_after_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 2.1292,
+      "passed": true,
+      "request": {
+        "path": "/api/users/preferences/check/1295644"
+      },
+      "details": {
+        "message": {
+          "mid": "1295644",
+          "is_liked": false,
+          "is_want_to_watch": false
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_scenarios": 45,
+    "passed_scenarios": 33,
+    "failed_scenarios": 12,
+    "failed_names": [
+      {
+        "name": "personal",
+        "cohort": "light",
+        "algorithm": "kg_path",
+        "status_code": 504,
+        "details": {
+          "error": "http 504",
+          "top3": [],
+          "cold_start": null,
+          "total": null
+        }
+      },
+      {
+        "name": "personal",
+        "cohort": "heavy",
+        "algorithm": "kg_embed",
+        "status_code": 504,
+        "details": {
+          "error": "http 504",
+          "top3": [],
+          "cold_start": null,
+          "total": null
+        }
+      },
+      {
+        "name": "personal",
+        "cohort": "heavy",
+        "algorithm": "kg_path",
+        "status_code": 504,
+        "details": {
+          "error": "http 504",
+          "top3": [],
+          "cold_start": null,
+          "total": null
+        }
+      },
+      {
+        "name": "personal_default",
+        "cohort": "heavy",
+        "algorithm": "cfkg",
+        "status_code": 504,
+        "details": {
+          "compare_same_top10": false,
+          "top3": []
+        }
+      },
+      {
+        "name": "personal_cold",
+        "cohort": "cold",
+        "algorithm": "cfkg",
+        "status_code": 503,
+        "details": {
+          "top3": [],
+          "cold_start": null,
+          "total": null
+        }
+      },
+      {
+        "name": "personal_cold",
+        "cohort": "cold",
+        "algorithm": "kg_path",
+        "status_code": 503,
+        "details": {
+          "top3": [],
+          "cold_start": null,
+          "total": null
+        }
+      },
+      {
+        "name": "explain_top1",
+        "cohort": "heavy",
+        "algorithm": "cfkg",
+        "status_code": 200,
+        "details": {
+          "error": "explain too slow: 87.31s",
+          "meta": {
+            "has_graph_evidence": true,
+            "cold_start": false
+          },
+          "target_mid": "35376457"
+        }
+      },
+      {
+        "name": "explain_top5",
+        "cohort": "heavy",
+        "algorithm": "cfkg",
+        "status_code": 200,
+        "details": {
+          "error": "explain too slow: 25.11s",
+          "meta": {
+            "has_graph_evidence": true,
+            "cold_start": false
+          },
+          "target_mid": "30337388"
+        }
+      },
+      {
+        "name": "explain_top1",
+        "cohort": "heavy",
+        "algorithm": "kg_embed",
+        "status_code": 200,
+        "details": {
+          "error": "explain too slow: 24.96s",
+          "meta": {
+            "has_graph_evidence": true,
+            "cold_start": false
+          },
+          "target_mid": "35376457"
+        }
+      },
+      {
+        "name": "explain_top5",
+        "cohort": "heavy",
+        "algorithm": "kg_embed",
+        "status_code": 200,
+        "details": {
+          "error": "explain too slow: 17.84s",
+          "meta": {
+            "has_graph_evidence": true,
+            "cold_start": false
+          },
+          "target_mid": "30337388"
+        }
+      },
+      {
+        "name": "personal_after_rating_add",
+        "cohort": "light",
+        "algorithm": "kg_path",
+        "status_code": 504,
+        "details": {
+          "top3": [],
+          "total": null
+        }
+      },
+      {
+        "name": "personal_after_preference_add",
+        "cohort": "light",
+        "algorithm": "kg_path",
+        "status_code": 504,
+        "details": {
+          "top3": [],
+          "total": null
+        }
+      }
+    ]
+  }
+}

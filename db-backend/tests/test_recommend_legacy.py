@@ -106,6 +106,9 @@ def test_evaluate_route_falls_back_to_latest_history_report(tmp_path):
 class SlowRecommender:
     display_name = "慢速推荐"
 
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
     def recommend(self, user_id: int, n: int = 20, exclude_mids=None, exclude_from_training=None):
         time.sleep(0.05)
         return []
@@ -166,7 +169,7 @@ def test_personal_recommendation_timeout_returns_504():
     recommend._reset_algorithm_runtime_state()
 
 
-def test_personal_recommendation_returns_503_when_algorithm_is_busy():
+def test_personal_recommendation_recovers_after_timeout():
     with (
         patch.dict(recommend.ALGORITHMS, {"slow": SlowRecommender}, clear=False),
         patch.object(recommend, "RECOMMEND_TIMEOUT_SECONDS", 0.01),
@@ -176,10 +179,43 @@ def test_personal_recommendation_returns_503_when_algorithm_is_busy():
             second_response = client.get("/api/recommend/personal?algorithm=slow&limit=5")
 
     assert first_response.status_code == 504
-    assert second_response.status_code == 503
-    assert "处理中" in second_response.json()["detail"]
+    assert second_response.status_code == 504
+    assert "超时" in second_response.json()["detail"]
     time.sleep(0.06)
     recommend._reset_algorithm_runtime_state()
+
+
+def test_get_algorithm_instance_uses_online_safe_kwargs_for_kg_algorithms():
+    class CaptureInitRecommender:
+        display_name = "捕获初始化"
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    recommend._reset_algorithm_runtime_state()
+    with patch.dict(recommend.ALGORITHMS, {"kg_path": CaptureInitRecommender}, clear=False):
+        algo = recommend._get_algorithm_instance("kg_path")
+
+    assert algo.kwargs["use_expanded_relations"] is False
+    assert algo.kwargs["enable_two_hop"] is False
+    assert algo.kwargs["max_positive_rating_seeds"] == 8
+    assert algo.kwargs["max_like_seeds"] == 4
+    recommend._reset_algorithm_runtime_state()
+
+
+def test_load_positive_movies_for_user_limits_explain_seed_count():
+    mock_conn = MagicMock()
+    algo = MagicMock()
+    algo.get_user_positive_movies.return_value = [{"mid": f"m{i}"} for i in range(20)]
+
+    with (
+        patch.object(recommend, "_get_algorithm_instance", return_value=algo),
+        patch.object(recommend, "get_connection", return_value=mock_conn),
+    ):
+        rows = recommend._load_positive_movies_for_user(7, "cfkg")
+
+    assert len(rows) == recommend.EXPLAIN_MAX_POSITIVE_MOVIES
+    mock_conn.close.assert_called_once()
 
 
 def test_invalidate_recommendation_runtime_only_drops_affected_algorithms():

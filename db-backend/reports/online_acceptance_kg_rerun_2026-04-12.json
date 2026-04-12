@@ -1,0 +1,4687 @@
+[
+  {
+    "name": "personal_light_cfkg",
+    "status": 200,
+    "elapsed_s": 6.9632,
+    "payload": {
+      "algorithm": "cfkg",
+      "algorithm_display_name": "CFKG 主链路推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "rating": 8.9,
+            "year": 1999,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p767586451.webp",
+            "genres": [
+              "剧情",
+              "悬疑",
+              "犯罪",
+              "奇幻"
+            ]
+          },
+          "score": 1.0,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont",
+            "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1295124",
+            "title": "辛德勒的名单 Schindler's List",
+            "rating": 9.5,
+            "year": 1993,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p492406163.webp",
+            "genres": [
+              "剧情",
+              "历史",
+              "战争"
+            ]
+          },
+          "score": 0.9423,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近",
+            "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293544",
+            "title": "沉默的羔羊 The Silence of the Lambs",
+            "rating": 8.9,
+            "year": 1991,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1593414327.webp",
+            "genres": [
+              "剧情",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.8668,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 剧情",
+            "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292000",
+            "title": "搏击俱乐部 Fight Club",
+            "rating": 9.0,
+            "year": 1999,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1910931622.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "悬疑",
+              "惊悚"
+            ]
+          },
+          "score": 0.8601,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 剧情",
+            "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1299193",
+            "title": "理智与情感 Sense and Sensibility",
+            "rating": 8.4,
+            "year": 1995,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p1107322461.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.86,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近",
+            "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292223",
+            "title": "七宗罪 Se7en",
+            "rating": 8.8,
+            "year": 1995,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2219586434.webp",
+            "genres": [
+              "剧情",
+              "悬疑",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.8555,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 摩根·弗里曼 Morgan Freeman",
+            "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "2334904",
+            "title": "禁闭岛 Shutter Island",
+            "rating": 8.9,
+            "year": 2010,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p450262388.webp",
+            "genres": [
+              "剧情",
+              "悬疑",
+              "惊悚"
+            ]
+          },
+          "score": 0.8536,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio",
+            "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1652587",
+            "title": "阿凡达 Avatar",
+            "rating": 8.8,
+            "year": 2009,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2180085848.webp",
+            "genres": [
+              "动作",
+              "科幻",
+              "冒险"
+            ]
+          },
+          "score": 0.8196,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron",
+            "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "2037012",
+            "title": "革命之路 Revolutionary Road",
+            "rating": 8.2,
+            "year": 2008,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p480460526.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.8071,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同演员 凯特·温斯莱特 Kate Winslet",
+            "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292553",
+            "title": "真实的谎言 True Lies",
+            "rating": 8.3,
+            "year": 1994,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2640473279.webp",
+            "genres": [
+              "喜剧",
+              "动作",
+              "惊悚"
+            ]
+          },
+          "score": 0.7886,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "6307447",
+            "title": "被解救的姜戈 Django Unchained",
+            "rating": 8.8,
+            "year": 2012,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1800813767.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "西部",
+              "冒险"
+            ]
+          },
+          "score": 0.7715,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近",
+            "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1306154",
+            "title": "罗密欧与朱丽叶 Romeo + Juliet",
+            "rating": 7.5,
+            "year": 1996,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p1663002649.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "犯罪"
+            ]
+          },
+          "score": 0.7589,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1295363",
+            "title": "红潮风暴 Crimson Tide",
+            "rating": 8.1,
+            "year": 1995,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2358217779.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "惊悚"
+            ]
+          },
+          "score": 0.7566,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 剧情",
+            "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1306605",
+            "title": "电影人生 The Majestic",
+            "rating": 8.2,
+            "year": 2001,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p585421852.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.7532,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291844",
+            "title": "终结者2：审判日 Terminator 2: Judgment Day",
+            "rating": 8.8,
+            "year": 1991,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p1910909085.webp",
+            "genres": [
+              "动作",
+              "科幻"
+            ]
+          },
+          "score": 0.7457,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293935",
+            "title": "名人百态 Celebrity",
+            "rating": 7.5,
+            "year": 1998,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2897176301.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.7327,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1295802",
+            "title": "勇者无惧 Amistad",
+            "rating": 8.1,
+            "year": 1997,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2187209224.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.7323,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 摩根·弗里曼 Morgan Freeman"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301806",
+            "title": "男孩的生活 This Boy's Life",
+            "rating": 8.1,
+            "year": 1993,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p1413555181.webp",
+            "genres": [
+              "剧情",
+              "传记"
+            ]
+          },
+          "score": 0.7262,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301617",
+            "title": "不一样的天空 What's Eating Gilbert Grape",
+            "rating": 8.6,
+            "year": 1993,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2175712032.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "家庭"
+            ]
+          },
+          "score": 0.7261,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301791",
+            "title": "男人止步 Men Don't Leave",
+            "rating": null,
+            "year": 1990,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2512041976.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.7257,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 凯西·贝茨 Kathy Bates"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_light_kg_embed",
+    "status": 200,
+    "elapsed_s": 1.7914,
+    "payload": {
+      "algorithm": "kg_embed",
+      "algorithm_display_name": "基于知识图谱嵌入的推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "rating": 8.9,
+            "year": 1999,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p767586451.webp",
+            "genres": [
+              "剧情",
+              "悬疑",
+              "犯罪",
+              "奇幻"
+            ]
+          },
+          "score": 0.8629,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292553",
+            "title": "真实的谎言 True Lies",
+            "rating": 8.3,
+            "year": 1994,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2640473279.webp",
+            "genres": [
+              "喜剧",
+              "动作",
+              "惊悚"
+            ]
+          },
+          "score": 0.8306,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1306154",
+            "title": "罗密欧与朱丽叶 Romeo + Juliet",
+            "rating": 7.5,
+            "year": 1996,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p1663002649.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "犯罪"
+            ]
+          },
+          "score": 0.7993,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1306605",
+            "title": "电影人生 The Majestic",
+            "rating": 8.2,
+            "year": 2001,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p585421852.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.7933,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291844",
+            "title": "终结者2：审判日 Terminator 2: Judgment Day",
+            "rating": 8.8,
+            "year": 1991,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p1910909085.webp",
+            "genres": [
+              "动作",
+              "科幻"
+            ]
+          },
+          "score": 0.7854,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293935",
+            "title": "名人百态 Celebrity",
+            "rating": 7.5,
+            "year": 1998,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2897176301.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.7717,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1295802",
+            "title": "勇者无惧 Amistad",
+            "rating": 8.1,
+            "year": 1997,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2187209224.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.7713,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 摩根·弗里曼 Morgan Freeman"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301806",
+            "title": "男孩的生活 This Boy's Life",
+            "rating": 8.1,
+            "year": 1993,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p1413555181.webp",
+            "genres": [
+              "剧情",
+              "传记"
+            ]
+          },
+          "score": 0.7649,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301617",
+            "title": "不一样的天空 What's Eating Gilbert Grape",
+            "rating": 8.6,
+            "year": 1993,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2175712032.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "家庭"
+            ]
+          },
+          "score": 0.7648,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301791",
+            "title": "男人止步 Men Don't Leave",
+            "rating": null,
+            "year": 1990,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2512041976.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.7644,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 凯西·贝茨 Kathy Bates"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293861",
+            "title": "油炸绿番茄 Fried Green Tomatoes",
+            "rating": 8.8,
+            "year": 1991,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p1452662468.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.7606,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 凯西·贝茨 Kathy Bates"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293968",
+            "title": "激情沸点 The Hot Spot",
+            "rating": 6.7,
+            "year": 1990,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2196572442.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.7599,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 威廉·赛德勒 William Sadler"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1307154",
+            "title": "烈火情挑 Lake Consequence",
+            "rating": 6.1,
+            "year": 1993,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2247364606.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.7586,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1296027",
+            "title": "活火熔城 Volcano",
+            "rating": 6.9,
+            "year": 1997,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2377347191.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "灾难"
+            ]
+          },
+          "score": 0.7572,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "5109302",
+            "title": "交换利益 Trading Favors",
+            "rating": null,
+            "year": 1997,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2454993915.webp",
+            "genres": [
+              "剧情",
+              "犯罪"
+            ]
+          },
+          "score": 0.7568,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同演员 弗兰西丝·费舍 Frances Fisher"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301717",
+            "title": "哈姆雷特 Hamlet",
+            "rating": 8.2,
+            "year": 1996,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2195389799.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.7503,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 凯特·温斯莱特 Kate Winslet"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1301419",
+            "title": "极度恐慌 Outbreak",
+            "rating": 7.7,
+            "year": 1995,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2517621832.webp",
+            "genres": [
+              "剧情",
+              "惊悚",
+              "灾难"
+            ]
+          },
+          "score": 0.7499,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 摩根·弗里曼 Morgan Freeman"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1296299",
+            "title": "情挑六月花 White Palace",
+            "rating": 7.4,
+            "year": 1990,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p1739881776.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.7465,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 凯西·贝茨 Kathy Bates"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1428112",
+            "title": "复仇 Revenge",
+            "rating": null,
+            "year": 1990,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2512410344.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.7439,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 爱情"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1294726",
+            "title": "大玩家 The Player",
+            "rating": 7.7,
+            "year": 1992,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p1444977476.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "犯罪"
+            ]
+          },
+          "score": 0.7423,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 蒂姆·罗宾斯 Tim Robbins"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_light_kg_path",
+    "status": 200,
+    "elapsed_s": 1.2923,
+    "payload": {
+      "algorithm": "kg_path",
+      "algorithm_display_name": "基于知识图谱路径的推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "rating": 9.5,
+            "year": 1994,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2372307693.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 1.0,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "rating": 9.4,
+            "year": 1994,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2913554676.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "犯罪"
+            ]
+          },
+          "score": 0.7996,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3541415",
+            "title": "盗梦空间 Inception",
+            "rating": 9.4,
+            "year": 2010,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p513344864.webp",
+            "genres": [
+              "剧情",
+              "科幻",
+              "悬疑",
+              "冒险"
+            ]
+          },
+          "score": 0.7626,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1889243",
+            "title": "星际穿越 Interstellar",
+            "rating": 9.4,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2614988097.webp",
+            "genres": [
+              "剧情",
+              "科幻",
+              "冒险"
+            ]
+          },
+          "score": 0.7457,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291561",
+            "title": "千与千寻 千と千尋の神隠し",
+            "rating": 9.4,
+            "year": 2001,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2557573348.webp",
+            "genres": [
+              "剧情",
+              "动画",
+              "奇幻"
+            ]
+          },
+          "score": 0.7237,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25662329",
+            "title": "疯狂动物城 Zootopia",
+            "rating": 9.3,
+            "year": 2016,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2924128964.webp",
+            "genres": [
+              "喜剧",
+              "动画",
+              "冒险"
+            ]
+          },
+          "score": 0.7157,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "36154853",
+            "title": "好东西",
+            "rating": 8.9,
+            "year": 2024,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2915454411.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.6886,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292064",
+            "title": "楚门的世界 The Truman Show",
+            "rating": 9.4,
+            "year": 1998,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p479682972.webp",
+            "genres": [
+              "剧情",
+              "科幻"
+            ]
+          },
+          "score": 0.6754,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3793023",
+            "title": "三傻大闹宝莱坞 3 Idiots",
+            "rating": 9.2,
+            "year": 2009,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p579729551.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情",
+              "歌舞"
+            ]
+          },
+          "score": 0.5934,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292063",
+            "title": "美丽人生 La vita è bella",
+            "rating": 9.5,
+            "year": 1997,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2578474613.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情",
+              "战争"
+            ]
+          },
+          "score": 0.592,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "27060077",
+            "title": "绿皮书 Green Book",
+            "rating": 8.9,
+            "year": 2018,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2531065411.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "音乐",
+              "传记"
+            ]
+          },
+          "score": 0.5898,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26752088",
+            "title": "我不是药神",
+            "rating": 9.0,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2561305376.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.5869,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3319755",
+            "title": "怦然心动 Flipped",
+            "rating": 9.1,
+            "year": 2010,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p501177648.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情"
+            ]
+          },
+          "score": 0.5664,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1307914",
+            "title": "无间道 無間道",
+            "rating": 9.3,
+            "year": 2002,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2564556863.webp",
+            "genres": [
+              "剧情",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.54,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292001",
+            "title": "海上钢琴师 La leggenda del pianista sull'oceano",
+            "rating": 9.3,
+            "year": 1998,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2914698334.webp",
+            "genres": [
+              "剧情",
+              "音乐"
+            ]
+          },
+          "score": 0.5356,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291549",
+            "title": "放牛班的春天 Les choristes",
+            "rating": 9.3,
+            "year": 2004,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2884280708.webp",
+            "genres": [
+              "剧情",
+              "音乐"
+            ]
+          },
+          "score": 0.521,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292220",
+            "title": "情书 Love Letter",
+            "rating": 8.9,
+            "year": 1995,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2648230660.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.5174,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293172",
+            "title": "末代皇帝 The Last Emperor",
+            "rating": 9.3,
+            "year": 1987,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p452089833.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.5143,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35593344",
+            "title": "奥本海默 Oppenheimer",
+            "rating": 8.8,
+            "year": 2023,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2876555451.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.5065,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292213",
+            "title": "大话西游之大圣娶亲 西遊記大結局之仙履奇緣",
+            "rating": 9.2,
+            "year": 1995,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2455050536.webp",
+            "genres": [
+              "喜剧",
+              "爱情",
+              "奇幻",
+              "古装"
+            ]
+          },
+          "score": 0.4618,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_heavy_cfkg",
+    "status": 200,
+    "elapsed_s": 9.3412,
+    "payload": {
+      "algorithm": "cfkg",
+      "algorithm_display_name": "CFKG 主链路推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "1291574",
+            "title": "玩具总动员2 Toy Story 2",
+            "rating": 8.5,
+            "year": 1999,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1283688673.webp",
+            "genres": [
+              "喜剧",
+              "动画",
+              "奇幻",
+              "冒险"
+            ]
+          },
+          "score": 1.0,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 李·昂克里奇 Lee Unkrich",
+            "因为你喜欢《玩具总动员3 Toy Story 3》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26752852",
+            "title": "水形物语 The Shape of Water",
+            "rating": 7.2,
+            "year": 2017,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2506388632.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "奇幻"
+            ]
+          },
+          "score": 0.916,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 奥克塔维亚·斯宾瑟 Octavia Spencer",
+            "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3071604",
+            "title": "丹麦女孩 The Danish Girl",
+            "rating": 8.3,
+            "year": 2015,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2264778990.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "同性",
+              "传记"
+            ]
+          },
+          "score": 0.9007,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记",
+            "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26303622",
+            "title": "大空头 The Big Short",
+            "rating": 8.5,
+            "year": 2015,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2283531871.webp",
+            "genres": [
+              "剧情",
+              "传记"
+            ]
+          },
+          "score": 0.8696,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 瑞恩·高斯林 Ryan Gosling",
+            "因为你喜欢《海边的曼彻斯特 Manchester by the Sea》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26761416",
+            "title": "至暗时刻 Darkest Hour",
+            "rating": 8.5,
+            "year": 2017,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2504277551.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史",
+              "战争"
+            ]
+          },
+          "score": 0.8459,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记",
+            "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "20438962",
+            "title": "鸟人 Birdman or (The Unexpected Virtue of Ignorance)",
+            "rating": 8.0,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2203838902.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.8232,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 艾玛·斯通 Emma Stone",
+            "因为你喜欢《香火》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25726614",
+            "title": "神奇动物在哪里 Fantastic Beasts and Where to Find Them",
+            "rating": 7.7,
+            "year": 2016,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2392444121.webp",
+            "genres": [
+              "剧情",
+              "奇幻",
+              "冒险"
+            ]
+          },
+          "score": 0.8178,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 冒险",
+            "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "6538866",
+            "title": "极速车王 Ford v Ferrari",
+            "rating": 8.5,
+            "year": 2019,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2568792942.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "运动"
+            ]
+          },
+          "score": 0.8154,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 运动",
+            "因为你喜欢《爆裂鼓手 Whiplash》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26348103",
+            "title": "小妇人 Little Women",
+            "rating": 8.0,
+            "year": 2019,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2572928166.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.8084,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 爱情",
+            "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25938803",
+            "title": "莫娣 Maudie",
+            "rating": 9.0,
+            "year": 2016,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2431089276.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "传记"
+            ]
+          },
+          "score": 0.7947,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近",
+            "因为你喜欢《都是她的错 All Her Fault》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "21965464",
+            "title": "圣人文森特 St. Vincent",
+            "rating": 7.7,
+            "year": 2014,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2217219990.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.6875,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同导演 西奥多·梅尔菲 Theodore Melfi"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "27008105",
+            "title": "最终行动 Operation Finale",
+            "rating": 6.6,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2525918935.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.6841,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10763928",
+            "title": "弗兰克 Frank",
+            "rating": 7.9,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2195768476.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "音乐"
+            ]
+          },
+          "score": 0.6833,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 伦尼·阿伯拉罕森 Lenny Abrahamson"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25920096",
+            "title": "实验者 Experimenter",
+            "rating": 7.1,
+            "year": 2015,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2258047426.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.6814,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25908051",
+            "title": "间谍之桥 Bridge of Spies",
+            "rating": 8.2,
+            "year": 2015,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2247974249.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.669,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 汤姆·汉克斯 Tom Hanks"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10456894",
+            "title": "盟军夺宝队 The Monuments Men",
+            "rating": 5.6,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2174990264.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史",
+              "战争"
+            ]
+          },
+          "score": 0.6689,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3026559",
+            "title": "登月第一人 First Man",
+            "rating": 7.7,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2532776305.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.6564,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "34467461",
+            "title": "巴比伦 Babylon",
+            "rating": 8.0,
+            "year": 2022,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2889092995.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "历史"
+            ]
+          },
+          "score": 0.652,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同导演 达米恩·查泽雷 Damien Chazelle"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "11502912",
+            "title": "星图 Maps to the Stars",
+            "rating": 6.4,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2200754657.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.6468,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 米娅·华希科沃斯卡 Mia Wasikowska"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26628282",
+            "title": "宠儿 The Favourite",
+            "rating": 7.5,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2532012274.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "同性",
+              "传记"
+            ]
+          },
+          "score": 0.6445,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_heavy_kg_embed",
+    "status": 200,
+    "elapsed_s": 5.76,
+    "payload": {
+      "algorithm": "kg_embed",
+      "algorithm_display_name": "基于知识图谱嵌入的推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "21965464",
+            "title": "圣人文森特 St. Vincent",
+            "rating": 7.7,
+            "year": 2014,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2217219990.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.778,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同导演 西奥多·梅尔菲 Theodore Melfi"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "27008105",
+            "title": "最终行动 Operation Finale",
+            "rating": 6.6,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2525918935.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.7742,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10763928",
+            "title": "弗兰克 Frank",
+            "rating": 7.9,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2195768476.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "音乐"
+            ]
+          },
+          "score": 0.7733,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 伦尼·阿伯拉罕森 Lenny Abrahamson"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25920096",
+            "title": "实验者 Experimenter",
+            "rating": 7.1,
+            "year": 2015,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2258047426.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.7711,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25908051",
+            "title": "间谍之桥 Bridge of Spies",
+            "rating": 8.2,
+            "year": 2015,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2247974249.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.7571,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 汤姆·汉克斯 Tom Hanks"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10456894",
+            "title": "盟军夺宝队 The Monuments Men",
+            "rating": 5.6,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2174990264.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史",
+              "战争"
+            ]
+          },
+          "score": 0.757,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26303622",
+            "title": "大空头 The Big Short",
+            "rating": 8.5,
+            "year": 2015,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2283531871.webp",
+            "genres": [
+              "剧情",
+              "传记"
+            ]
+          },
+          "score": 0.7546,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 瑞恩·高斯林 Ryan Gosling"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26752852",
+            "title": "水形物语 The Shape of Water",
+            "rating": 7.2,
+            "year": 2017,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2506388632.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "奇幻"
+            ]
+          },
+          "score": 0.7508,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 奥克塔维亚·斯宾瑟 Octavia Spencer"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3026559",
+            "title": "登月第一人 First Man",
+            "rating": 7.7,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2532776305.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.7428,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "34467461",
+            "title": "巴比伦 Babylon",
+            "rating": 8.0,
+            "year": 2022,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2889092995.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "历史"
+            ]
+          },
+          "score": 0.7378,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同导演 达米恩·查泽雷 Damien Chazelle"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "11502912",
+            "title": "星图 Maps to the Stars",
+            "rating": 6.4,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2200754657.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.732,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 米娅·华希科沃斯卡 Mia Wasikowska"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26628282",
+            "title": "宠儿 The Favourite",
+            "rating": 7.5,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2532012274.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "同性",
+              "传记"
+            ]
+          },
+          "score": 0.7293,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10755525",
+            "title": "包法利夫人 Madame Bovary",
+            "rating": 6.6,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2224825296.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.7263,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 米娅·华希科沃斯卡 Mia Wasikowska"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26756049",
+            "title": "我，花样女王 I, Tonya",
+            "rating": 7.9,
+            "year": 2017,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2508862676.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "传记",
+              "运动"
+            ]
+          },
+          "score": 0.7232,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 运动"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "11580479",
+            "title": "危机解密 The Fifth Estate",
+            "rating": 6.6,
+            "year": 2013,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2097787328.webp",
+            "genres": [
+              "剧情",
+              "传记"
+            ]
+          },
+          "score": 0.7225,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25901741",
+            "title": "奋斗的乔伊 Joy",
+            "rating": 6.8,
+            "year": 2015,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2263171191.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "传记"
+            ]
+          },
+          "score": 0.7223,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291574",
+            "title": "玩具总动员2 Toy Story 2",
+            "rating": 8.5,
+            "year": 1999,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1283688673.webp",
+            "genres": [
+              "喜剧",
+              "动画",
+              "奇幻",
+              "冒险"
+            ]
+          },
+          "score": 0.7222,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 李·昂克里奇 Lee Unkrich"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "6755346",
+            "title": "妙笔生花 The Words",
+            "rating": 7.5,
+            "year": 2012,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p1615388794.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.722,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 爱情"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "24523680",
+            "title": "麦克白 Macbeth",
+            "rating": 7.3,
+            "year": 2015,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2266410852.webp",
+            "genres": [
+              "剧情",
+              "历史"
+            ]
+          },
+          "score": 0.7211,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 迈克尔·法斯宾德 Michael Fassbender"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292550",
+            "title": "埃及艳后 Cleopatra",
+            "rating": 7.9,
+            "year": 1963,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2496023539.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.72,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_heavy_kg_path",
+    "status": 200,
+    "elapsed_s": 6.4829,
+    "payload": {
+      "algorithm": "kg_path",
+      "algorithm_display_name": "基于知识图谱路径的推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "35376457",
+            "title": "爱情神话",
+            "rating": 8.1,
+            "year": 2021,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2914207920.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情"
+            ]
+          },
+          "score": 1.0,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26649682",
+            "title": "深海",
+            "rating": 7.3,
+            "year": 2023,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2885941329.webp",
+            "genres": [
+              "动画",
+              "奇幻"
+            ]
+          },
+          "score": 0.6245,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "30314848",
+            "title": "瞬息全宇宙 Everything Everywhere All at Once",
+            "rating": 7.6,
+            "year": 2022,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2869765076.webp",
+            "genres": [
+              "喜剧",
+              "奇幻",
+              "冒险"
+            ]
+          },
+          "score": 0.6177,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35178776",
+            "title": "雾山五行·犀川幻紫林",
+            "rating": 9.2,
+            "year": 2023,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2893658260.webp",
+            "genres": [
+              "动作",
+              "动画",
+              "奇幻",
+              "武侠"
+            ]
+          },
+          "score": 0.5918,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "34990593",
+            "title": "万神殿 第一季 Pantheon Season 1",
+            "rating": 8.8,
+            "year": 2022,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2878569702.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "科幻",
+              "动画"
+            ]
+          },
+          "score": 0.5189,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "34841067",
+            "title": "你好，李焕英",
+            "rating": 7.7,
+            "year": 2021,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2629056068.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "奇幻"
+            ]
+          },
+          "score": 0.503,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1297268",
+            "title": "秋日奏鸣曲 Höstsonaten",
+            "rating": 9.0,
+            "year": 1978,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2034707962.webp",
+            "genres": [
+              "剧情",
+              "家庭"
+            ]
+          },
+          "score": 0.5027,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "36653963",
+            "title": "黑镜 第七季 Black Mirror Season 7",
+            "rating": 8.6,
+            "year": 2025,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2920242376.webp",
+            "genres": [
+              "剧情",
+              "科幻",
+              "悬疑",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.4786,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35674355",
+            "title": "中国奇谭",
+            "rating": 8.7,
+            "year": 2023,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2885130077.webp",
+            "genres": [
+              "动画",
+              "短片",
+              "奇幻"
+            ]
+          },
+          "score": 0.4775,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35797709",
+            "title": "怪物",
+            "rating": 8.6,
+            "year": 2023,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2913062136.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.4711,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1296147",
+            "title": "呼喊与细语 Viskningar och rop",
+            "rating": 8.5,
+            "year": 1972,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2183935299.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.455,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35144311",
+            "title": "雄狮少年",
+            "rating": 8.3,
+            "year": 2021,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2702755317.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "动画"
+            ]
+          },
+          "score": 0.4431,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26348103",
+            "title": "小妇人 Little Women",
+            "rating": 8.0,
+            "year": 2019,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2572928166.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.3965,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35073886",
+            "title": "分手的决心 헤어질 결심",
+            "rating": 7.6,
+            "year": 2022,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2873816122.webp",
+            "genres": [
+              "剧情",
+              "悬疑",
+              "犯罪"
+            ]
+          },
+          "score": 0.3941,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "6424756",
+            "title": "新蝙蝠侠 The Batman",
+            "rating": 7.2,
+            "year": 2022,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2868425292.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "悬疑",
+              "犯罪"
+            ]
+          },
+          "score": 0.377,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293632",
+            "title": "春天的故事 Conte de printemps",
+            "rating": 8.4,
+            "year": 1990,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p1715325088.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情"
+            ]
+          },
+          "score": 0.3577,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "6850547",
+            "title": "玩具总动员4 Toy Story 4",
+            "rating": 8.5,
+            "year": 2019,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2551222752.webp",
+            "genres": [
+              "喜剧",
+              "动画",
+              "奇幻"
+            ]
+          },
+          "score": 0.3394,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "2609258",
+            "title": "芝加哥七君子审判 The Trial of the Chicago 7",
+            "rating": 8.6,
+            "year": 2020,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2620161520.webp",
+            "genres": [
+              "剧情",
+              "历史"
+            ]
+          },
+          "score": 0.3332,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "30466931",
+            "title": "波斯语课 Persischstunden",
+            "rating": 8.1,
+            "year": 2020,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2588101332.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.3304,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "30318116",
+            "title": "利刃出鞘 Knives Out",
+            "rating": 8.1,
+            "year": 2019,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2574172427.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "悬疑",
+              "犯罪"
+            ]
+          },
+          "score": 0.3288,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_default_heavy",
+    "status": 200,
+    "elapsed_s": 1.478,
+    "payload": {
+      "algorithm": "cfkg",
+      "algorithm_display_name": "CFKG 主链路推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "1291574",
+            "title": "玩具总动员2 Toy Story 2",
+            "rating": 8.5,
+            "year": 1999,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1283688673.webp",
+            "genres": [
+              "喜剧",
+              "动画",
+              "奇幻",
+              "冒险"
+            ]
+          },
+          "score": 1.0,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 李·昂克里奇 Lee Unkrich",
+            "因为你喜欢《玩具总动员3 Toy Story 3》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26752852",
+            "title": "水形物语 The Shape of Water",
+            "rating": 7.2,
+            "year": 2017,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2506388632.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "奇幻"
+            ]
+          },
+          "score": 0.916,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 奥克塔维亚·斯宾瑟 Octavia Spencer",
+            "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3071604",
+            "title": "丹麦女孩 The Danish Girl",
+            "rating": 8.3,
+            "year": 2015,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2264778990.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "同性",
+              "传记"
+            ]
+          },
+          "score": 0.9007,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记",
+            "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26303622",
+            "title": "大空头 The Big Short",
+            "rating": 8.5,
+            "year": 2015,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2283531871.webp",
+            "genres": [
+              "剧情",
+              "传记"
+            ]
+          },
+          "score": 0.8696,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 瑞恩·高斯林 Ryan Gosling",
+            "因为你喜欢《海边的曼彻斯特 Manchester by the Sea》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26761416",
+            "title": "至暗时刻 Darkest Hour",
+            "rating": 8.5,
+            "year": 2017,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2504277551.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史",
+              "战争"
+            ]
+          },
+          "score": 0.8459,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记",
+            "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "20438962",
+            "title": "鸟人 Birdman or (The Unexpected Virtue of Ignorance)",
+            "rating": 8.0,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2203838902.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.8232,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 艾玛·斯通 Emma Stone",
+            "因为你喜欢《香火》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25726614",
+            "title": "神奇动物在哪里 Fantastic Beasts and Where to Find Them",
+            "rating": 7.7,
+            "year": 2016,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2392444121.webp",
+            "genres": [
+              "剧情",
+              "奇幻",
+              "冒险"
+            ]
+          },
+          "score": 0.8178,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 冒险",
+            "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "6538866",
+            "title": "极速车王 Ford v Ferrari",
+            "rating": 8.5,
+            "year": 2019,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2568792942.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "运动"
+            ]
+          },
+          "score": 0.8154,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 运动",
+            "因为你喜欢《爆裂鼓手 Whiplash》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26348103",
+            "title": "小妇人 Little Women",
+            "rating": 8.0,
+            "year": 2019,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2572928166.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.8084,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 爱情",
+            "因为你喜欢《心灵奇旅 Soul》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25938803",
+            "title": "莫娣 Maudie",
+            "rating": 9.0,
+            "year": 2016,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2431089276.webp",
+            "genres": [
+              "剧情",
+              "爱情",
+              "传记"
+            ]
+          },
+          "score": 0.7947,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近",
+            "因为你喜欢《都是她的错 All Her Fault》，推荐评分行为相似的电影"
+          ],
+          "source_algorithms": [
+            "kg_embed",
+            "item_cf"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "21965464",
+            "title": "圣人文森特 St. Vincent",
+            "rating": 7.7,
+            "year": 2014,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2217219990.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.6875,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同导演 西奥多·梅尔菲 Theodore Melfi"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "27008105",
+            "title": "最终行动 Operation Finale",
+            "rating": 6.6,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2525918935.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.6841,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10763928",
+            "title": "弗兰克 Frank",
+            "rating": 7.9,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2195768476.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "音乐"
+            ]
+          },
+          "score": 0.6833,
+          "reasons": [
+            "基于知识图谱实体重叠推荐：偏好相同导演 伦尼·阿伯拉罕森 Lenny Abrahamson"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25920096",
+            "title": "实验者 Experimenter",
+            "rating": 7.1,
+            "year": 2015,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2258047426.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.6814,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25908051",
+            "title": "间谍之桥 Bridge of Spies",
+            "rating": 8.2,
+            "year": 2015,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2247974249.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.669,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 汤姆·汉克斯 Tom Hanks"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "10456894",
+            "title": "盟军夺宝队 The Monuments Men",
+            "rating": 5.6,
+            "year": 2014,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2174990264.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史",
+              "战争"
+            ]
+          },
+          "score": 0.6689,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3026559",
+            "title": "登月第一人 First Man",
+            "rating": 7.7,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2532776305.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.6564,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "34467461",
+            "title": "巴比伦 Babylon",
+            "rating": 8.0,
+            "year": 2022,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2889092995.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "历史"
+            ]
+          },
+          "score": 0.652,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同导演 达米恩·查泽雷 Damien Chazelle"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "11502912",
+            "title": "星图 Maps to the Stars",
+            "rating": 6.4,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2200754657.webp",
+            "genres": [
+              "剧情"
+            ]
+          },
+          "score": 0.6468,
+          "reasons": [
+            "综合嵌入语义和实体关系推荐：偏好相同演员 米娅·华希科沃斯卡 Mia Wasikowska"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26628282",
+            "title": "宠儿 The Favourite",
+            "rating": 7.5,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2532012274.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "同性",
+              "传记"
+            ]
+          },
+          "score": 0.6445,
+          "reasons": [
+            "与您高评分电影在知识图谱嵌入空间中最相近"
+          ],
+          "source_algorithms": [
+            "kg_embed"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "personal_cold_cfkg",
+    "status": 200,
+    "elapsed_s": 10.2013,
+    "payload": {
+      "algorithm": "cfkg",
+      "algorithm_display_name": "CFKG 主链路推荐",
+      "cold_start": true,
+      "items": [],
+      "total": 0
+    }
+  },
+  {
+    "name": "personal_cold_kg_path",
+    "status": 200,
+    "elapsed_s": 0.012,
+    "payload": {
+      "algorithm": "kg_path",
+      "algorithm_display_name": "基于知识图谱路径的推荐",
+      "cold_start": true,
+      "items": [],
+      "total": 0
+    }
+  },
+  {
+    "name": "explain_heavy_cfkg_1",
+    "status": 200,
+    "elapsed_s": 0.1414,
+    "payload": {
+      "algorithm": "cfkg",
+      "target_movie": {
+        "mid": "1291574",
+        "title": "玩具总动员2 Toy Story 2",
+        "rating": 8.5,
+        "year": 1999,
+        "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p1283688673.webp",
+        "genres": [
+          "喜剧",
+          "动画",
+          "奇幻",
+          "冒险"
+        ]
+      },
+      "reason_paths": [
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 奇幻 / 动画",
+          "representative_mid": "37331177",
+          "representative_title": "上帝怯场 Dieu est timide",
+          "matched_entities": [
+            "奇幻",
+            "动画"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 喜剧",
+          "representative_mid": "35765172",
+          "representative_title": "一场很（没）有必要的春晚",
+          "matched_entities": [
+            "喜剧"
+          ]
+        }
+      ],
+      "matched_entities": [
+        {
+          "type": "类型",
+          "items": [
+            "奇幻",
+            "动画",
+            "喜剧"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "movie_1291574",
+          "label": "玩具总动员2 Toy Story 2",
+          "type": "Movie",
+          "properties": {
+            "year": 1999,
+            "rating": 8.5
+          }
+        },
+        {
+          "id": "movie_37331177",
+          "label": "上帝怯场 Dieu est timide",
+          "type": "Movie",
+          "properties": {
+            "year": 2025
+          }
+        },
+        {
+          "id": "signal_genre_奇幻",
+          "label": "同类类型 奇幻",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "signal_genre_动画",
+          "label": "同类类型 动画",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_35765172",
+          "label": "一场很（没）有必要的春晚",
+          "type": "Movie",
+          "properties": {
+            "year": 2022
+          }
+        },
+        {
+          "id": "signal_genre_喜剧",
+          "label": "同类类型 喜剧",
+          "type": "Signal",
+          "properties": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "movie_35765172",
+          "target": "signal_genre_喜剧",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_37331177",
+          "target": "signal_genre_动画",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_37331177",
+          "target": "signal_genre_奇幻",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "signal_genre_动画",
+          "target": "movie_1291574",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_喜剧",
+          "target": "movie_1291574",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_奇幻",
+          "target": "movie_1291574",
+          "type": "PROFILE_HINT"
+        }
+      ],
+      "meta": {
+        "has_graph_evidence": true,
+        "cold_start": false
+      }
+    }
+  },
+  {
+    "name": "explain_heavy_cfkg_5",
+    "status": 200,
+    "elapsed_s": 0.1107,
+    "payload": {
+      "algorithm": "cfkg",
+      "target_movie": {
+        "mid": "26761416",
+        "title": "至暗时刻 Darkest Hour",
+        "rating": 8.5,
+        "year": 2017,
+        "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2504277551.webp",
+        "genres": [
+          "剧情",
+          "传记",
+          "历史",
+          "战争"
+        ]
+      },
+      "reason_paths": [
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 传记 / 战争",
+          "representative_mid": "1298308",
+          "representative_title": "巴顿将军 Patton",
+          "matched_entities": [
+            "传记",
+            "战争"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 历史 / 剧情",
+          "representative_mid": "36317421",
+          "representative_title": "太平年",
+          "matched_entities": [
+            "历史",
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "3073073",
+          "representative_title": "简爱 Jane Eyre",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1401385",
+          "representative_title": "彗星美人 All About Eve",
+          "matched_entities": [
+            "剧情"
+          ]
+        }
+      ],
+      "matched_entities": [
+        {
+          "type": "类型",
+          "items": [
+            "传记",
+            "战争",
+            "历史",
+            "剧情"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "movie_26761416",
+          "label": "至暗时刻 Darkest Hour",
+          "type": "Movie",
+          "properties": {
+            "year": 2017,
+            "rating": 8.5
+          }
+        },
+        {
+          "id": "movie_1298308",
+          "label": "巴顿将军 Patton",
+          "type": "Movie",
+          "properties": {
+            "year": 1970
+          }
+        },
+        {
+          "id": "signal_genre_传记",
+          "label": "同类类型 传记",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "signal_genre_战争",
+          "label": "同类类型 战争",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_36317421",
+          "label": "太平年",
+          "type": "Movie",
+          "properties": {
+            "year": 2026
+          }
+        },
+        {
+          "id": "signal_genre_历史",
+          "label": "同类类型 历史",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "signal_genre_剧情",
+          "label": "同类类型 剧情",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_3073073",
+          "label": "简爱 Jane Eyre",
+          "type": "Movie",
+          "properties": {
+            "year": 2011
+          }
+        },
+        {
+          "id": "movie_1401385",
+          "label": "彗星美人 All About Eve",
+          "type": "Movie",
+          "properties": {
+            "year": 1950
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_传记",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_战争",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1401385",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_3073073",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_历史",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "signal_genre_传记",
+          "target": "movie_26761416",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_剧情",
+          "target": "movie_26761416",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_历史",
+          "target": "movie_26761416",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_战争",
+          "target": "movie_26761416",
+          "type": "PROFILE_HINT"
+        }
+      ],
+      "meta": {
+        "has_graph_evidence": true,
+        "cold_start": false
+      }
+    }
+  },
+  {
+    "name": "explain_heavy_kg_embed_1",
+    "status": 200,
+    "elapsed_s": 0.1158,
+    "payload": {
+      "algorithm": "kg_embed",
+      "target_movie": {
+        "mid": "21965464",
+        "title": "圣人文森特 St. Vincent",
+        "rating": 7.7,
+        "year": 2014,
+        "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2217219990.webp",
+        "genres": [
+          "剧情",
+          "喜剧"
+        ]
+      },
+      "reason_paths": [
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 喜剧",
+          "representative_mid": "35765172",
+          "representative_title": "一场很（没）有必要的春晚",
+          "matched_entities": [
+            "喜剧"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "36317421",
+          "representative_title": "太平年",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "3073073",
+          "representative_title": "简爱 Jane Eyre",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1401385",
+          "representative_title": "彗星美人 All About Eve",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1298308",
+          "representative_title": "巴顿将军 Patton",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1292784",
+          "representative_title": "芬妮与亚历山大 Fanny och Alexander",
+          "matched_entities": [
+            "剧情"
+          ]
+        }
+      ],
+      "matched_entities": [
+        {
+          "type": "类型",
+          "items": [
+            "喜剧",
+            "剧情"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "movie_21965464",
+          "label": "圣人文森特 St. Vincent",
+          "type": "Movie",
+          "properties": {
+            "year": 2014,
+            "rating": 7.7
+          }
+        },
+        {
+          "id": "movie_35765172",
+          "label": "一场很（没）有必要的春晚",
+          "type": "Movie",
+          "properties": {
+            "year": 2022
+          }
+        },
+        {
+          "id": "signal_genre_喜剧",
+          "label": "同类类型 喜剧",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_36317421",
+          "label": "太平年",
+          "type": "Movie",
+          "properties": {
+            "year": 2026
+          }
+        },
+        {
+          "id": "signal_genre_剧情",
+          "label": "同类类型 剧情",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_3073073",
+          "label": "简爱 Jane Eyre",
+          "type": "Movie",
+          "properties": {
+            "year": 2011
+          }
+        },
+        {
+          "id": "movie_1401385",
+          "label": "彗星美人 All About Eve",
+          "type": "Movie",
+          "properties": {
+            "year": 1950
+          }
+        },
+        {
+          "id": "movie_1298308",
+          "label": "巴顿将军 Patton",
+          "type": "Movie",
+          "properties": {
+            "year": 1970
+          }
+        },
+        {
+          "id": "movie_1292784",
+          "label": "芬妮与亚历山大 Fanny och Alexander",
+          "type": "Movie",
+          "properties": {
+            "year": 1982
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "movie_1292784",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1401385",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_3073073",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_35765172",
+          "target": "signal_genre_喜剧",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "signal_genre_剧情",
+          "target": "movie_21965464",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_喜剧",
+          "target": "movie_21965464",
+          "type": "PROFILE_HINT"
+        }
+      ],
+      "meta": {
+        "has_graph_evidence": true,
+        "cold_start": false
+      }
+    }
+  },
+  {
+    "name": "explain_heavy_kg_embed_5",
+    "status": 200,
+    "elapsed_s": 0.107,
+    "payload": {
+      "algorithm": "kg_embed",
+      "target_movie": {
+        "mid": "25908051",
+        "title": "间谍之桥 Bridge of Spies",
+        "rating": 8.2,
+        "year": 2015,
+        "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2247974249.webp",
+        "genres": [
+          "剧情",
+          "传记",
+          "历史"
+        ]
+      },
+      "reason_paths": [
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 传记 / 剧情",
+          "representative_mid": "1298308",
+          "representative_title": "巴顿将军 Patton",
+          "matched_entities": [
+            "传记",
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 历史 / 剧情",
+          "representative_mid": "36317421",
+          "representative_title": "太平年",
+          "matched_entities": [
+            "历史",
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "3073073",
+          "representative_title": "简爱 Jane Eyre",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1401385",
+          "representative_title": "彗星美人 All About Eve",
+          "matched_entities": [
+            "剧情"
+          ]
+        }
+      ],
+      "matched_entities": [
+        {
+          "type": "类型",
+          "items": [
+            "传记",
+            "历史",
+            "剧情"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "movie_25908051",
+          "label": "间谍之桥 Bridge of Spies",
+          "type": "Movie",
+          "properties": {
+            "year": 2015,
+            "rating": 8.2
+          }
+        },
+        {
+          "id": "movie_1298308",
+          "label": "巴顿将军 Patton",
+          "type": "Movie",
+          "properties": {
+            "year": 1970
+          }
+        },
+        {
+          "id": "signal_genre_传记",
+          "label": "同类类型 传记",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_36317421",
+          "label": "太平年",
+          "type": "Movie",
+          "properties": {
+            "year": 2026
+          }
+        },
+        {
+          "id": "signal_genre_历史",
+          "label": "同类类型 历史",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "signal_genre_剧情",
+          "label": "同类类型 剧情",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_3073073",
+          "label": "简爱 Jane Eyre",
+          "type": "Movie",
+          "properties": {
+            "year": 2011
+          }
+        },
+        {
+          "id": "movie_1401385",
+          "label": "彗星美人 All About Eve",
+          "type": "Movie",
+          "properties": {
+            "year": 1950
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_传记",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1401385",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_3073073",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_历史",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "signal_genre_传记",
+          "target": "movie_25908051",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_剧情",
+          "target": "movie_25908051",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_历史",
+          "target": "movie_25908051",
+          "type": "PROFILE_HINT"
+        }
+      ],
+      "meta": {
+        "has_graph_evidence": true,
+        "cold_start": false
+      }
+    }
+  },
+  {
+    "name": "explain_heavy_kg_path_1",
+    "status": 200,
+    "elapsed_s": 0.0927,
+    "payload": {
+      "algorithm": "kg_path",
+      "target_movie": {
+        "mid": "35376457",
+        "title": "爱情神话",
+        "rating": 8.1,
+        "year": 2021,
+        "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2914207920.webp",
+        "genres": [
+          "剧情",
+          "喜剧",
+          "爱情"
+        ]
+      },
+      "reason_paths": [
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 爱情 / 剧情",
+          "representative_mid": "3073073",
+          "representative_title": "简爱 Jane Eyre",
+          "matched_entities": [
+            "爱情",
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 喜剧",
+          "representative_mid": "35765172",
+          "representative_title": "一场很（没）有必要的春晚",
+          "matched_entities": [
+            "喜剧"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "36317421",
+          "representative_title": "太平年",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1401385",
+          "representative_title": "彗星美人 All About Eve",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1298308",
+          "representative_title": "巴顿将军 Patton",
+          "matched_entities": [
+            "剧情"
+          ]
+        }
+      ],
+      "matched_entities": [
+        {
+          "type": "类型",
+          "items": [
+            "爱情",
+            "喜剧",
+            "剧情"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "movie_35376457",
+          "label": "爱情神话",
+          "type": "Movie",
+          "properties": {
+            "year": 2021,
+            "rating": 8.1
+          }
+        },
+        {
+          "id": "movie_3073073",
+          "label": "简爱 Jane Eyre",
+          "type": "Movie",
+          "properties": {
+            "year": 2011
+          }
+        },
+        {
+          "id": "signal_genre_爱情",
+          "label": "同类类型 爱情",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_35765172",
+          "label": "一场很（没）有必要的春晚",
+          "type": "Movie",
+          "properties": {
+            "year": 2022
+          }
+        },
+        {
+          "id": "signal_genre_喜剧",
+          "label": "同类类型 喜剧",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_36317421",
+          "label": "太平年",
+          "type": "Movie",
+          "properties": {
+            "year": 2026
+          }
+        },
+        {
+          "id": "signal_genre_剧情",
+          "label": "同类类型 剧情",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_1401385",
+          "label": "彗星美人 All About Eve",
+          "type": "Movie",
+          "properties": {
+            "year": 1950
+          }
+        },
+        {
+          "id": "movie_1298308",
+          "label": "巴顿将军 Patton",
+          "type": "Movie",
+          "properties": {
+            "year": 1970
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1401385",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_3073073",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_3073073",
+          "target": "signal_genre_爱情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_35765172",
+          "target": "signal_genre_喜剧",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "signal_genre_剧情",
+          "target": "movie_35376457",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_喜剧",
+          "target": "movie_35376457",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_爱情",
+          "target": "movie_35376457",
+          "type": "PROFILE_HINT"
+        }
+      ],
+      "meta": {
+        "has_graph_evidence": true,
+        "cold_start": false
+      }
+    }
+  },
+  {
+    "name": "explain_heavy_kg_path_5",
+    "status": 200,
+    "elapsed_s": 0.0931,
+    "payload": {
+      "algorithm": "kg_path",
+      "target_movie": {
+        "mid": "34990593",
+        "title": "万神殿 第一季 Pantheon Season 1",
+        "rating": 8.8,
+        "year": 2022,
+        "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2878569702.webp",
+        "genres": [
+          "剧情",
+          "动作",
+          "科幻",
+          "动画"
+        ]
+      },
+      "reason_paths": [
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 动画",
+          "representative_mid": "37331177",
+          "representative_title": "上帝怯场 Dieu est timide",
+          "matched_entities": [
+            "动画"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "36317421",
+          "representative_title": "太平年",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "3073073",
+          "representative_title": "简爱 Jane Eyre",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1401385",
+          "representative_title": "彗星美人 All About Eve",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1298308",
+          "representative_title": "巴顿将军 Patton",
+          "matched_entities": [
+            "剧情"
+          ]
+        },
+        {
+          "relation_type": "genre",
+          "relation_label": "同类类型",
+          "template": "与偏好影片同属 剧情",
+          "representative_mid": "1292784",
+          "representative_title": "芬妮与亚历山大 Fanny och Alexander",
+          "matched_entities": [
+            "剧情"
+          ]
+        }
+      ],
+      "matched_entities": [
+        {
+          "type": "类型",
+          "items": [
+            "动画",
+            "剧情"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "movie_34990593",
+          "label": "万神殿 第一季 Pantheon Season 1",
+          "type": "Movie",
+          "properties": {
+            "year": 2022,
+            "rating": 8.8
+          }
+        },
+        {
+          "id": "movie_37331177",
+          "label": "上帝怯场 Dieu est timide",
+          "type": "Movie",
+          "properties": {
+            "year": 2025
+          }
+        },
+        {
+          "id": "signal_genre_动画",
+          "label": "同类类型 动画",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_36317421",
+          "label": "太平年",
+          "type": "Movie",
+          "properties": {
+            "year": 2026
+          }
+        },
+        {
+          "id": "signal_genre_剧情",
+          "label": "同类类型 剧情",
+          "type": "Signal",
+          "properties": null
+        },
+        {
+          "id": "movie_3073073",
+          "label": "简爱 Jane Eyre",
+          "type": "Movie",
+          "properties": {
+            "year": 2011
+          }
+        },
+        {
+          "id": "movie_1401385",
+          "label": "彗星美人 All About Eve",
+          "type": "Movie",
+          "properties": {
+            "year": 1950
+          }
+        },
+        {
+          "id": "movie_1298308",
+          "label": "巴顿将军 Patton",
+          "type": "Movie",
+          "properties": {
+            "year": 1970
+          }
+        },
+        {
+          "id": "movie_1292784",
+          "label": "芬妮与亚历山大 Fanny och Alexander",
+          "type": "Movie",
+          "properties": {
+            "year": 1982
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "movie_1292784",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1298308",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_1401385",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_3073073",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_36317421",
+          "target": "signal_genre_剧情",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "movie_37331177",
+          "target": "signal_genre_动画",
+          "type": "SEED_CONTEXT"
+        },
+        {
+          "source": "signal_genre_剧情",
+          "target": "movie_34990593",
+          "type": "PROFILE_HINT"
+        },
+        {
+          "source": "signal_genre_动画",
+          "target": "movie_34990593",
+          "type": "PROFILE_HINT"
+        }
+      ],
+      "meta": {
+        "has_graph_evidence": true,
+        "cold_start": false
+      }
+    }
+  },
+  {
+    "name": "rating_add_light",
+    "status": 200,
+    "elapsed_s": 0.3698,
+    "payload": {
+      "id": 131766,
+      "mid": "1300374",
+      "rating": 5.0,
+      "comment_short": "rerun",
+      "rated_at": "2026-04-12T15:29:00"
+    }
+  },
+  {
+    "name": "personal_after_rating_light_kg_path",
+    "status": 200,
+    "elapsed_s": 0.1545,
+    "payload": {
+      "algorithm": "kg_path",
+      "algorithm_display_name": "基于知识图谱路径的推荐",
+      "cold_start": false,
+      "items": [
+        {
+          "movie": {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "rating": 9.5,
+            "year": 1994,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2372307693.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 1.0,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "rating": 9.4,
+            "year": 1994,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2913554676.webp",
+            "genres": [
+              "剧情",
+              "动作",
+              "犯罪"
+            ]
+          },
+          "score": 0.7785,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3541415",
+            "title": "盗梦空间 Inception",
+            "rating": 9.4,
+            "year": 2010,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p513344864.webp",
+            "genres": [
+              "剧情",
+              "科幻",
+              "悬疑",
+              "冒险"
+            ]
+          },
+          "score": 0.7772,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291561",
+            "title": "千与千寻 千と千尋の神隠し",
+            "rating": 9.4,
+            "year": 2001,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2557573348.webp",
+            "genres": [
+              "剧情",
+              "动画",
+              "奇幻"
+            ]
+          },
+          "score": 0.7438,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1889243",
+            "title": "星际穿越 Interstellar",
+            "rating": 9.4,
+            "year": 2014,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2614988097.webp",
+            "genres": [
+              "剧情",
+              "科幻",
+              "冒险"
+            ]
+          },
+          "score": 0.7403,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "25662329",
+            "title": "疯狂动物城 Zootopia",
+            "rating": 9.3,
+            "year": 2016,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2924128964.webp",
+            "genres": [
+              "喜剧",
+              "动画",
+              "冒险"
+            ]
+          },
+          "score": 0.7233,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292064",
+            "title": "楚门的世界 The Truman Show",
+            "rating": 9.4,
+            "year": 1998,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p479682972.webp",
+            "genres": [
+              "剧情",
+              "科幻"
+            ]
+          },
+          "score": 0.7149,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292063",
+            "title": "美丽人生 La vita è bella",
+            "rating": 9.5,
+            "year": 1997,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2578474613.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情",
+              "战争"
+            ]
+          },
+          "score": 0.6064,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "36154853",
+            "title": "好东西",
+            "rating": 8.9,
+            "year": 2024,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2915454411.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.602,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292001",
+            "title": "海上钢琴师 La leggenda del pianista sull'oceano",
+            "rating": 9.3,
+            "year": 1998,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2914698334.webp",
+            "genres": [
+              "剧情",
+              "音乐"
+            ]
+          },
+          "score": 0.5641,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1292220",
+            "title": "情书 Love Letter",
+            "rating": 8.9,
+            "year": 1995,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2648230660.webp",
+            "genres": [
+              "剧情",
+              "爱情"
+            ]
+          },
+          "score": 0.5274,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3793023",
+            "title": "三傻大闹宝莱坞 3 Idiots",
+            "rating": 9.2,
+            "year": 2009,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p579729551.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情",
+              "歌舞"
+            ]
+          },
+          "score": 0.5188,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "27060077",
+            "title": "绿皮书 Green Book",
+            "rating": 8.9,
+            "year": 2018,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2531065411.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "音乐",
+              "传记"
+            ]
+          },
+          "score": 0.5157,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26752088",
+            "title": "我不是药神",
+            "rating": 9.0,
+            "year": 2018,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2561305376.webp",
+            "genres": [
+              "剧情",
+              "喜剧"
+            ]
+          },
+          "score": 0.5132,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "3319755",
+            "title": "怦然心动 Flipped",
+            "rating": 9.1,
+            "year": 2010,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p501177648.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "爱情"
+            ]
+          },
+          "score": 0.4952,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1307914",
+            "title": "无间道 無間道",
+            "rating": 9.3,
+            "year": 2002,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2564556863.webp",
+            "genres": [
+              "剧情",
+              "惊悚",
+              "犯罪"
+            ]
+          },
+          "score": 0.4721,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1291549",
+            "title": "放牛班的春天 Les choristes",
+            "rating": 9.3,
+            "year": 2004,
+            "cover": "https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2884280708.webp",
+            "genres": [
+              "剧情",
+              "音乐"
+            ]
+          },
+          "score": 0.4555,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "1293172",
+            "title": "末代皇帝 The Last Emperor",
+            "rating": 9.3,
+            "year": 1987,
+            "cover": "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p452089833.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.4496,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "26794435",
+            "title": "哪吒之魔童降世",
+            "rating": 8.4,
+            "year": 2019,
+            "cover": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2563780504.webp",
+            "genres": [
+              "剧情",
+              "喜剧",
+              "动画",
+              "奇幻"
+            ]
+          },
+          "score": 0.4468,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        },
+        {
+          "movie": {
+            "mid": "35593344",
+            "title": "奥本海默 Oppenheimer",
+            "rating": 8.8,
+            "year": 2023,
+            "cover": "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2876555451.webp",
+            "genres": [
+              "剧情",
+              "传记",
+              "历史"
+            ]
+          },
+          "score": 0.4429,
+          "reasons": [
+            "与多位同样喜欢该类电影的用户兴趣重合"
+          ],
+          "source_algorithms": [
+            "kg_path"
+          ]
+        }
+      ],
+      "total": 20
+    }
+  },
+  {
+    "name": "rating_delete_light",
+    "status": 200,
+    "elapsed_s": 0.0091,
+    "payload": {
+      "message": "已删除"
+    }
+  }
+]

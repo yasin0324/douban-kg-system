@@ -1,0 +1,1274 @@
+{
+  "generated_at": "2026-04-12T15:30:54.153449",
+  "environment": {
+    "mode": "local_real_data_testclient",
+    "users": {
+      "cold": {
+        "id": 578,
+        "username": "codex_ui_test_20260308"
+      },
+      "light": {
+        "id": 580,
+        "username": "tester1"
+      },
+      "heavy": {
+        "id": 591,
+        "username": "douban_public_28743113"
+      }
+    },
+    "algorithms": [
+      "cfkg",
+      "kg_embed",
+      "kg_path"
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "algorithms_list",
+      "cohort": null,
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0035,
+      "passed": true,
+      "request": {},
+      "details": {
+        "algorithms": [
+          {
+            "name": "cfkg",
+            "display_name": "CFKG 主链路推荐",
+            "type": "KG"
+          },
+          {
+            "name": "content",
+            "display_name": "基于内容的推荐",
+            "type": "基线"
+          },
+          {
+            "name": "item_cf",
+            "display_name": "基于物品的协同过滤",
+            "type": "基线"
+          },
+          {
+            "name": "kg_path",
+            "display_name": "基于知识图谱路径的推荐",
+            "type": "KG"
+          },
+          {
+            "name": "kg_embed",
+            "display_name": "基于知识图谱嵌入的推荐",
+            "type": "KG"
+          }
+        ]
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "cold",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0104,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 0,
+          "want_to_watch_count": 0,
+          "rating_count": 0,
+          "effective_signal_count": 0,
+          "cold_start": true,
+          "meets_personalization_threshold": false
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0111,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 3,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "heavy",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0409,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1899,
+          "want_to_watch_count": 1109,
+          "rating_count": 5830,
+          "effective_signal_count": 6939,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 7.5062,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 1.0,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont",
+              "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1295124",
+            "title": "辛德勒的名单 Schindler's List",
+            "score": 0.9423,
+            "reasons": [
+              "与您高评分电影在知识图谱嵌入空间中最相近",
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1293544",
+            "title": "沉默的羔羊 The Silence of the Lambs",
+            "score": 0.8668,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同类型 剧情",
+              "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 1.5777,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 0.8629,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1292553",
+            "title": "真实的谎言 True Lies",
+            "score": 0.8306,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1306154",
+            "title": "罗密欧与朱丽叶 Romeo + Juliet",
+            "score": 0.7993,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同演员 莱昂纳多·迪卡普里奥 Leonardo DiCaprio"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 1.3476,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "score": 1.0,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "score": 0.7996,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "3541415",
+            "title": "盗梦空间 Inception",
+            "score": 0.7626,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 8.7788,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "1291574",
+            "title": "玩具总动员2 Toy Story 2",
+            "score": 1.0,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 李·昂克里奇 Lee Unkrich",
+              "因为你喜欢《玩具总动员3 Toy Story 3》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "26752852",
+            "title": "水形物语 The Shape of Water",
+            "score": 0.916,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同演员 奥克塔维亚·斯宾瑟 Octavia Spencer",
+              "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "3071604",
+            "title": "丹麦女孩 The Danish Girl",
+            "score": 0.9007,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同类型 传记",
+              "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 5.375,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "21965464",
+            "title": "圣人文森特 St. Vincent",
+            "score": 0.778,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同导演 西奥多·梅尔菲 Theodore Melfi"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "27008105",
+            "title": "最终行动 Operation Finale",
+            "score": 0.7742,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同类型 传记"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "10763928",
+            "title": "弗兰克 Frank",
+            "score": 0.7733,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 伦尼·阿伯拉罕森 Lenny Abrahamson"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 6.4465,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "top3": [
+          {
+            "mid": "35376457",
+            "title": "爱情神话",
+            "score": 1.0,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "26649682",
+            "title": "深海",
+            "score": 0.6245,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "30314848",
+            "title": "瞬息全宇宙 Everything Everywhere All at Once",
+            "score": 0.6177,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          }
+        ],
+        "cold_start": false,
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_default",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 1.4063,
+      "passed": true,
+      "request": {},
+      "details": {
+        "compare_same_top10": true,
+        "top3": [
+          {
+            "mid": "1291574",
+            "title": "玩具总动员2 Toy Story 2",
+            "score": 1.0,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 李·昂克里奇 Lee Unkrich",
+              "因为你喜欢《玩具总动员3 Toy Story 3》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "26752852",
+            "title": "水形物语 The Shape of Water",
+            "score": 0.916,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同演员 奥克塔维亚·斯宾瑟 Octavia Spencer",
+              "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "3071604",
+            "title": "丹麦女孩 The Danish Girl",
+            "score": 0.9007,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同类型 传记",
+              "因为你喜欢《爱乐之城 La La Land》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "personal_cold",
+      "cohort": "cold",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 7.8289,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [],
+        "cold_start": true,
+        "total": 0
+      }
+    },
+    {
+      "name": "personal_cold",
+      "cohort": "cold",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 0.0164,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [],
+        "cold_start": true,
+        "total": 0
+      }
+    },
+    {
+      "name": "personal_cold",
+      "cohort": "cold",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 0.0044,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [],
+        "cold_start": true,
+        "total": 0
+      }
+    },
+    {
+      "name": "explain_top1",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 0.1417,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "1291574"
+      }
+    },
+    {
+      "name": "explain_top5",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 0.1062,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "26761416"
+      }
+    },
+    {
+      "name": "explain_top1",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 0.0932,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "21965464"
+      }
+    },
+    {
+      "name": "explain_top5",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 0.1065,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "25908051"
+      }
+    },
+    {
+      "name": "explain_top1",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 0.1101,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "35376457"
+      }
+    },
+    {
+      "name": "explain_top5",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 0.1057,
+      "passed": true,
+      "request": {},
+      "details": {
+        "error": null,
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "34990593"
+      }
+    },
+    {
+      "name": "explain_graph_evidence_gate",
+      "cohort": "heavy",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": null,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "at least one explain sample has graph evidence",
+        "has_graph_evidence": true
+      }
+    },
+    {
+      "name": "explain_graph_evidence_gate",
+      "cohort": "heavy",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": null,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "at least one explain sample has graph evidence",
+        "has_graph_evidence": true
+      }
+    },
+    {
+      "name": "explain_graph_evidence_gate",
+      "cohort": "heavy",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": null,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "at least one explain sample has graph evidence",
+        "has_graph_evidence": true
+      }
+    },
+    {
+      "name": "invalid_algorithm",
+      "cohort": "heavy",
+      "algorithm": "invalid_algo",
+      "status_code": 400,
+      "elapsed_s": 0.004,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": "不支持的算法: invalid_algo，可选: cfkg, content, item_cf, kg_path, kg_embed"
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0038,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 3,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "rating_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.3806,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "id": 131767,
+          "mid": "1300374",
+          "rating": 5.0,
+          "comment_short": "codex acceptance rating",
+          "rated_at": "2026-04-12T15:32:17"
+        },
+        "target_mid": "1300374"
+      }
+    },
+    {
+      "name": "rating_lookup_after_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0079,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "mid": "1300374",
+          "has_rating": true,
+          "id": 131767,
+          "rating": 5.0,
+          "comment_short": "codex acceptance rating",
+          "rated_at": "2026-04-12T15:32:17"
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0035,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 2,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "rating_activity_delta",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0,
+      "passed": true,
+      "request": {},
+      "details": {
+        "before": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 3,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        },
+        "after": {
+          "liked_count": 1,
+          "want_to_watch_count": 1,
+          "rating_count": 2,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "personal_after_rating_add",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 7.6245,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [
+          {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "score": 1.0,
+            "reasons": [
+              "与您高评分电影在知识图谱嵌入空间中最相近",
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1292223",
+            "title": "七宗罪 Se7en",
+            "score": 0.9513,
+            "reasons": [
+              "与您高评分电影在知识图谱嵌入空间中最相近",
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1291832",
+            "title": "低俗小说 Pulp Fiction",
+            "score": 0.9454,
+            "reasons": [
+              "与您高评分电影在知识图谱嵌入空间中最相近",
+              "因为你喜欢《肖申克的救赎 The Shawshank Redemption》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 2.0052,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [
+          {
+            "mid": "1306605",
+            "title": "电影人生 The Majestic",
+            "score": 0.7839,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1293434",
+            "title": "王牌对王牌 The Negotiator",
+            "score": 0.7283,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同演员 大卫·摩斯 David Morse"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1293214",
+            "title": "黎明时分 Twilight",
+            "score": 0.7258,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同类型 悬疑"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 3.4985,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [
+          {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "score": 1.0,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "score": 0.7785,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "3541415",
+            "title": "盗梦空间 Inception",
+            "score": 0.7772,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "explain_after_rating_add",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 0.0149,
+      "passed": true,
+      "request": {},
+      "details": {
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "1295644"
+      }
+    },
+    {
+      "name": "explain_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 0.0055,
+      "passed": true,
+      "request": {},
+      "details": {
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "1306605"
+      }
+    },
+    {
+      "name": "explain_after_rating_add",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 0.0058,
+      "passed": true,
+      "request": {},
+      "details": {
+        "meta": {
+          "has_graph_evidence": true,
+          "cold_start": false
+        },
+        "target_mid": "1292720"
+      }
+    },
+    {
+      "name": "rating_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.1125,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "message": "已删除"
+        }
+      }
+    },
+    {
+      "name": "rating_lookup_after_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0051,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "mid": "1300374",
+          "has_rating": false,
+          "id": null,
+          "rating": null,
+          "comment_short": null,
+          "rated_at": null
+        }
+      }
+    },
+    {
+      "name": "preference_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0094,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "id": 96939,
+          "mid": "1295124",
+          "pref_type": "like",
+          "created_at": "2026-04-12T15:32:31"
+        },
+        "target_mid": "1295124"
+      }
+    },
+    {
+      "name": "preference_check_after_add",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0026,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "mid": "1295124",
+          "is_liked": true,
+          "is_want_to_watch": false
+        }
+      }
+    },
+    {
+      "name": "activity_summary",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0036,
+      "passed": true,
+      "request": {
+        "path": "/api/users/activity-summary"
+      },
+      "details": {
+        "activity_summary": {
+          "liked_count": 2,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "preference_activity_snapshot",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0,
+      "passed": true,
+      "request": {},
+      "details": {
+        "activity_summary": {
+          "liked_count": 2,
+          "want_to_watch_count": 1,
+          "rating_count": 1,
+          "effective_signal_count": 4,
+          "cold_start": false,
+          "meets_personalization_threshold": true
+        }
+      }
+    },
+    {
+      "name": "personal_after_preference_add",
+      "cohort": "light",
+      "algorithm": "cfkg",
+      "status_code": 200,
+      "elapsed_s": 4.7689,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [
+          {
+            "mid": "1292849",
+            "title": "拯救大兵瑞恩 Saving Private Ryan",
+            "score": 1.0,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 史蒂文·斯皮尔伯格 Steven Spielberg",
+              "因为你喜欢《辛德勒的名单 Schindler's List》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 0.9636,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont",
+              "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          },
+          {
+            "mid": "1305487",
+            "title": "猫鼠游戏 Catch Me If You Can",
+            "score": 0.9258,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 史蒂文·斯皮尔伯格 Steven Spielberg",
+              "因为你喜欢《泰坦尼克号 Titanic》，推荐评分行为相似的电影"
+            ],
+            "source_algorithms": [
+              "kg_embed",
+              "item_cf"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_preference_add",
+      "cohort": "light",
+      "algorithm": "kg_embed",
+      "status_code": 200,
+      "elapsed_s": 1.8529,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [
+          {
+            "mid": "1295802",
+            "title": "勇者无惧 Amistad",
+            "score": 0.9539,
+            "reasons": [
+              "综合嵌入语义和实体关系推荐：偏好相同导演 史蒂文·斯皮尔伯格 Steven Spielberg"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1300374",
+            "title": "绿里奇迹 The Green Mile",
+            "score": 0.8537,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 弗兰克·德拉邦特 Frank Darabont"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          },
+          {
+            "mid": "1292553",
+            "title": "真实的谎言 True Lies",
+            "score": 0.8407,
+            "reasons": [
+              "基于知识图谱实体重叠推荐：偏好相同导演 詹姆斯·卡梅隆 James Cameron"
+            ],
+            "source_algorithms": [
+              "kg_embed"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "personal_after_preference_add",
+      "cohort": "light",
+      "algorithm": "kg_path",
+      "status_code": 200,
+      "elapsed_s": 3.5109,
+      "passed": true,
+      "request": {},
+      "details": {
+        "top3": [
+          {
+            "mid": "1292720",
+            "title": "阿甘正传 Forrest Gump",
+            "score": 1.0,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "1295644",
+            "title": "这个杀手不太冷 Léon",
+            "score": 0.8338,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          },
+          {
+            "mid": "3541415",
+            "title": "盗梦空间 Inception",
+            "score": 0.7795,
+            "reasons": [
+              "与多位同样喜欢该类电影的用户兴趣重合"
+            ],
+            "source_algorithms": [
+              "kg_path"
+            ]
+          }
+        ],
+        "total": 20
+      }
+    },
+    {
+      "name": "preference_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.1045,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "message": "已取消"
+        }
+      }
+    },
+    {
+      "name": "preference_check_after_delete",
+      "cohort": "light",
+      "algorithm": null,
+      "status_code": 200,
+      "elapsed_s": 0.0047,
+      "passed": true,
+      "request": {},
+      "details": {
+        "message": {
+          "mid": "1295124",
+          "is_liked": false,
+          "is_want_to_watch": false
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_scenarios": 46,
+    "passed_scenarios": 46,
+    "failed_scenarios": 0,
+    "failed_names": []
+  }
+}

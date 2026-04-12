@@ -34,6 +34,7 @@ RECOMMEND_MAX_CONCURRENT_JOBS = max(
     int(settings.RECOMMEND_MAX_CONCURRENT_JOBS_PER_ALGORITHM),
     1,
 )
+EXPLAIN_MAX_POSITIVE_MOVIES = 8
 
 _runtime_lock = Lock()
 _algorithm_instances: dict[str, object] = {}
@@ -62,12 +63,65 @@ EXPLAIN_GROUP_LABELS = {
     REL_GENRE: "类型",
 }
 
+ONLINE_KG_EMBED_INIT_KWARGS = {
+    "max_positive_rating_seeds": 12,
+    "max_like_seeds": 4,
+    "max_wish_seeds": 0,
+}
+ONLINE_KG_PATH_INIT_KWARGS = {
+    "use_user_behavior_paths": True,
+    "use_expanded_relations": False,
+    "shared_audience_weight": 0.8,
+    "director_weight": 0.2,
+    "actor_weight": 0.1,
+    "genre_weight": 0.1,
+    "two_hop_weight": 0.0,
+    "region_weight": 0.0,
+    "language_weight": 0.0,
+    "content_type_weight": 0.0,
+    "year_bucket_weight": 0.0,
+    "enable_two_hop": False,
+    "use_degree_penalty": True,
+    "use_user_activity_penalty": True,
+    "shared_audience_user_limit": 60,
+    "director_per_seed_limit": 12,
+    "actor_per_seed_limit": 16,
+    "genre_per_seed_limit": 12,
+    "shared_audience_per_seed_limit": 40,
+    "two_hop_per_seed_limit": 0,
+    "max_positive_rating_seeds": 8,
+    "max_like_seeds": 4,
+    "max_wish_seeds": 0,
+}
+ONLINE_CFKG_INIT_KWARGS = {
+    "use_kg_path_explanations": False,
+    "kg_embed_init_kwargs": {
+        "use_expanded_relations": True,
+        "use_fusion_ranking": True,
+        "use_user_rating_relations": False,
+        "user_relation_weight": 0.0,
+        "centroid_weight": 0.4,
+        "max_seed_weight": 0.2,
+        "entity_overlap_weight": 0.4,
+        "max_positive_rating_seeds": 12,
+        "max_like_seeds": 4,
+        "max_wish_seeds": 0,
+    },
+    "kg_path_init_kwargs": ONLINE_KG_PATH_INIT_KWARGS,
+}
+ONLINE_ALGORITHM_INIT_KWARGS = {
+    "cfkg": ONLINE_CFKG_INIT_KWARGS,
+    "kg_embed": ONLINE_KG_EMBED_INIT_KWARGS,
+    "kg_path": ONLINE_KG_PATH_INIT_KWARGS,
+}
+
 
 def _get_algorithm_instance(algo_name: str):
     with _runtime_lock:
         algo = _algorithm_instances.get(algo_name)
         if algo is None:
-            algo = ALGORITHMS[algo_name]()
+            init_kwargs = dict(ONLINE_ALGORITHM_INIT_KWARGS.get(algo_name, {}))
+            algo = ALGORITHMS[algo_name](**init_kwargs)
             _algorithm_instances[algo_name] = algo
         return algo
 
@@ -87,6 +141,12 @@ def _reset_algorithm_runtime_state():
         _algorithm_slots.clear()
 
 
+def _replace_algorithm_runtime_state(algo_name: str) -> None:
+    with _runtime_lock:
+        _algorithm_instances.pop(algo_name, None)
+        _algorithm_slots[algo_name] = BoundedSemaphore(RECOMMEND_MAX_CONCURRENT_JOBS)
+
+
 def invalidate_recommendation_runtime(
     *,
     preference_changed: bool = False,
@@ -103,6 +163,7 @@ def invalidate_recommendation_runtime(
     with _runtime_lock:
         for algo_name in affected_algorithms:
             _algorithm_instances.pop(algo_name, None)
+            _algorithm_slots[algo_name] = BoundedSemaphore(RECOMMEND_MAX_CONCURRENT_JOBS)
 
 
 def _run_recommendation_job(algo, slot: BoundedSemaphore, *, user_id: int, n: int, exclude_mids: set[str]):
@@ -186,9 +247,10 @@ def _load_positive_movies_for_user(user_id: int, algo_name: str) -> list[dict]:
     algo = _get_algorithm_instance(algo_name)
     conn = get_connection()
     try:
-        return algo.get_user_positive_movies(conn, user_id)
+        positive_movies = algo.get_user_positive_movies(conn, user_id)
     finally:
         conn.close()
+    return positive_movies[:EXPLAIN_MAX_POSITIVE_MOVIES]
 
 
 def _build_overlap_explanation(
@@ -482,6 +544,7 @@ async def get_personal_recommendations(
             timeout=RECOMMEND_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
+        _replace_algorithm_runtime_state(algo_name)
         logger.warning(
             "推荐算法 %s 对用户 %s 执行超时（%.1fs）",
             algo_name,
@@ -493,6 +556,7 @@ async def get_personal_recommendations(
             detail=f"{algo_class.display_name} 计算超时，请稍后重试或切换其他算法",
         )
     except Exception as e:
+        _replace_algorithm_runtime_state(algo_name)
         logger.error(f"推荐算法 {algo_name} 执行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"推荐算法执行失败: {str(e)}")
 
