@@ -1,0 +1,973 @@
+{
+  "protocol_version": 2,
+  "generated_at": "2026-04-10T03:40:00.444449+08:00",
+  "eval_method": "validation_and_test_sampled_leave_one_out (1_positive + 499_negatives)",
+  "user_source": "public",
+  "user_source_display": "公开豆瓣用户（douban_public_*)",
+  "num_negatives": 499,
+  "user_split_seed": 42,
+  "negative_sample_seeds": [
+    42,
+    52,
+    62,
+    72,
+    82
+  ],
+  "selected_algorithms": [
+    "kg_path"
+  ],
+  "n_total_users": 500,
+  "n_validation_users": 100,
+  "n_test_users": 400,
+  "suite_elapsed_seconds": 138600.7,
+  "results": {
+    "kg_path": {
+      "display_name": "基于知识图谱路径的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.099,
+          "precision_std": 0.0003,
+          "recall": 0.495,
+          "recall_std": 0.0016,
+          "ndcg": 0.3886,
+          "ndcg_std": 0.0036,
+          "hit_rate": 0.495,
+          "hit_rate_std": 0.0016
+        },
+        "10": {
+          "precision": 0.052,
+          "precision_std": 0.0002,
+          "recall": 0.52,
+          "recall_std": 0.0016,
+          "ndcg": 0.397,
+          "ndcg_std": 0.0031,
+          "hit_rate": 0.52,
+          "hit_rate_std": 0.0016
+        },
+        "20": {
+          "precision": 0.0264,
+          "precision_std": 0.0001,
+          "recall": 0.527,
+          "recall_std": 0.0019,
+          "ndcg": 0.3988,
+          "ndcg_std": 0.0034,
+          "hit_rate": 0.527,
+          "hit_rate_std": 0.0019
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0324,
+        "std": 0.0001
+      },
+      "diversity_at_10": {
+        "mean": 0.9084,
+        "std": 0.0007
+      },
+      "time_seconds": 22576.45,
+      "avg_time_seconds": 56.4411,
+      "total_elapsed_seconds": 138573.91,
+      "validation_elapsed_seconds": 66710.19,
+      "main_test_elapsed_seconds": 22578.76,
+      "ablation_elapsed_seconds": 26620.09,
+      "legacy_elapsed_seconds": 22664.87,
+      "n_test_users": 400,
+      "best_params": {
+        "use_user_behavior_paths": true,
+        "use_expanded_relations": true,
+        "shared_audience_weight": 0.6,
+        "director_weight": 0.2,
+        "actor_weight": 0.2,
+        "genre_weight": 0.2,
+        "two_hop_weight": 0.1,
+        "region_weight": 0.1,
+        "language_weight": 0.1,
+        "content_type_weight": 0.05,
+        "year_bucket_weight": 0.05,
+        "enable_two_hop": true,
+        "use_degree_penalty": true,
+        "use_user_activity_penalty": true
+      },
+      "validation_summary": {
+        "params": {
+          "use_user_behavior_paths": true,
+          "use_expanded_relations": true,
+          "shared_audience_weight": 0.6,
+          "director_weight": 0.2,
+          "actor_weight": 0.2,
+          "genre_weight": 0.2,
+          "two_hop_weight": 0.1,
+          "region_weight": 0.1,
+          "language_weight": 0.1,
+          "content_type_weight": 0.05,
+          "year_bucket_weight": 0.05,
+          "enable_two_hop": true,
+          "use_degree_penalty": true,
+          "use_user_activity_penalty": true
+        },
+        "metrics": {
+          "5": {
+            "precision": 0.096,
+            "precision_std": 0.0028,
+            "recall": 0.48,
+            "recall_std": 0.0141,
+            "ndcg": 0.3885,
+            "ndcg_std": 0.0131,
+            "hit_rate": 0.48,
+            "hit_rate_std": 0.0141
+          },
+          "10": {
+            "precision": 0.052,
+            "precision_std": 0.0006,
+            "recall": 0.52,
+            "recall_std": 0.0063,
+            "ndcg": 0.4015,
+            "ndcg_std": 0.0104,
+            "hit_rate": 0.52,
+            "hit_rate_std": 0.0063
+          },
+          "20": {
+            "precision": 0.0272,
+            "precision_std": 0.0002,
+            "recall": 0.544,
+            "recall_std": 0.0049,
+            "ndcg": 0.4073,
+            "ndcg_std": 0.0084,
+            "hit_rate": 0.544,
+            "hit_rate_std": 0.0049
+          }
+        },
+        "per_seed": {
+          "42": {
+            "users": 100,
+            "metrics": {
+              "5": {
+                "precision": 0.096,
+                "recall": 0.48,
+                "ndcg": 0.3879,
+                "hit_rate": 0.48
+              },
+              "10": {
+                "precision": 0.052,
+                "recall": 0.52,
+                "ndcg": 0.4017,
+                "hit_rate": 0.52
+              },
+              "20": {
+                "precision": 0.027,
+                "recall": 0.54,
+                "ndcg": 0.4065,
+                "hit_rate": 0.54
+              }
+            },
+            "coverage_at_20": 0.0097,
+            "diversity_at_10": 0.9105
+          },
+          "52": {
+            "users": 100,
+            "metrics": {
+              "5": {
+                "precision": 0.1,
+                "recall": 0.5,
+                "ndcg": 0.4061,
+                "hit_rate": 0.5
+              },
+              "10": {
+                "precision": 0.053,
+                "recall": 0.53,
+                "ndcg": 0.416,
+                "hit_rate": 0.53
+              },
+              "20": {
+                "precision": 0.027,
+                "recall": 0.54,
+                "ndcg": 0.4183,
+                "hit_rate": 0.54
+              }
+            },
+            "coverage_at_20": 0.0098,
+            "diversity_at_10": 0.9065
+          },
+          "62": {
+            "users": 100,
+            "metrics": {
+              "5": {
+                "precision": 0.092,
+                "recall": 0.46,
+                "ndcg": 0.3768,
+                "hit_rate": 0.46
+              },
+              "10": {
+                "precision": 0.051,
+                "recall": 0.51,
+                "ndcg": 0.3924,
+                "hit_rate": 0.51
+              },
+              "20": {
+                "precision": 0.0275,
+                "recall": 0.55,
+                "ndcg": 0.402,
+                "hit_rate": 0.55
+              }
+            },
+            "coverage_at_20": 0.0097,
+            "diversity_at_10": 0.9083
+          },
+          "72": {
+            "users": 100,
+            "metrics": {
+              "5": {
+                "precision": 0.094,
+                "recall": 0.47,
+                "ndcg": 0.3717,
+                "hit_rate": 0.47
+              },
+              "10": {
+                "precision": 0.052,
+                "recall": 0.52,
+                "ndcg": 0.3879,
+                "hit_rate": 0.52
+              },
+              "20": {
+                "precision": 0.0275,
+                "recall": 0.55,
+                "ndcg": 0.3951,
+                "hit_rate": 0.55
+              }
+            },
+            "coverage_at_20": 0.0097,
+            "diversity_at_10": 0.9065
+          },
+          "82": {
+            "users": 100,
+            "metrics": {
+              "5": {
+                "precision": 0.098,
+                "recall": 0.49,
+                "ndcg": 0.3999,
+                "hit_rate": 0.49
+              },
+              "10": {
+                "precision": 0.052,
+                "recall": 0.52,
+                "ndcg": 0.4097,
+                "hit_rate": 0.52
+              },
+              "20": {
+                "precision": 0.027,
+                "recall": 0.54,
+                "ndcg": 0.4146,
+                "hit_rate": 0.54
+              }
+            },
+            "coverage_at_20": 0.0097,
+            "diversity_at_10": 0.9068
+          }
+        },
+        "coverage_at_20": {
+          "mean": 0.0097,
+          "std": 0.0
+        },
+        "diversity_at_10": {
+          "mean": 0.9077,
+          "std": 0.0015
+        },
+        "time_seconds": 5496.05,
+        "avg_time_seconds": 54.9605,
+        "n_users": 100
+      },
+      "per_seed": {
+        "42": {
+          "users": 400,
+          "metrics": {
+            "5": {
+              "precision": 0.099,
+              "recall": 0.495,
+              "ndcg": 0.3906,
+              "hit_rate": 0.495
+            },
+            "10": {
+              "precision": 0.0518,
+              "recall": 0.5175,
+              "ndcg": 0.3982,
+              "hit_rate": 0.5175
+            },
+            "20": {
+              "precision": 0.0263,
+              "recall": 0.525,
+              "ndcg": 0.4002,
+              "hit_rate": 0.525
+            }
+          },
+          "coverage_at_20": 0.0323,
+          "diversity_at_10": 0.909
+        },
+        "52": {
+          "users": 400,
+          "metrics": {
+            "5": {
+              "precision": 0.0985,
+              "recall": 0.4925,
+              "ndcg": 0.3868,
+              "hit_rate": 0.4925
+            },
+            "10": {
+              "precision": 0.052,
+              "recall": 0.52,
+              "ndcg": 0.396,
+              "hit_rate": 0.52
+            },
+            "20": {
+              "precision": 0.0263,
+              "recall": 0.525,
+              "ndcg": 0.3973,
+              "hit_rate": 0.525
+            }
+          },
+          "coverage_at_20": 0.0325,
+          "diversity_at_10": 0.9091
+        },
+        "62": {
+          "users": 400,
+          "metrics": {
+            "5": {
+              "precision": 0.099,
+              "recall": 0.495,
+              "ndcg": 0.3932,
+              "hit_rate": 0.495
+            },
+            "10": {
+              "precision": 0.052,
+              "recall": 0.52,
+              "ndcg": 0.4015,
+              "hit_rate": 0.52
+            },
+            "20": {
+              "precision": 0.0264,
+              "recall": 0.5275,
+              "ndcg": 0.4035,
+              "hit_rate": 0.5275
+            }
+          },
+          "coverage_at_20": 0.0324,
+          "diversity_at_10": 0.9088
+        },
+        "72": {
+          "users": 400,
+          "metrics": {
+            "5": {
+              "precision": 0.0995,
+              "recall": 0.4975,
+              "ndcg": 0.3897,
+              "hit_rate": 0.4975
+            },
+            "10": {
+              "precision": 0.052,
+              "recall": 0.52,
+              "ndcg": 0.3974,
+              "hit_rate": 0.52
+            },
+            "20": {
+              "precision": 0.0265,
+              "recall": 0.53,
+              "ndcg": 0.3999,
+              "hit_rate": 0.53
+            }
+          },
+          "coverage_at_20": 0.0324,
+          "diversity_at_10": 0.9074
+        },
+        "82": {
+          "users": 400,
+          "metrics": {
+            "5": {
+              "precision": 0.099,
+              "recall": 0.495,
+              "ndcg": 0.3826,
+              "hit_rate": 0.495
+            },
+            "10": {
+              "precision": 0.0523,
+              "recall": 0.5225,
+              "ndcg": 0.392,
+              "hit_rate": 0.5225
+            },
+            "20": {
+              "precision": 0.0264,
+              "recall": 0.5275,
+              "ndcg": 0.3932,
+              "hit_rate": 0.5275
+            }
+          },
+          "coverage_at_20": 0.0323,
+          "diversity_at_10": 0.9076
+        }
+      },
+      "ablations": {
+        "结构路径": {
+          "metrics": {
+            "5": {
+              "precision": 0.0386,
+              "precision_std": 0.0007,
+              "recall": 0.193,
+              "recall_std": 0.0037,
+              "ndcg": 0.1418,
+              "ndcg_std": 0.0018,
+              "hit_rate": 0.193,
+              "hit_rate_std": 0.0037
+            },
+            "10": {
+              "precision": 0.0216,
+              "precision_std": 0.0001,
+              "recall": 0.2165,
+              "recall_std": 0.0012,
+              "ndcg": 0.1495,
+              "ndcg_std": 0.0019,
+              "hit_rate": 0.2165,
+              "hit_rate_std": 0.0012
+            },
+            "20": {
+              "precision": 0.0119,
+              "precision_std": 0.0002,
+              "recall": 0.238,
+              "recall_std": 0.0029,
+              "ndcg": 0.1547,
+              "ndcg_std": 0.0017,
+              "hit_rate": 0.238,
+              "hit_rate_std": 0.0029
+            }
+          },
+          "per_seed": {
+            "42": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.039,
+                  "recall": 0.195,
+                  "ndcg": 0.1399,
+                  "hit_rate": 0.195
+                },
+                "10": {
+                  "precision": 0.0215,
+                  "recall": 0.215,
+                  "ndcg": 0.1466,
+                  "hit_rate": 0.215
+                },
+                "20": {
+                  "precision": 0.012,
+                  "recall": 0.24,
+                  "ndcg": 0.1527,
+                  "hit_rate": 0.24
+                }
+              },
+              "coverage_at_20": 0.0314,
+              "diversity_at_10": 0.9068
+            },
+            "52": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.0395,
+                  "recall": 0.1975,
+                  "ndcg": 0.1449,
+                  "hit_rate": 0.1975
+                },
+                "10": {
+                  "precision": 0.0217,
+                  "recall": 0.2175,
+                  "ndcg": 0.1515,
+                  "hit_rate": 0.2175
+                },
+                "20": {
+                  "precision": 0.0119,
+                  "recall": 0.2375,
+                  "ndcg": 0.1563,
+                  "hit_rate": 0.2375
+                }
+              },
+              "coverage_at_20": 0.0318,
+              "diversity_at_10": 0.9064
+            },
+            "62": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.0375,
+                  "recall": 0.1875,
+                  "ndcg": 0.1408,
+                  "hit_rate": 0.1875
+                },
+                "10": {
+                  "precision": 0.0215,
+                  "recall": 0.215,
+                  "ndcg": 0.1497,
+                  "hit_rate": 0.215
+                },
+                "20": {
+                  "precision": 0.0116,
+                  "recall": 0.2325,
+                  "ndcg": 0.154,
+                  "hit_rate": 0.2325
+                }
+              },
+              "coverage_at_20": 0.0314,
+              "diversity_at_10": 0.9061
+            },
+            "72": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.038,
+                  "recall": 0.19,
+                  "ndcg": 0.1426,
+                  "hit_rate": 0.19
+                },
+                "10": {
+                  "precision": 0.0217,
+                  "recall": 0.2175,
+                  "ndcg": 0.1516,
+                  "hit_rate": 0.2175
+                },
+                "20": {
+                  "precision": 0.012,
+                  "recall": 0.24,
+                  "ndcg": 0.1571,
+                  "hit_rate": 0.24
+                }
+              },
+              "coverage_at_20": 0.0315,
+              "diversity_at_10": 0.9054
+            },
+            "82": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.039,
+                  "recall": 0.195,
+                  "ndcg": 0.1408,
+                  "hit_rate": 0.195
+                },
+                "10": {
+                  "precision": 0.0217,
+                  "recall": 0.2175,
+                  "ndcg": 0.1481,
+                  "hit_rate": 0.2175
+                },
+                "20": {
+                  "precision": 0.012,
+                  "recall": 0.24,
+                  "ndcg": 0.1535,
+                  "hit_rate": 0.24
+                }
+              },
+              "coverage_at_20": 0.0316,
+              "diversity_at_10": 0.9053
+            }
+          },
+          "coverage_at_20": {
+            "mean": 0.0315,
+            "std": 0.0001
+          },
+          "diversity_at_10": {
+            "mean": 0.906,
+            "std": 0.0006
+          },
+          "time_seconds": 1750.24,
+          "avg_time_seconds": 4.3756,
+          "n_users": 400,
+          "params": {
+            "use_user_behavior_paths": false,
+            "use_expanded_relations": false,
+            "shared_audience_weight": 0.6,
+            "director_weight": 0.2,
+            "actor_weight": 0.2,
+            "genre_weight": 0.2,
+            "two_hop_weight": 0.1,
+            "region_weight": 0.1,
+            "language_weight": 0.1,
+            "content_type_weight": 0.05,
+            "year_bucket_weight": 0.05,
+            "enable_two_hop": true,
+            "use_degree_penalty": false,
+            "use_user_activity_penalty": false
+          }
+        },
+        "结构路径+协同用户路径": {
+          "metrics": {
+            "5": {
+              "precision": 0.0976,
+              "precision_std": 0.0006,
+              "recall": 0.488,
+              "recall_std": 0.0029,
+              "ndcg": 0.3853,
+              "ndcg_std": 0.0039,
+              "hit_rate": 0.488,
+              "hit_rate_std": 0.0029
+            },
+            "10": {
+              "precision": 0.0519,
+              "precision_std": 0.0001,
+              "recall": 0.5185,
+              "recall_std": 0.0012,
+              "ndcg": 0.3954,
+              "ndcg_std": 0.0034,
+              "hit_rate": 0.5185,
+              "hit_rate_std": 0.0012
+            },
+            "20": {
+              "precision": 0.0264,
+              "precision_std": 0.0001,
+              "recall": 0.5265,
+              "recall_std": 0.002,
+              "ndcg": 0.3974,
+              "ndcg_std": 0.0039,
+              "hit_rate": 0.5265,
+              "hit_rate_std": 0.002
+            }
+          },
+          "per_seed": {
+            "42": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.0975,
+                  "recall": 0.4875,
+                  "ndcg": 0.3845,
+                  "hit_rate": 0.4875
+                },
+                "10": {
+                  "precision": 0.052,
+                  "recall": 0.52,
+                  "ndcg": 0.3951,
+                  "hit_rate": 0.52
+                },
+                "20": {
+                  "precision": 0.0263,
+                  "recall": 0.525,
+                  "ndcg": 0.3963,
+                  "hit_rate": 0.525
+                }
+              },
+              "coverage_at_20": 0.032,
+              "diversity_at_10": 0.9093
+            },
+            "52": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.097,
+                  "recall": 0.485,
+                  "ndcg": 0.3824,
+                  "hit_rate": 0.485
+                },
+                "10": {
+                  "precision": 0.052,
+                  "recall": 0.52,
+                  "ndcg": 0.3942,
+                  "hit_rate": 0.52
+                },
+                "20": {
+                  "precision": 0.0263,
+                  "recall": 0.525,
+                  "ndcg": 0.3955,
+                  "hit_rate": 0.525
+                }
+              },
+              "coverage_at_20": 0.0323,
+              "diversity_at_10": 0.9093
+            },
+            "62": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.097,
+                  "recall": 0.485,
+                  "ndcg": 0.387,
+                  "hit_rate": 0.485
+                },
+                "10": {
+                  "precision": 0.0518,
+                  "recall": 0.5175,
+                  "ndcg": 0.3978,
+                  "hit_rate": 0.5175
+                },
+                "20": {
+                  "precision": 0.0264,
+                  "recall": 0.5275,
+                  "ndcg": 0.4003,
+                  "hit_rate": 0.5275
+                }
+              },
+              "coverage_at_20": 0.0322,
+              "diversity_at_10": 0.9085
+            },
+            "72": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.0985,
+                  "recall": 0.4925,
+                  "ndcg": 0.3918,
+                  "hit_rate": 0.4925
+                },
+                "10": {
+                  "precision": 0.0518,
+                  "recall": 0.5175,
+                  "ndcg": 0.4,
+                  "hit_rate": 0.5175
+                },
+                "20": {
+                  "precision": 0.0265,
+                  "recall": 0.53,
+                  "ndcg": 0.403,
+                  "hit_rate": 0.53
+                }
+              },
+              "coverage_at_20": 0.0322,
+              "diversity_at_10": 0.9075
+            },
+            "82": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.098,
+                  "recall": 0.49,
+                  "ndcg": 0.3808,
+                  "hit_rate": 0.49
+                },
+                "10": {
+                  "precision": 0.0518,
+                  "recall": 0.5175,
+                  "ndcg": 0.3899,
+                  "hit_rate": 0.5175
+                },
+                "20": {
+                  "precision": 0.0263,
+                  "recall": 0.525,
+                  "ndcg": 0.3919,
+                  "hit_rate": 0.525
+                }
+              },
+              "coverage_at_20": 0.032,
+              "diversity_at_10": 0.9083
+            }
+          },
+          "coverage_at_20": {
+            "mean": 0.0321,
+            "std": 0.0001
+          },
+          "diversity_at_10": {
+            "mean": 0.9086,
+            "std": 0.0007
+          },
+          "time_seconds": 2264.07,
+          "avg_time_seconds": 5.6602,
+          "n_users": 400,
+          "params": {
+            "use_user_behavior_paths": true,
+            "use_expanded_relations": false,
+            "shared_audience_weight": 0.6,
+            "director_weight": 0.2,
+            "actor_weight": 0.2,
+            "genre_weight": 0.2,
+            "two_hop_weight": 0.1,
+            "region_weight": 0.1,
+            "language_weight": 0.1,
+            "content_type_weight": 0.05,
+            "year_bucket_weight": 0.05,
+            "enable_two_hop": true,
+            "use_degree_penalty": false,
+            "use_user_activity_penalty": false
+          }
+        },
+        "全量融合": {
+          "metrics": {
+            "5": {
+              "precision": 0.099,
+              "precision_std": 0.0003,
+              "recall": 0.495,
+              "recall_std": 0.0016,
+              "ndcg": 0.3886,
+              "ndcg_std": 0.0036,
+              "hit_rate": 0.495,
+              "hit_rate_std": 0.0016
+            },
+            "10": {
+              "precision": 0.052,
+              "precision_std": 0.0002,
+              "recall": 0.52,
+              "recall_std": 0.0016,
+              "ndcg": 0.397,
+              "ndcg_std": 0.0031,
+              "hit_rate": 0.52,
+              "hit_rate_std": 0.0016
+            },
+            "20": {
+              "precision": 0.0264,
+              "precision_std": 0.0001,
+              "recall": 0.527,
+              "recall_std": 0.0019,
+              "ndcg": 0.3988,
+              "ndcg_std": 0.0034,
+              "hit_rate": 0.527,
+              "hit_rate_std": 0.0019
+            }
+          },
+          "per_seed": {
+            "42": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.099,
+                  "recall": 0.495,
+                  "ndcg": 0.3906,
+                  "hit_rate": 0.495
+                },
+                "10": {
+                  "precision": 0.0518,
+                  "recall": 0.5175,
+                  "ndcg": 0.3982,
+                  "hit_rate": 0.5175
+                },
+                "20": {
+                  "precision": 0.0263,
+                  "recall": 0.525,
+                  "ndcg": 0.4002,
+                  "hit_rate": 0.525
+                }
+              },
+              "coverage_at_20": 0.0323,
+              "diversity_at_10": 0.909
+            },
+            "52": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.0985,
+                  "recall": 0.4925,
+                  "ndcg": 0.3868,
+                  "hit_rate": 0.4925
+                },
+                "10": {
+                  "precision": 0.052,
+                  "recall": 0.52,
+                  "ndcg": 0.396,
+                  "hit_rate": 0.52
+                },
+                "20": {
+                  "precision": 0.0263,
+                  "recall": 0.525,
+                  "ndcg": 0.3973,
+                  "hit_rate": 0.525
+                }
+              },
+              "coverage_at_20": 0.0325,
+              "diversity_at_10": 0.9091
+            },
+            "62": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.099,
+                  "recall": 0.495,
+                  "ndcg": 0.3932,
+                  "hit_rate": 0.495
+                },
+                "10": {
+                  "precision": 0.052,
+                  "recall": 0.52,
+                  "ndcg": 0.4015,
+                  "hit_rate": 0.52
+                },
+                "20": {
+                  "precision": 0.0264,
+                  "recall": 0.5275,
+                  "ndcg": 0.4035,
+                  "hit_rate": 0.5275
+                }
+              },
+              "coverage_at_20": 0.0324,
+              "diversity_at_10": 0.9088
+            },
+            "72": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.0995,
+                  "recall": 0.4975,
+                  "ndcg": 0.3897,
+                  "hit_rate": 0.4975
+                },
+                "10": {
+                  "precision": 0.052,
+                  "recall": 0.52,
+                  "ndcg": 0.3974,
+                  "hit_rate": 0.52
+                },
+                "20": {
+                  "precision": 0.0265,
+                  "recall": 0.53,
+                  "ndcg": 0.3999,
+                  "hit_rate": 0.53
+                }
+              },
+              "coverage_at_20": 0.0324,
+              "diversity_at_10": 0.9074
+            },
+            "82": {
+              "users": 400,
+              "metrics": {
+                "5": {
+                  "precision": 0.099,
+                  "recall": 0.495,
+                  "ndcg": 0.3826,
+                  "hit_rate": 0.495
+                },
+                "10": {
+                  "precision": 0.0523,
+                  "recall": 0.5225,
+                  "ndcg": 0.392,
+                  "hit_rate": 0.5225
+                },
+                "20": {
+                  "precision": 0.0264,
+                  "recall": 0.5275,
+                  "ndcg": 0.3932,
+                  "hit_rate": 0.5275
+                }
+              },
+              "coverage_at_20": 0.0323,
+              "diversity_at_10": 0.9076
+            }
+          },
+          "coverage_at_20": {
+            "mean": 0.0324,
+            "std": 0.0001
+          },
+          "diversity_at_10": {
+            "mean": 0.9084,
+            "std": 0.0007
+          },
+          "time_seconds": 22600.26,
+          "avg_time_seconds": 56.5007,
+          "n_users": 400,
+          "params": {
+            "use_user_behavior_paths": true,
+            "use_expanded_relations": true,
+            "shared_audience_weight": 0.6,
+            "director_weight": 0.2,
+            "actor_weight": 0.2,
+            "genre_weight": 0.2,
+            "two_hop_weight": 0.1,
+            "region_weight": 0.1,
+            "language_weight": 0.1,
+            "content_type_weight": 0.05,
+            "year_bucket_weight": 0.05,
+            "enable_two_hop": true,
+            "use_degree_penalty": true,
+            "use_user_activity_penalty": true
+          }
+        }
+      }
+    }
+  }
+}

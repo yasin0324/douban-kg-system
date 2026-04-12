@@ -1,0 +1,65 @@
+{
+  "protocol_version": 1,
+  "generated_at": "2026-04-10T03:40:00.444449+08:00",
+  "eval_method": "single_seed_sampled_leave_one_out (1_positive + 499_negatives, seed=42)",
+  "user_source": "public",
+  "user_source_display": "公开豆瓣用户（douban_public_*)",
+  "num_negatives": 499,
+  "negative_sample_seeds": [
+    42
+  ],
+  "selected_algorithms": [
+    "kg_path"
+  ],
+  "n_test_users": 400,
+  "results": {
+    "kg_path": {
+      "display_name": "基于知识图谱路径的推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.099,
+          "precision_std": 0.0,
+          "recall": 0.495,
+          "recall_std": 0.0,
+          "ndcg": 0.3906,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.495,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0518,
+          "precision_std": 0.0,
+          "recall": 0.5175,
+          "recall_std": 0.0,
+          "ndcg": 0.3982,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.5175,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0263,
+          "precision_std": 0.0,
+          "recall": 0.525,
+          "recall_std": 0.0,
+          "ndcg": 0.4002,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.525,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0323,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.909,
+        "std": 0.0
+      },
+      "time_seconds": 22663.59,
+      "avg_time_seconds": 56.659,
+      "elapsed_seconds": 22664.87,
+      "n_test_users": 400,
+      "negative_seed": 42
+    }
+  }
+}

@@ -35,6 +35,36 @@ class FakeAlgo(BaseRecommender):
         self.clear_calls += 1
 
 
+class CandidateScoreFakeAlgo(FakeAlgo):
+    EVAL_USE_CANDIDATE_SCORING = True
+
+    def __init__(self):
+        super().__init__()
+        self.score_calls = []
+
+    def recommend(self, user_id, n=20, exclude_mids=None, exclude_from_training=None):
+        raise AssertionError("recommend should not be called when candidate scoring is enabled")
+
+    def score_candidates(self, user_id, candidate_mids, exclude_from_training=None, *, exclude_mids=None, n=None):
+        exclude_from_training = exclude_from_training or set()
+        self.score_calls.append(
+            {
+                "user_id": user_id,
+                "candidate_mids": list(candidate_mids or []),
+                "exclude_mids": exclude_mids,
+                "exclude_from_training": set(exclude_from_training),
+                "n": n,
+            }
+        )
+        test_mid = next(iter(exclude_from_training))
+        return [
+            {"mid": test_mid, "score": 0.95, "reason": "hit"},
+            {"mid": f"neg-{user_id}-1", "score": 0.5, "reason": "other"},
+            {"mid": f"neg-{user_id}-2", "score": 0.4, "reason": "other"},
+            {"mid": f"neg-{user_id}-3", "score": 0.3, "reason": "other"},
+        ]
+
+
 def _fake_eval_summary() -> dict:
     return {
         "metrics": {
@@ -138,6 +168,36 @@ def test_evaluate_algorithm_clears_runtime_caches_per_user(monkeypatch):
     )
 
     assert algo.clear_calls == len(evaluation_users) + 1
+
+
+def test_evaluate_algorithm_uses_candidate_scoring_when_algo_opts_in(monkeypatch):
+    monkeypatch.setattr(evaluator, "_diversity_at_k", lambda ranked_list, k: 0.5)
+    algo = CandidateScoreFakeAlgo()
+    evaluation_users = [
+        {
+            "user_id": 1,
+            "test_mid": "m1",
+            "sampled_negatives": {
+                42: ["neg-1-1", "neg-1-2"],
+                52: ["neg-1-2", "neg-1-3"],
+            },
+        }
+    ]
+
+    result = evaluator.evaluate_algorithm(
+        algo=algo,
+        evaluation_users=evaluation_users,
+        negative_seeds=[42, 52],
+        k_values=[5, 10],
+        all_movie_count=100,
+        progress_label="fake",
+    )
+
+    assert result["metrics"]["5"]["hit_rate"] == 1.0
+    assert len(algo.score_calls) == 1
+    assert algo.score_calls[0]["candidate_mids"] == ["m1", "neg-1-1", "neg-1-2", "neg-1-3"]
+    assert algo.score_calls[0]["exclude_from_training"] == {"m1"}
+    assert algo.clear_calls == 2
 
 
 def test_build_markdown_report_includes_ablation_section():
@@ -565,6 +625,75 @@ def test_evaluate_suite_passes_holdout_profile_to_kg_path(monkeypatch):
     assert SelectedAlgo.init_calls
     assert any(call["use_user_behavior_paths"] is True for call in SelectedAlgo.init_calls)
     assert all(call["behavior_profile"]["holdout_positive_by_user"] == {"1": "m1"} for call in SelectedAlgo.init_calls)
+
+
+def test_evaluate_suite_passes_holdout_profiles_to_cfkg_and_prewarms_embeddings(monkeypatch):
+    class SelectedAlgo(FakeAlgo):
+        name = "cfkg"
+        display_name = "CFKG"
+        init_calls = []
+
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.init_kwargs = kwargs
+            self.__class__.init_calls.append(kwargs)
+
+        @classmethod
+        def parameter_grid(cls):
+            return [{}]
+
+        @classmethod
+        def ablation_configs(cls):
+            return {}
+
+    monkeypatch.setattr(
+        algorithms_module,
+        "ALGORITHMS",
+        {"cfkg": SelectedAlgo},
+    )
+    monkeypatch.setattr(algorithms_module, "ALGORITHM_NAMES", ["cfkg"])
+    monkeypatch.setattr(
+        evaluator,
+        "build_evaluation_users",
+        lambda user_source="all", num_negatives=evaluator.NUM_NEGATIVES, negative_seeds=None: (
+            [{"user_id": 1, "test_mid": "m1", "sampled_negatives": {seed: ["n1"] for seed in evaluator.NEGATIVE_SAMPLE_SEEDS}}],
+            100,
+        ),
+    )
+    monkeypatch.setattr(evaluator, "split_evaluation_users", lambda evaluation_users: ([], evaluation_users))
+    prewarm_calls = []
+    monkeypatch.setattr(
+        evaluator,
+        "_prewarm_embedding_artifacts",
+        lambda artifact_profile=None: prewarm_calls.append(artifact_profile) or {"core": True, "expanded": True},
+    )
+    monkeypatch.setattr(evaluator, "evaluate_algorithm", lambda **kwargs: _fake_eval_summary())
+
+    evaluator.evaluate_suite(
+        user_source="public",
+        algorithms=["cfkg"],
+        num_negatives=499,
+    )
+
+    assert prewarm_calls == [
+        {
+            "version": "offline_public_v1",
+            "user_source": "public",
+            "holdout_strategy": "last_positive_removed",
+            "holdout_positive_by_user": {"1": "m1"},
+        }
+    ]
+    assert SelectedAlgo.init_calls
+    assert all(
+        call["kg_embed_init_kwargs"]["artifact_profile"]["holdout_positive_by_user"] == {"1": "m1"}
+        for call in SelectedAlgo.init_calls
+    )
+    assert all(
+        call["kg_path_init_kwargs"]["behavior_profile"]["holdout_positive_by_user"] == {"1": "m1"}
+        for call in SelectedAlgo.init_calls
+    )
+    assert any(call["kg_embed_init_kwargs"]["use_user_rating_relations"] is True for call in SelectedAlgo.init_calls)
+    assert any(call["kg_path_init_kwargs"]["use_user_behavior_paths"] is True for call in SelectedAlgo.init_calls)
 
 
 def test_save_results_keeps_history_snapshots(tmp_path, monkeypatch):

@@ -220,6 +220,16 @@ def _kg_path_init_kwargs(behavior_profile: dict | None) -> dict:
     }
 
 
+def _cfkg_init_kwargs(
+    kg_embed_artifact_profile: dict | None,
+    kg_path_behavior_profile: dict | None,
+) -> dict:
+    return {
+        "kg_embed_init_kwargs": _kg_embed_init_kwargs(kg_embed_artifact_profile),
+        "kg_path_init_kwargs": _kg_path_init_kwargs(kg_path_behavior_profile),
+    }
+
+
 def _prewarm_embedding_artifacts(*, artifact_profile: dict | None = None) -> dict[str, bool]:
     from app.algorithms.kg_embed import KGEmbedRecommender
 
@@ -368,6 +378,13 @@ def rank_sampled_candidates(recommendations: list[dict], test_mid: str, candidat
     return [row["mid"] for row in sampled]
 
 
+def _candidate_scoring_mids(test_case: dict) -> list[str]:
+    mids = {str(test_case["test_mid"])}
+    for negatives in (test_case.get("sampled_negatives") or {}).values():
+        mids.update(str(mid) for mid in negatives if mid)
+    return sorted(mids)
+
+
 def evaluate_algorithm(
     algo,
     evaluation_users: list[dict],
@@ -394,18 +411,31 @@ def evaluate_algorithm(
 
     total_time = 0.0
     successful_users = 0
+    use_candidate_scoring = bool(getattr(algo, "EVAL_USE_CANDIDATE_SCORING", False)) and hasattr(
+        algo,
+        "score_candidates",
+    )
 
     for test_case in tqdm(evaluation_users, desc=progress_label, leave=False, ncols=90):
         user_id = test_case["user_id"]
         test_mid = test_case["test_mid"]
         try:
             start_time = time.time()
-            recommendations = algo.recommend(
-                user_id=user_id,
-                n=99999,
-                exclude_mids=None,
-                exclude_from_training={test_mid},
-            )
+            if use_candidate_scoring:
+                recommendations = algo.score_candidates(
+                    user_id=user_id,
+                    candidate_mids=_candidate_scoring_mids(test_case),
+                    exclude_mids=None,
+                    exclude_from_training={test_mid},
+                    n=None,
+                )
+            else:
+                recommendations = algo.recommend(
+                    user_id=user_id,
+                    n=99999,
+                    exclude_mids=None,
+                    exclude_from_training={test_mid},
+                )
             total_time += time.time() - start_time
             successful_users += 1
         except Exception as exc:
@@ -607,7 +637,7 @@ def evaluate_suite(
     if not test_users:
         raise RuntimeError("没有足够的用户用于离线评估")
 
-    if "kg_embed" in selected_algorithm_names:
+    if any(name in selected_algorithm_names for name in ("kg_embed", "cfkg")):
         _prewarm_embedding_artifacts(artifact_profile=kg_embed_artifact_profile)
 
     main_results = {}
@@ -619,13 +649,22 @@ def evaluate_suite(
             init_kwargs = _kg_embed_init_kwargs(kg_embed_artifact_profile)
         elif algo_name == "kg_path":
             init_kwargs = _kg_path_init_kwargs(kg_path_behavior_profile)
+        elif algo_name == "cfkg":
+            init_kwargs = _cfkg_init_kwargs(
+                kg_embed_artifact_profile,
+                kg_path_behavior_profile,
+            )
         else:
             init_kwargs = {}
         print(f"\n🔄 评估算法: {algo_class.display_name} ({algo_name})...")
+        param_grid = list(algo_class.parameter_grid())
         best_params = {}
         validation_summary = {}
         validation_elapsed_seconds = 0.0
-        if len(algo_class.parameter_grid()) > 1 and validation_users:
+        if len(param_grid) == 1:
+            best_params = deepcopy(param_grid[0])
+            print(f"  🎯 固定交付参数: {best_params}")
+        elif len(param_grid) > 1 and validation_users:
             validation_started_at = time.perf_counter()
             best_params, validation_summary = tune_algorithm(
                 algo_class=algo_class,

@@ -104,6 +104,23 @@ class ItemCFRecommender(BaseRecommender):
         exclude_mids: set | None = None,
         exclude_from_training: set | None = None,
     ) -> list[dict]:
+        return self.score_candidates(
+            user_id=user_id,
+            candidate_mids=None,
+            exclude_from_training=exclude_from_training,
+            exclude_mids=exclude_mids,
+            n=n,
+        )
+
+    def score_candidates(
+        self,
+        user_id: int,
+        candidate_mids: list[str] | set[str] | tuple[str, ...] | None,
+        exclude_from_training: set | None = None,
+        *,
+        exclude_mids: set | None = None,
+        n: int | None = None,
+    ) -> list[dict]:
         exclude_mids = exclude_mids or set()
         exclude_from_training = exclude_from_training or set()
 
@@ -153,17 +170,17 @@ class ItemCFRecommender(BaseRecommender):
                     return 0.0
                 return dot / (norm_a * norm_b)
 
-            # 4. 找候选：只考虑与用户喜欢电影有共同评分用户的电影
-            candidate_mids = set()
-            for seed_mid in positive_mids:
-                for u in self._item_users.get(seed_mid, {}):
-                    candidate_mids.update(self._user_items.get(u, []))
+            # 4. 找候选：若调用方给了 shortlist，则只对 shortlist 打分；否则沿用原有召回逻辑
+            resolved_candidate_mids = self._resolve_candidate_mids(
+                positive_mids=positive_mids,
+                candidate_mids=candidate_mids,
+            )
 
             # 5. 聚合相似度分数
             candidate_scores: dict[str, float] = defaultdict(float)
             candidate_reasons: dict[str, str] = {}
 
-            for candidate_mid in candidate_mids:
+            for candidate_mid in resolved_candidate_mids:
                 if candidate_mid in exclude_all:
                     continue
 
@@ -209,4 +226,21 @@ class ItemCFRecommender(BaseRecommender):
             })
 
         results.sort(key=lambda x: x["score"], reverse=True)
+        if n is None:
+            return results
         return results[:n]
+
+    def _resolve_candidate_mids(
+        self,
+        *,
+        positive_mids: list[str],
+        candidate_mids: list[str] | set[str] | tuple[str, ...] | None,
+    ) -> set[str]:
+        if candidate_mids is not None:
+            return {str(mid) for mid in candidate_mids if mid}
+
+        resolved = set()
+        for seed_mid in positive_mids:
+            for uid in self._item_users.get(seed_mid, {}):
+                resolved.update(self._user_items.get(uid, []))
+        return resolved

@@ -177,6 +177,25 @@ class KGEmbedRecommender(BaseRecommender):
     ) -> list[dict]:
         exclude_mids = exclude_mids or set()
         exclude_from_training = exclude_from_training or set()
+        return self.score_candidates(
+            user_id=user_id,
+            candidate_mids=None,
+            exclude_from_training=exclude_from_training,
+            exclude_mids=exclude_mids,
+            n=n,
+        )
+
+    def score_candidates(
+        self,
+        user_id: int,
+        candidate_mids: list[str] | set[str] | tuple[str, ...] | None,
+        exclude_from_training: set | None = None,
+        *,
+        exclude_mids: set | None = None,
+        n: int | None = None,
+    ) -> list[dict]:
+        exclude_mids = exclude_mids or set()
+        exclude_from_training = exclude_from_training or set()
 
         artifacts = self._load_or_train()
         if not artifacts:
@@ -194,14 +213,37 @@ class KGEmbedRecommender(BaseRecommender):
 
         movie_mids = artifacts["movie_mid_list"]
         valid_mask = np.ones(len(movie_mids), dtype=bool)
+        if candidate_mids is not None:
+            allowed_mids = {str(mid) for mid in candidate_mids if mid}
+            valid_mask[:] = False
+            for mid in allowed_mids:
+                idx = artifacts["mid_to_movie_idx"].get(mid)
+                if idx is not None:
+                    valid_mask[idx] = True
         for mid in exclude_all:
             idx = artifacts["mid_to_movie_idx"].get(mid)
             if idx is not None:
                 valid_mask[idx] = False
 
+        return self._build_ranked_results(
+            artifacts=artifacts,
+            user_components=user_components,
+            valid_mask=valid_mask,
+            n=n,
+        )
+
+    def _build_ranked_results(
+        self,
+        *,
+        artifacts: dict,
+        user_components: dict,
+        valid_mask: np.ndarray,
+        n: int | None,
+    ) -> list[dict]:
         if not np.any(valid_mask):
             return []
 
+        movie_mids = artifacts["movie_mid_list"]
         user_relation_scores = self._normalize_vector(user_components["user_relation_scores"], valid_mask)
         centroid_scores = self._normalize_vector(user_components["centroid_scores"], valid_mask)
         max_seed_scores = self._normalize_vector(user_components["max_seed_scores"], valid_mask)
@@ -238,6 +280,8 @@ class KGEmbedRecommender(BaseRecommender):
             )
 
         results.sort(key=lambda item: item["score"], reverse=True)
+        if n is None:
+            return results
         return results[:n]
 
     def get_user_positive_movies(

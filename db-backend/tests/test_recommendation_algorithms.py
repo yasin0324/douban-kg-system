@@ -364,6 +364,51 @@ def test_kg_embed_scope_changes_with_holdout_profile():
     assert recommender_a._scope_name().startswith("expanded_userpos_public")
 
 
+def test_kg_embed_score_candidates_respects_shortlist_and_exclusions(monkeypatch):
+    recommender = KGEmbedRecommender()
+    artifacts = {
+        "movie_mid_list": ["m1", "m2", "m3"],
+        "mid_to_movie_idx": {"m1": 0, "m2": 1, "m3": 2},
+    }
+    captured = {}
+
+    monkeypatch.setattr(recommender, "_load_or_train", lambda: artifacts)
+    monkeypatch.setattr(
+        recommender,
+        "_get_user_context",
+        lambda user_id, exclude_from_training: ([{"mid": "seed"}], {"m1"}),
+    )
+    monkeypatch.setattr(
+        recommender,
+        "_get_user_components",
+        lambda *args, **kwargs: {
+            "user_relation_scores": np.zeros(3, dtype=np.float32),
+            "centroid_scores": np.zeros(3, dtype=np.float32),
+            "max_seed_scores": np.zeros(3, dtype=np.float32),
+            "entity_overlap_scores": np.zeros(3, dtype=np.float32),
+        },
+    )
+
+    def fake_build_ranked_results(*, artifacts, user_components, valid_mask, n):
+        captured["valid_mask"] = valid_mask.copy()
+        captured["n"] = n
+        return [{"mid": "m2", "score": 1.0, "reason": "ok"}]
+
+    monkeypatch.setattr(recommender, "_build_ranked_results", fake_build_ranked_results)
+
+    results = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1", "m2", "m3"],
+        exclude_from_training={"heldout"},
+        exclude_mids={"m3"},
+        n=2,
+    )
+
+    assert results == [{"mid": "m2", "score": 1.0, "reason": "ok"}]
+    assert captured["valid_mask"].tolist() == [False, True, False]
+    assert captured["n"] == 2
+
+
 def test_kg_path_scoring_matches_manual_accumulation():
     recommender = KGPathRecommender(
         shared_audience_weight=0.6,
@@ -447,6 +492,38 @@ def test_kg_path_shared_audience_records_penalize_heavy_bridge_users():
     assert records[0]["relation"] == REL_SHARED_AUDIENCE
     assert records[0]["strength"] > records[1]["strength"]
     assert all(record["mid"] != "seed" for record in records)
+
+
+def test_kg_path_score_candidates_prunes_to_allowed_candidates(monkeypatch):
+    recommender = KGPathRecommender()
+    captured = {}
+
+    monkeypatch.setattr(
+        recommender,
+        "_get_user_context",
+        lambda user_id, exclude_from_training: ([{"mid": "seed"}], {"m1"}),
+    )
+
+    def fake_get_evidence_bundle(user_id, positive_movies, exclude_from_training, allowed_candidate_mids=None):
+        captured["allowed_candidate_mids"] = allowed_candidate_mids
+        return {
+            "candidate_scores": {"m2": 2.0, "m3": 1.0},
+            "candidate_paths": {"m2": 3, "m3": 1},
+            "candidate_reasons": {"m2": ["reason 2"], "m3": ["reason 3"]},
+        }
+
+    monkeypatch.setattr(recommender, "_get_evidence_bundle", fake_get_evidence_bundle)
+
+    results = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1", "m2", "m3"],
+        exclude_from_training={"heldout"},
+        exclude_mids={"m3"},
+        n=5,
+    )
+
+    assert captured["allowed_candidate_mids"] == {"m2"}
+    assert results == [{"mid": "m2", "score": 1.0, "reason": "reason 2", "path_count": 3}]
 
 
 def test_kg_path_fetch_evidence_includes_expanded_one_hop_relations():
@@ -701,11 +778,38 @@ def test_kg_path_select_genres_prefers_rare_entities():
 
 
 class StubRecommender:
-    def __init__(self, rows):
+    def __init__(self, rows, *, score_rows=None):
         self.rows = list(rows)
+        self.score_rows = list(self.rows if score_rows is None else score_rows)
+        self.recommend_calls = []
+        self.score_candidate_calls = []
 
     def recommend(self, user_id, n=20, exclude_mids=None, exclude_from_training=None):
+        self.recommend_calls.append(
+            {
+                "user_id": user_id,
+                "n": n,
+                "exclude_mids": exclude_mids,
+                "exclude_from_training": exclude_from_training,
+            }
+        )
         return self.rows[:n]
+
+    def score_candidates(self, user_id, candidate_mids, exclude_from_training=None, *, exclude_mids=None, n=None):
+        self.score_candidate_calls.append(
+            {
+                "user_id": user_id,
+                "candidate_mids": list(candidate_mids or []),
+                "exclude_mids": exclude_mids,
+                "exclude_from_training": exclude_from_training,
+                "n": n,
+            }
+        )
+        allowed = {str(mid) for mid in (candidate_mids or []) if mid}
+        filtered = [row for row in self.score_rows if str(row.get("mid") or "") in allowed]
+        if n is None:
+            return filtered
+        return filtered[:n]
 
 
 class _FakeCursor:
@@ -734,9 +838,88 @@ class _FakeConn:
     def cursor(self):
         return self._cursor
 
+    def close(self):
+        return None
+
+
+def test_item_cf_score_candidates_respects_shortlist_and_exclusions(monkeypatch):
+    recommender = ItemCFRecommender()
+    recommender._item_users = {
+        "seed": {1: 5.0, 2: 4.0, 3: 5.0},
+        "cand1": {2: 4.0, 3: 5.0},
+        "cand2": {1: 4.0, 2: 4.0},
+    }
+    recommender._user_items = {
+        1: ["seed", "cand2"],
+        2: ["seed", "cand1", "cand2"],
+        3: ["seed", "cand1"],
+    }
+    recommender._movie_names = {"seed": "Seed"}
+    recommender._item_norms = {
+        mid: np.sqrt(sum(value ** 2 for value in users.values()))
+        for mid, users in recommender._item_users.items()
+    }
+
+    monkeypatch.setattr("app.algorithms.item_cf.get_connection", lambda: _FakeConn([]))
+    monkeypatch.setattr(
+        recommender,
+        "get_user_positive_movies",
+        lambda conn, user_id, threshold=3.5, exclude_mids=None: [{"mid": "seed", "signal_weight": 1.0}],
+    )
+    monkeypatch.setattr(
+        recommender,
+        "get_user_all_rated_mids",
+        lambda conn, user_id, exclude_mids=None: {"seed"},
+    )
+
+    results = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["seed", "cand1", "cand2"],
+        exclude_from_training={"heldout"},
+        exclude_mids={"cand2"},
+        n=None,
+    )
+
+    assert results == [
+        {
+            "mid": "cand1",
+            "score": 1.0,
+            "reason": "因为你喜欢《Seed》，推荐评分行为相似的电影",
+        }
+    ]
+
+
+def test_cfkg_passes_branch_init_kwargs_to_internal_recommenders():
+    recommender = CFKGRecommender(
+        kg_embed_init_kwargs={"artifact_profile": {"user_source": "public"}},
+        kg_path_init_kwargs={"behavior_profile": {"user_source": "public"}},
+    )
+
+    assert recommender._kg_embed._config["artifact_profile"] == {"user_source": "public"}
+    assert recommender._kg_embed._config["use_user_rating_relations"] is True
+    assert recommender._kg_path._config["behavior_profile"] == {"user_source": "public"}
+    assert recommender._kg_path._config["use_user_behavior_paths"] is True
+    assert recommender.EVAL_USE_CANDIDATE_SCORING is True
+    assert recommender._config["item_cf_weight"] == pytest.approx(0.3)
+    assert recommender._config["kg_embed_weight"] == pytest.approx(0.7)
+    assert recommender._config["agreement_bonus"] == pytest.approx(0.02)
+    assert recommender._config["kg_path_rerank_weight"] == pytest.approx(0.0)
+
+
+def test_cfkg_parameter_grid_is_fixed_to_deliverable_config():
+    grid = CFKGRecommender.parameter_grid()
+
+    assert len(grid) == 1
+    assert grid[0]["item_cf_weight"] == pytest.approx(0.3)
+    assert grid[0]["kg_embed_weight"] == pytest.approx(0.7)
+    assert grid[0]["agreement_bonus"] == pytest.approx(0.02)
+    assert grid[0]["consensus_weight"] == pytest.approx(0.0)
+    assert grid[0]["kg_path_rerank_weight"] == pytest.approx(0.0)
+    assert grid[0]["content_fallback_weight"] == pytest.approx(0.0)
+
 
 def test_cfkg_merges_candidates_and_prioritizes_kg_reasons():
-    recommender = CFKGRecommender()
+    recommender = CFKGRecommender(kg_path_rerank_weight=0.05)
     recommender._item_cf = StubRecommender(
         [
             {"mid": "m1", "score": 0.9, "reason": "item_cf reason"},
@@ -759,10 +942,11 @@ def test_cfkg_merges_candidates_and_prioritizes_kg_reasons():
 
     results = recommender.recommend(user_id=1, n=10)
 
-    assert [row["mid"] for row in results] == ["m1", "m2", "m3", "m4"]
-    assert results[0]["source_algorithms"] == ["item_cf", "kg_embed", "kg_path"]
+    assert [row["mid"] for row in results] == ["m1", "m3", "m2"]
+    assert results[0]["source_algorithms"] == ["kg_embed", "item_cf", "kg_path"]
     assert results[0]["reasons"] == ["kg_path reason", "kg_embed reason", "item_cf reason"]
     assert results[0]["reason"] == "kg_path reason"
+    assert recommender._kg_path.score_candidate_calls[0]["candidate_mids"] == ["m1", "m3", "m2"]
 
 
 def test_cfkg_resolve_branch_weights_renormalizes_when_item_cf_missing():
@@ -772,17 +956,186 @@ def test_cfkg_resolve_branch_weights_renormalizes_when_item_cf_missing():
         {
             "item_cf": [],
             "kg_embed": [{"mid": "m1", "score": 1.0, "reason": "kg"}],
-            "kg_path": [{"mid": "m2", "score": 1.0, "reason": "path"}],
         }
     )
 
     assert "item_cf" not in weights
-    assert weights["kg_embed"] == pytest.approx(0.75)
-    assert weights["kg_path"] == pytest.approx(0.25)
+    assert weights["kg_embed"] == pytest.approx(1.0)
+
+
+def test_cfkg_agreement_bonus_only_applies_to_overlap():
+    recommender = CFKGRecommender(agreement_bonus=0.05, consensus_weight=0.0)
+
+    ranked = recommender._build_stage1_ranked(
+        {
+            "m1": {"scores": {"item_cf": 1.0, "kg_embed": 1.0}, "reasons": {}},
+            "m2": {"scores": {"item_cf": 1.0}, "reasons": {}},
+        },
+        {"item_cf": 0.4, "kg_embed": 0.6},
+    )
+
+    scores = {item["mid"]: item["stage1_score"] for item in ranked}
+    assert scores["m1"] == pytest.approx(1.0 + (0.4 / 0.6) + 0.05)
+    assert scores["m2"] == pytest.approx(0.4)
+
+
+def test_cfkg_consensus_contribution_uses_overlap_strength():
+    recommender = CFKGRecommender(
+        item_cf_weight=0.3,
+        kg_embed_weight=0.7,
+        agreement_bonus=0.0,
+        consensus_weight=0.1,
+        use_kg_path_explanations=False,
+    )
+    recommender._item_cf = StubRecommender(
+        [],
+        score_rows=[
+            {"mid": "m1", "score": 0.9, "reason": "item 1"},
+            {"mid": "m2", "score": 0.9, "reason": "item 2"},
+        ],
+    )
+    recommender._kg_embed = StubRecommender(
+        [],
+        score_rows=[
+            {"mid": "m1", "score": 0.95, "reason": "kg 1"},
+            {"mid": "m2", "score": 0.2, "reason": "kg 2"},
+        ],
+    )
+    recommender._kg_path = StubRecommender([])
+    recommender._content = StubRecommender([])
+
+    results = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1", "m2"],
+        exclude_from_training={"heldout"},
+        n=None,
+    )
+
+    assert [row["mid"] for row in results] == ["m1", "m2"]
+    assert results[0]["source_algorithms"] == ["kg_embed", "item_cf"]
+    assert results[0]["score"] > results[1]["score"]
+
+
+def test_cfkg_branch_request_n_uses_full_list_for_offline_eval():
+    recommender = CFKGRecommender(item_cf_recall=300)
+
+    assert recommender._branch_request_n(300, 20) == 300
+    assert recommender._branch_request_n(300, 99999) == 99999
+
+
+def test_cfkg_score_candidates_ignores_recall_and_content_fallback():
+    recommender = CFKGRecommender(
+        item_cf_recall=1,
+        kg_embed_recall=1,
+        content_fallback_weight=0.9,
+        agreement_bonus=0.0,
+        use_kg_path_explanations=False,
+    )
+    recommender._item_cf = StubRecommender(
+        [],
+        score_rows=[
+            {"mid": "m1", "score": 0.5, "reason": "item 1"},
+            {"mid": "m2", "score": 1.0, "reason": "item 2"},
+        ],
+    )
+    recommender._kg_embed = StubRecommender(
+        [],
+        score_rows=[
+            {"mid": "m1", "score": 0.8, "reason": "kg 1"},
+        ],
+    )
+    recommender._kg_path = StubRecommender([])
+    recommender._content = StubRecommender(
+        [{"mid": "m3", "score": 1.0, "reason": "content"}],
+        score_rows=[{"mid": "m3", "score": 1.0, "reason": "content"}],
+    )
+
+    results = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1", "m2", "m3"],
+        exclude_from_training={"heldout"},
+        n=None,
+    )
+
+    assert [row["mid"] for row in results] == ["m1", "m2"]
+    assert recommender._content.score_candidate_calls == []
+    assert results[0]["reason"] == "kg 1"
+    assert results[1]["reason"] == "item 2"
+
+
+def test_cfkg_score_candidates_falls_back_to_item_cf_when_kg_embed_missing():
+    recommender = CFKGRecommender(use_kg_path_explanations=False)
+    recommender._item_cf = StubRecommender(
+        [],
+        score_rows=[{"mid": "m2", "score": 1.0, "reason": "item reason"}],
+    )
+    recommender._kg_embed = StubRecommender([], score_rows=[])
+    recommender._kg_path = StubRecommender([])
+    recommender._content = StubRecommender([])
+
+    results = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1", "m2"],
+        exclude_from_training={"heldout"},
+        n=None,
+    )
+
+    assert results == [
+        {
+            "mid": "m2",
+            "score": 1.0,
+            "reason": "item reason",
+            "reasons": ["item reason"],
+            "source_algorithms": ["item_cf"],
+        }
+    ]
+
+
+def test_cfkg_score_candidates_uses_kg_path_for_explanations_only():
+    recommender = CFKGRecommender(
+        item_cf_weight=0.2,
+        kg_embed_weight=0.8,
+        agreement_bonus=0.02,
+        use_kg_path_explanations=True,
+        kg_path_explain_topn=1,
+    )
+    recommender._item_cf = StubRecommender(
+        [],
+        score_rows=[{"mid": "m1", "score": 0.4, "reason": "item reason"}],
+    )
+    recommender._kg_embed = StubRecommender(
+        [],
+        score_rows=[{"mid": "m1", "score": 0.9, "reason": "kg reason"}],
+    )
+    recommender._kg_path = StubRecommender(
+        [],
+        score_rows=[{"mid": "m1", "score": 0.1, "reason": "kg_path explanation"}],
+    )
+    recommender._content = StubRecommender([])
+
+    with_explain = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1"],
+        exclude_from_training={"heldout"},
+        n=None,
+    )
+
+    recommender.set_params(use_kg_path_explanations=False)
+    without_explain = recommender.score_candidates(
+        user_id=1,
+        candidate_mids=["m1"],
+        exclude_from_training={"heldout"},
+        n=None,
+    )
+
+    assert with_explain[0]["score"] == without_explain[0]["score"]
+    assert with_explain[0]["reason"] == "kg_path explanation"
+    assert with_explain[0]["source_algorithms"] == ["kg_embed", "item_cf"]
+    assert without_explain[0]["reason"] == "kg reason"
 
 
 def test_cfkg_uses_content_as_fallback_candidates():
-    recommender = CFKGRecommender()
+    recommender = CFKGRecommender(content_fallback_weight=0.05)
     recommender._item_cf = StubRecommender([])
     recommender._kg_embed = StubRecommender(
         [{"mid": "m1", "score": 1.0, "reason": "kg_embed reason"}]
@@ -798,6 +1151,22 @@ def test_cfkg_uses_content_as_fallback_candidates():
     assert results[0]["source_algorithms"] == ["kg_embed"]
     assert results[1]["source_algorithms"] == ["content"]
     assert results[1]["reason"] == "content reason"
+
+
+def test_cfkg_skips_rerank_when_weight_is_zero():
+    recommender = CFKGRecommender(kg_path_rerank_weight=0.0)
+    recommender._item_cf = StubRecommender([{"mid": "m1", "score": 0.9, "reason": "item"}])
+    recommender._kg_embed = StubRecommender([{"mid": "m2", "score": 0.8, "reason": "embed"}])
+    recommender._kg_path = StubRecommender(
+        [],
+        score_rows=[{"mid": "m1", "score": 1.0, "reason": "path"}],
+    )
+    recommender._content = StubRecommender([])
+
+    results = recommender.recommend(user_id=1, n=5)
+
+    assert [row["mid"] for row in results] == ["m2", "m1"]
+    assert recommender._kg_path.score_candidate_calls == []
 
 
 def test_kg_embed_caps_positive_signals_for_heavy_users():

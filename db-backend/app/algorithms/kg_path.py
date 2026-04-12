@@ -170,21 +170,89 @@ class KGPathRecommender(BaseRecommender):
 
         positive_movies, rated_mids = user_context
         exclude_all = rated_mids | exclude_mids
-        evidence_bundle = self._get_evidence_bundle(user_id, positive_movies, exclude_from_training)
+        evidence_bundle = self._get_evidence_bundle(
+            user_id,
+            positive_movies,
+            exclude_from_training,
+        )
+        return self._rank_from_evidence(
+            evidence_bundle=evidence_bundle,
+            exclude_all=exclude_all,
+            allowed_candidate_mids=None,
+            n=n,
+        )
+
+    def score_candidates(
+        self,
+        user_id: int,
+        candidate_mids: list[str] | set[str] | tuple[str, ...] | None,
+        exclude_from_training: set | None = None,
+        *,
+        exclude_mids: set | None = None,
+        n: int | None = None,
+    ) -> list[dict]:
+        exclude_mids = exclude_mids or set()
+        exclude_from_training = exclude_from_training or set()
+        user_context = self._get_user_context(user_id, exclude_from_training)
+        if user_context is None:
+            return []
+
+        positive_movies, rated_mids = user_context
+        exclude_all = rated_mids | exclude_mids
+        allowed_candidate_mids = None
+        if candidate_mids is not None:
+            allowed_candidate_mids = {str(mid) for mid in candidate_mids if mid}
+            allowed_candidate_mids -= exclude_all
+            if not allowed_candidate_mids:
+                return []
+
+        evidence_bundle = self._get_evidence_bundle(
+            user_id,
+            positive_movies,
+            exclude_from_training,
+            allowed_candidate_mids=allowed_candidate_mids,
+        )
+        return self._rank_from_evidence(
+            evidence_bundle=evidence_bundle,
+            exclude_all=exclude_all,
+            allowed_candidate_mids=allowed_candidate_mids,
+            n=n,
+        )
+
+    def _rank_from_evidence(
+        self,
+        *,
+        evidence_bundle: dict,
+        exclude_all: set[str],
+        allowed_candidate_mids: set[str] | None,
+        n: int | None,
+    ) -> list[dict]:
         candidate_scores = evidence_bundle["candidate_scores"]
         candidate_paths = evidence_bundle["candidate_paths"]
-
         if not candidate_scores:
             return []
 
-        max_score = max(candidate_scores.values())
+        if allowed_candidate_mids is not None:
+            filtered_scores = {
+                mid: score
+                for mid, score in candidate_scores.items()
+                if mid in allowed_candidate_mids and mid not in exclude_all
+            }
+        else:
+            filtered_scores = {
+                mid: score
+                for mid, score in candidate_scores.items()
+                if mid not in exclude_all
+            }
+        if not filtered_scores:
+            return []
+
+        max_score = max(filtered_scores.values())
         if max_score <= 0:
             return []
 
         results = []
-        for mid, score in candidate_scores.items():
-            if mid in exclude_all:
-                continue
+        for mid, score in filtered_scores.items():
             reasons = evidence_bundle["candidate_reasons"].get(mid, [])
             results.append(
                 {
@@ -199,6 +267,8 @@ class KGPathRecommender(BaseRecommender):
         results.sort(key=lambda item: (item["raw_score"], item["path_count"], item["mid"]), reverse=True)
         for item in results:
             item.pop("raw_score", None)
+        if n is None:
+            return results
         return results[:n]
 
     def get_user_positive_movies(
@@ -274,11 +344,13 @@ class KGPathRecommender(BaseRecommender):
         user_id: int,
         positive_movies: list[dict],
         exclude_from_training: set[str],
+        allowed_candidate_mids: set[str] | None = None,
     ) -> dict:
         actor_order_limit = int(self._config["actor_order_limit"])
         cache_key = (
             user_id,
             tuple(sorted(exclude_from_training)),
+            tuple(sorted(allowed_candidate_mids or ())),
             actor_order_limit,
             bool(self._config["enable_two_hop"]) and float(self._config["two_hop_weight"]) > 0,
             bool(self._config["use_user_behavior_paths"]) and float(self._config["shared_audience_weight"]) > 0,
@@ -317,6 +389,7 @@ class KGPathRecommender(BaseRecommender):
             include_two_hop=bool(self._config["enable_two_hop"]) and float(self._config["two_hop_weight"]) > 0,
             include_user_behavior_paths=bool(self._config["use_user_behavior_paths"])
             and float(self._config["shared_audience_weight"]) > 0,
+            allowed_candidate_mids=allowed_candidate_mids,
         )
         self._evidence_cache[cache_key] = evidence
         return self._score_candidates(evidence)
@@ -329,6 +402,7 @@ class KGPathRecommender(BaseRecommender):
         actor_order_limit: int,
         include_two_hop: bool,
         include_user_behavior_paths: bool,
+        allowed_candidate_mids: set[str] | None = None,
     ) -> dict:
         candidate_evidence: dict[str, list[dict]] = defaultdict(list)
         profiles = GraphMetadataCache.movie_profiles()
@@ -376,6 +450,7 @@ class KGPathRecommender(BaseRecommender):
                         per_seed_limit=self._per_seed_limit_for_relation(relation),
                         candidate_profiles=profiles if relation == REL_ACTOR else None,
                         actor_order_limit=actor_order_limit if relation == REL_ACTOR else None,
+                        allowed_candidate_mids=allowed_candidate_mids,
                     ),
                 )
 
@@ -390,6 +465,7 @@ class KGPathRecommender(BaseRecommender):
                         profiles=profiles,
                         per_seed_limit=int(self._config["two_hop_per_seed_limit"]),
                         actor_order_limit=actor_order_limit,
+                        allowed_candidate_mids=allowed_candidate_mids,
                     ),
                 )
 
@@ -404,6 +480,7 @@ class KGPathRecommender(BaseRecommender):
                         movie_to_users=movie_to_users,
                         user_positive_degree=user_positive_degree,
                         per_seed_limit=int(self._config["shared_audience_per_seed_limit"]),
+                        allowed_candidate_mids=allowed_candidate_mids,
                     ),
                 )
 
@@ -441,6 +518,7 @@ class KGPathRecommender(BaseRecommender):
         per_seed_limit: int,
         candidate_profiles: dict[str, object] | None = None,
         actor_order_limit: int | None = None,
+        allowed_candidate_mids: set[str] | None = None,
     ) -> list[dict]:
         candidate_entities: dict[str, set[str]] = defaultdict(set)
         seed_actor_positions = (
@@ -451,6 +529,8 @@ class KGPathRecommender(BaseRecommender):
         for entity_id in seed_entity_ids:
             for cand_mid in inverted_index.get(entity_id, set()):
                 if cand_mid == seed_mid:
+                    continue
+                if allowed_candidate_mids is not None and cand_mid not in allowed_candidate_mids:
                     continue
                 if relation == REL_ACTOR and candidate_profiles and actor_order_limit is not None:
                     cand_profile = candidate_profiles.get(cand_mid)
@@ -504,6 +584,7 @@ class KGPathRecommender(BaseRecommender):
         profiles: dict[str, object],
         per_seed_limit: int,
         actor_order_limit: int,
+        allowed_candidate_mids: set[str] | None = None,
     ) -> list[dict]:
         candidate_entities: dict[str, set[str]] = defaultdict(set)
         candidate_actor_positions: dict[str, dict[str, int]] = defaultdict(dict)
@@ -531,6 +612,8 @@ class KGPathRecommender(BaseRecommender):
                         continue
                     for cand_mid in actor_index.get(bridge_actor, set()):
                         if cand_mid in {seed_mid, bridge_mid}:
+                            continue
+                        if allowed_candidate_mids is not None and cand_mid not in allowed_candidate_mids:
                             continue
                         cand_profile = profiles.get(cand_mid)
                         if not cand_profile or cand_profile.actor_orders.get(bridge_actor, 9999) > actor_order_limit:
@@ -575,6 +658,7 @@ class KGPathRecommender(BaseRecommender):
         movie_to_users: dict[str, dict[str, float]],
         user_positive_degree: dict[str, int],
         per_seed_limit: int,
+        allowed_candidate_mids: set[str] | None = None,
     ) -> list[dict]:
         bridge_candidates = []
         for bridge_user_id, bridge_seed_weight in movie_to_users.get(seed_mid, {}).items():
@@ -600,6 +684,8 @@ class KGPathRecommender(BaseRecommender):
         for _, bridge_user_id, bridge_seed_weight, user_penalty in bridge_candidates:
             for cand_mid, bridge_candidate_weight in user_to_movies.get(bridge_user_id, {}).items():
                 if cand_mid == seed_mid:
+                    continue
+                if allowed_candidate_mids is not None and cand_mid not in allowed_candidate_mids:
                     continue
                 contribution = seed_weight * bridge_seed_weight * float(bridge_candidate_weight) * user_penalty
                 if contribution <= 0:

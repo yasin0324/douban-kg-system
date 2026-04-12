@@ -1,0 +1,65 @@
+{
+  "protocol_version": 1,
+  "generated_at": "2026-04-11T21:13:02.819941+08:00",
+  "eval_method": "single_seed_sampled_leave_one_out (1_positive + 499_negatives, seed=42)",
+  "user_source": "public",
+  "user_source_display": "公开豆瓣用户（douban_public_*)",
+  "num_negatives": 499,
+  "negative_sample_seeds": [
+    42
+  ],
+  "selected_algorithms": [
+    "cfkg"
+  ],
+  "n_test_users": 400,
+  "results": {
+    "cfkg": {
+      "display_name": "CFKG 主链路推荐",
+      "metrics": {
+        "5": {
+          "precision": 0.13,
+          "precision_std": 0.0,
+          "recall": 0.65,
+          "recall_std": 0.0,
+          "ndcg": 0.4837,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.65,
+          "hit_rate_std": 0.0
+        },
+        "10": {
+          "precision": 0.0783,
+          "precision_std": 0.0,
+          "recall": 0.7825,
+          "recall_std": 0.0,
+          "ndcg": 0.5279,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.7825,
+          "hit_rate_std": 0.0
+        },
+        "20": {
+          "precision": 0.0438,
+          "precision_std": 0.0,
+          "recall": 0.875,
+          "recall_std": 0.0,
+          "ndcg": 0.5516,
+          "ndcg_std": 0.0,
+          "hit_rate": 0.875,
+          "hit_rate_std": 0.0
+        }
+      },
+      "coverage_at_20": {
+        "mean": 0.0324,
+        "std": 0.0
+      },
+      "diversity_at_10": {
+        "mean": 0.8951,
+        "std": 0.0
+      },
+      "time_seconds": 3411.83,
+      "avg_time_seconds": 8.5296,
+      "elapsed_seconds": 3422.45,
+      "n_test_users": 400,
+      "negative_seed": 42
+    }
+  }
+}
