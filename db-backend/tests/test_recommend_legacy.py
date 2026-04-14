@@ -103,6 +103,34 @@ def test_evaluate_route_falls_back_to_latest_history_report(tmp_path):
     assert "kg_path" in data["results"]
 
 
+def test_evaluate_route_prefers_latest_multi_algorithm_root_report(tmp_path):
+    fake_backend_root = tmp_path / "fake_backend"
+    reports_dir = fake_backend_root / "reports"
+    history_dir = reports_dir / "history"
+    history_dir.mkdir(parents=True)
+
+    old_root = reports_dir / "eval_results.json"
+    old_root.write_text(
+        '{"generated_at":"2026-04-05T20:25:05+08:00","num_negatives":99,"selected_algorithms":["cfkg","content","item_cf","kg_path","kg_embed"],"results":{"cfkg":{"display_name":"CFKG"},"content":{"display_name":"Content"},"item_cf":{"display_name":"ItemCF"},"kg_path":{"display_name":"KG Path"},"kg_embed":{"display_name":"KG Embed"}}}',
+        encoding="utf-8",
+    )
+    latest_root = reports_dir / "eval_results_neg499.json"
+    latest_root.write_text(
+        '{"generated_at":"2026-04-14T20:57:30+08:00","num_negatives":499,"selected_algorithms":["cfkg","content","item_cf","kg_path","kg_embed"],"results":{"cfkg":{"display_name":"CFKG"},"content":{"display_name":"Content"},"item_cf":{"display_name":"ItemCF"},"kg_path":{"display_name":"KG Path"},"kg_embed":{"display_name":"KG Embed"}}}',
+        encoding="utf-8",
+    )
+
+    with patch.object(recommend, "__file__", str(fake_backend_root / "app" / "routers" / "recommend.py")):
+        with build_client() as client:
+            response = client.get("/api/recommend/evaluate")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["report_source"] == "eval_results_neg499.json"
+    assert data["generated_at"] == "2026-04-14T20:57:30+08:00"
+    assert data["num_negatives"] == 499
+
+
 class SlowRecommender:
     display_name = "慢速推荐"
 

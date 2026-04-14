@@ -490,6 +490,60 @@ def _build_recommendation_explain_payload(
     return _build_target_context_explanation(target_movie)
 
 
+def _evaluation_report_candidates(reports_dir: str, history_dir: str) -> list[str]:
+    import os
+
+    root_candidates = [
+        path
+        for path in glob.glob(os.path.join(reports_dir, "eval_results*.json"))
+        if not path.endswith("_legacy.json")
+    ]
+    history_candidates = [
+        path
+        for path in glob.glob(os.path.join(history_dir, "*.json"))
+        if not path.endswith("_legacy.json")
+    ]
+    return root_candidates + history_candidates
+
+
+def _select_best_evaluation_report(candidate_paths: list[str]) -> tuple[dict, str] | None:
+    import json
+    import os
+
+    best_payload = None
+    best_path = None
+    best_key = None
+
+    for path in candidate_paths:
+        try:
+            with open(path, "r", encoding="utf-8") as file_obj:
+                payload = json.load(file_obj)
+        except Exception:
+            logger.warning("读取评估报告失败: %s", path, exc_info=True)
+            continue
+
+        results = payload.get("results") or {}
+        selected_algorithms = payload.get("selected_algorithms") or list(results.keys())
+        algo_count = max(len(selected_algorithms), len(results))
+        suite_priority = 1 if algo_count > 1 else 0
+        generated_at = str(payload.get("generated_at") or "")
+        sort_key = (
+            suite_priority,
+            float(payload.get("num_negatives") or 0),
+            generated_at,
+            os.path.getmtime(path),
+        )
+        if best_key is None or sort_key > best_key:
+            best_key = sort_key
+            best_payload = payload
+            best_path = path
+
+    if best_payload is None or best_path is None:
+        return None
+    best_payload["report_source"] = os.path.basename(best_path)
+    return best_payload, best_path
+
+
 @router.get("/personal", summary="个人电影推荐")
 async def get_personal_recommendations(
     algorithm: Optional[str] = Query(
@@ -657,36 +711,20 @@ async def get_evaluation_report(user=Depends(get_current_user)):
     """
     返回最新的离线评估报告
 
-    优先读取 reports/eval_results.json；若主报告不存在，则回退到 history 中最新的一份。
+    优先返回最新的全算法主报告；若不存在，则退回到最新的单算法/历史报告。
     """
-    import json
     import os
 
     reports_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "reports",
     )
-    json_path = os.path.join(reports_dir, "eval_results.json")
     history_dir = os.path.join(reports_dir, "history")
-
-    # 优先返回已有报告
-    if os.path.exists(json_path):
-        with open(json_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    history_candidates = sorted(
-        [
-            path
-            for path in glob.glob(os.path.join(history_dir, "*.json"))
-            if not path.endswith("_legacy.json")
-        ],
-        key=os.path.getmtime,
-        reverse=True,
+    selected = _select_best_evaluation_report(
+        _evaluation_report_candidates(reports_dir, history_dir)
     )
-    if history_candidates:
-        with open(history_candidates[0], "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        payload["report_source"] = os.path.basename(history_candidates[0])
+    if selected is not None:
+        payload, _ = selected
         return payload
 
     # 没有报告，提示用户运行评估脚本
