@@ -2,7 +2,7 @@
 
 **版本**: v2.0
 **修订日期**: 2026-05-01
-**依据**: `data_processing/etl_to_neo4j.py`、`data_processing/reports/data_quality_report.md`
+**依据**: `data_processing/etl_to_neo4j.py`、`data_processing/reports/data_quality_report.md`、`output/doc/数据库与图谱计数证据_2026-05-01.md`
 
 本文档描述当前 ETL 实际导入 Neo4j 的节点、关系、属性和规模口径。旧版“10,000 部电影小型图谱预估”已废弃。
 
@@ -58,6 +58,8 @@
 
 `YearBucket` 规则为 `before_1990`、`1990s`、`2000s`、`2010s`、`2020s_plus`。
 
+以上 7 类节点构成 ETL 主图谱。当前 Neo4j 中还存在少量 `User` 节点，来源于用户注册/行为同步逻辑，不作为电影知识图谱 ETL 主 Schema 的核心节点。
+
 ## 2. 关系定义
 
 | 关系 | 起点 | 终点 | 说明 |
@@ -69,6 +71,8 @@
 | `IN_LANGUAGE` | `Movie` | `Language` | 电影语言 |
 | `HAS_CONTENT_TYPE` | `Movie` | `ContentType` | 内容形式 |
 | `IN_YEAR_BUCKET` | `Movie` | `YearBucket` | 年代分桶 |
+
+以上 7 类关系构成 ETL 主图谱关系。当前 Neo4j 中还存在少量 `RATED` 用户行为同步关系，可用于说明用户行为图谱同步设计，但不并入 ETL 主图谱规模结论。
 
 ## 3. 约束与索引
 
@@ -89,17 +93,39 @@ CREATE INDEX person_name IF NOT EXISTS FOR (p:Person) ON (p.name);
 
 ## 4. 数据规模口径
 
-来自 `data_processing/reports/data_quality_report.md`：
+MySQL 原始数据规模可引用 `data_processing/reports/data_quality_report.md` 和 `output/doc/数据库与图谱计数证据_2026-05-01.md`：
 
 | 指标 | 数值 |
 |---|---:|
-| Movies 表记录数 | 192,032 |
-| Persons 表记录数 | 236,882 |
-| 不重复影人 ID 数 | 236,886 |
+| `movies` 表记录数 | 192,032 |
+| `person` 表记录数 | 236,882 |
+| `subjects` 表记录数 | 192,035 |
 | 电影类型数 | 32 |
-| `ACTED_IN` 预估关系数 | 1,333,995 |
-| `DIRECTED` 预估关系数 | 217,108 |
-| `HAS_GENRE` 预估关系数 | 339,601 |
-| 核心关系预估总数 | 1,890,704 |
 
-地区、语言、内容形式和年代桶关系由 ETL 从电影元数据派生，数量与电影记录规模线性相关。论文中若需要精确写出这些扩展关系数量，应以实际 Neo4j 查询结果为准。
+Neo4j 当前图数据库的实测节点规模为：
+
+| 节点标签 | 数量 |
+|---|---:|
+| `Movie` | 192,032 |
+| `Person` | 236,883 |
+| `Genre` | 32 |
+| `Region` | 563 |
+| `Language` | 1,271 |
+| `ContentType` | 2 |
+| `YearBucket` | 5 |
+| `User` | 4 |
+
+Neo4j 当前图数据库的实测关系规模为：
+
+| 关系类型 | 数量 | 论文口径 |
+|---|---:|---|
+| `ACTED_IN` | 1,040,953 | 核心电影-影人关系 |
+| `DIRECTED` | 138,660 | 核心电影-影人关系 |
+| `HAS_GENRE` | 339,613 | 核心电影-类型关系 |
+| `IN_REGION` | 216,865 | 扩展维度关系 |
+| `IN_LANGUAGE` | 210,180 | 扩展维度关系 |
+| `HAS_CONTENT_TYPE` | 192,032 | 扩展维度关系 |
+| `IN_YEAR_BUCKET` | 191,294 | 扩展维度关系 |
+| `RATED` | 6 | 用户行为同步关系，不并入 ETL 主图谱规模结论 |
+
+ETL 主图谱关系总数为 2,329,597，不含 `RATED` 用户行为同步关系。扩展维度关系总数为 810,371。
