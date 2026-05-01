@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="豆瓣知识图谱 API",
-    description="基于 Neo4j 知识图谱的豆瓣电影查询与管理系统",
+    description="基于 Neo4j 知识图谱的豆瓣电影查询、推荐与管理系统",
     version="0.1.0",
     lifespan=lifespan,
 )

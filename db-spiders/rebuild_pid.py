@@ -4,7 +4,7 @@
 rebuild_pid.py
 
 Extracts person IDs from movies.actor_ids and movies.director_ids
-and populates the person_obj table for person_meta spider to crawl
+and populates the person_obj table for crawl_person.py to crawl.
 
 Usage:
     python rebuild_pid.py

@@ -1,140 +1,105 @@
-# 豆瓣电影知识图谱 - Schema 设计文档
+# 豆瓣电影知识图谱 Schema 设计
 
-**版本**: v1.0
-**日期**: 2026-02-01
+**版本**: v2.0
+**修订日期**: 2026-05-01
+**依据**: `data_processing/etl_to_neo4j.py`、`data_processing/reports/data_quality_report.md`
 
----
+本文档描述当前 ETL 实际导入 Neo4j 的节点、关系、属性和规模口径。旧版“10,000 部电影小型图谱预估”已废弃。
 
-## 1. 节点定义 (Nodes)
+## 1. 节点定义
 
-### 1.1 Movie (电影)
+### 1.1 Movie
 
-核心实体，对应 MySQL 中的 `movies` 表记录。
+对应 MySQL `movies` 表。
 
-- **Label**: `:Movie`
-- **Primary Key**: `mid` (对应 `douban_id`)
-- **Properties**:
-  | 属性名 | 类型 | 说明 | 来源字段 |
-  |Str|Str|Str|Str|
-  | `mid` | String | 豆瓣ID (唯一标识) | `douban_id` |
-  | `title` | String | 电影名称 | `name` |
-  | `rating` | Float | 豆瓣评分 | `douban_score` |
-  | `release_date` | Date | 上映日期 | `release_date` |
-  | `cover` | String | 封面图片URL | `cover` |
-  | `url` | String | 豆瓣详情页链接 | (Constructed) |
+| 属性 | 说明 |
+|---|---|
+| `mid` | 豆瓣条目 ID，唯一标识 |
+| `title` | 电影名称 |
+| `content_type` | 内容形式，来自 `movies.type` |
+| `rating` | 豆瓣评分 |
+| `votes` | 评分人数，来自 `douban_votes` |
+| `release_date` | 上映日期 |
+| `cover` | 封面 URL |
+| `year` | 年份 |
+| `regions` | 制片地区原始字段 |
+| `languages` | 语言原始字段 |
+| `runtime` | 片长 |
+| `storyline` | 剧情简介 |
+| `alias` | 别名 |
+| `url` | 豆瓣详情页 URL |
 
-### 1.2 Person (影人)
+### 1.2 Person
 
-代表导演或演员。由于豆瓣中导演和演员常由同一人担任（如姜文），我们使用一个统一的 `Person` 节点，通过关系来区分角色。
+对应 MySQL `person` 表，导演和演员统一建模为 `Person`，通过关系区分职责。
 
-- **Label**: `:Person`
-- **Primary Key**: `pid` (豆瓣影人ID)
-- **Properties**:
-  | 属性名 | 类型 | 说明 | 来源字段 |
-  |Str|Str|Str|Str|
-  | `pid` | String | 影人ID | 解析自 `actor_ids`/`director_ids` |
-  | `name` | String | 姓名 | 解析自 `actor_ids`/`director_ids` |
-  | `birth` | Date | 出生日期 | (Future Extension) |
-  | `death` | Date | 去世日期 | (Future Extension) |
-  | `birthplace` | String | 出生地 | (Future Extension) |
-  | `biography` | String | 个人简介 | (Future Extension) |
+| 属性 | 说明 |
+|---|---|
+| `pid` | 豆瓣影人 ID，唯一标识 |
+| `name` | 姓名 |
+| `sex` | 性别 |
+| `name_en` | 英文名 |
+| `name_zh` | 中文名 |
+| `birth` | 出生日期 |
+| `death` | 去世日期 |
+| `birthplace` | 出生地 |
+| `profession` | 职业 |
+| `biography` | 简介 |
 
-### 1.3 Genre (类型)
+### 1.3 结构化维度节点
 
-电影类型，如“剧情”、“喜剧”。
+| Label | 主键 | 来源 |
+|---|---|---|
+| `Genre` | `name` | `movies.genres` |
+| `Region` | `name` | `movies.regions` |
+| `Language` | `name` | `movies.languages` |
+| `ContentType` | `name` | `movies.type` |
+| `YearBucket` | `name` | `movies.year` 派生 |
 
-- **Label**: `:Genre`
-- **Primary Key**: `name`
-- **Properties**:
-  | 属性名 | 类型 | 说明 |
-  |Str|Str|Str|
-  | `name` | String | 类型名称 (Unique) |
+`YearBucket` 规则为 `before_1990`、`1990s`、`2000s`、`2010s`、`2020s_plus`。
 
-### 1.4 Region / Language / ContentType / YearBucket
+## 2. 关系定义
 
-为推荐实验补充的结构节点，全部从 `movies` 表现有字段派生，不引入外部数据源。
+| 关系 | 起点 | 终点 | 说明 |
+|---|---|---|---|
+| `DIRECTED` | `Person` | `Movie` | 影人执导电影 |
+| `ACTED_IN` | `Person` | `Movie` | 影人参演电影，包含 `order` 属性 |
+| `HAS_GENRE` | `Movie` | `Genre` | 电影所属类型 |
+| `IN_REGION` | `Movie` | `Region` | 电影制片地区 |
+| `IN_LANGUAGE` | `Movie` | `Language` | 电影语言 |
+| `HAS_CONTENT_TYPE` | `Movie` | `ContentType` | 内容形式 |
+| `IN_YEAR_BUCKET` | `Movie` | `YearBucket` | 年代分桶 |
 
-- **Region**
-  - Label: `:Region`
-  - Primary Key: `name`
-- **Language**
-  - Label: `:Language`
-  - Primary Key: `name`
-- **ContentType**
-  - Label: `:ContentType`
-  - Primary Key: `name`
-- **YearBucket**
-  - Label: `:YearBucket`
-  - Primary Key: `name`
-  - Bucket 规则: `before_1990` / `1990s` / `2000s` / `2010s` / `2020s_plus`
+## 3. 约束与索引
 
----
-
-## 2. 关系定义 (Relationships)
-
-### 2.1 执导 (`DIRECTED`)
-
-- **Start Node**: `:Person`
-- **End Node**: `:Movie`
-- **Type**: `:DIRECTED`
-- **Properties**: 无
-
-### 2.2 参演 (`ACTED_IN`)
-
-- **Start Node**: `:Person`
-- **End Node**: `:Movie`
-- **Type**: `:ACTED_IN`
-- **Properties**:
-    - `role`: String (可选，饰演的角色名，当前爬虫暂未爬取，预留)
-    - `order`: Integer (可选，演员表排序)
-
-### 2.3 属于类型 (`HAS_GENRE`)
-
-- **Start Node**: `:Movie`
-- **End Node**: `:Genre`
-- **Type**: `:HAS_GENRE`
-
-### 2.4 扩展结构关系
-
-- `(:Movie)-[:IN_REGION]->(:Region)`
-- `(:Movie)-[:IN_LANGUAGE]->(:Language)`
-- `(:Movie)-[:HAS_CONTENT_TYPE]->(:ContentType)`
-- `(:Movie)-[:IN_YEAR_BUCKET]->(:YearBucket)`
-
----
-
-## 3. 索引策略 (Indices & Constraints)
-
-为了保证查询性能和数据完整性，必须创建以下约束：
+ETL 创建以下唯一约束和索引：
 
 ```cypher
-// 唯一性约束 (同时也自动创建索引)
-CREATE CONSTRAINT FOR (m:Movie) REQUIRE m.mid IS UNIQUE;
-CREATE CONSTRAINT FOR (p:Person) REQUIRE p.pid IS UNIQUE;
-CREATE CONSTRAINT FOR (g:Genre) REQUIRE g.name IS UNIQUE;
-CREATE CONSTRAINT FOR (r:Region) REQUIRE r.name IS UNIQUE;
-CREATE CONSTRAINT FOR (l:Language) REQUIRE l.name IS UNIQUE;
-CREATE CONSTRAINT FOR (c:ContentType) REQUIRE c.name IS UNIQUE;
-CREATE CONSTRAINT FOR (y:YearBucket) REQUIRE y.name IS UNIQUE;
-
-// 辅助索引
-CREATE INDEX FOR (m:Movie) ON (m.title);
-CREATE INDEX FOR (m:Movie) ON (m.rating);
+CREATE CONSTRAINT movie_mid IF NOT EXISTS FOR (m:Movie) REQUIRE m.mid IS UNIQUE;
+CREATE CONSTRAINT person_pid IF NOT EXISTS FOR (p:Person) REQUIRE p.pid IS UNIQUE;
+CREATE CONSTRAINT genre_name IF NOT EXISTS FOR (g:Genre) REQUIRE g.name IS UNIQUE;
+CREATE CONSTRAINT region_name IF NOT EXISTS FOR (r:Region) REQUIRE r.name IS UNIQUE;
+CREATE CONSTRAINT language_name IF NOT EXISTS FOR (l:Language) REQUIRE l.name IS UNIQUE;
+CREATE CONSTRAINT content_type_name IF NOT EXISTS FOR (c:ContentType) REQUIRE c.name IS UNIQUE;
+CREATE CONSTRAINT year_bucket_name IF NOT EXISTS FOR (y:YearBucket) REQUIRE y.name IS UNIQUE;
+CREATE INDEX movie_title IF NOT EXISTS FOR (m:Movie) ON (m.title);
+CREATE INDEX movie_rating IF NOT EXISTS FOR (m:Movie) ON (m.rating);
+CREATE INDEX person_name IF NOT EXISTS FOR (p:Person) ON (p.name);
 ```
 
-## 4. 数据量预估
+## 4. 数据规模口径
 
-假设 MySQL 中有 10,000 部电影：
+来自 `data_processing/reports/data_quality_report.md`：
 
-- **Movie 节点**: 10,000 个
-- **Person 节点**: 约 30,000 - 50,000 个 (假设平均每部电影关联 5-10 个影人，考虑重叠)
-- **Genre 节点**: 约 30 个 (固定集合)
-- **Region / Language / ContentType / YearBucket 节点**: 数量较小，通常远少于 Movie/Person
-- **Relationships**:
-    - `ACTED_IN`: ~60,000 (平均 6 个演员)
-    - `DIRECTED`: ~12,000 (平均 1.2 个导演)
-    - `HAS_GENRE`: ~25,000 (平均 2.5 个类型)
-    - `IN_REGION` / `IN_LANGUAGE` / `HAS_CONTENT_TYPE` / `IN_YEAR_BUCKET`: 按电影元数据规模线性增长
-    - **Total Edges**: ~100,000 条
+| 指标 | 数值 |
+|---|---:|
+| Movies 表记录数 | 192,032 |
+| Persons 表记录数 | 236,882 |
+| 不重复影人 ID 数 | 236,886 |
+| 电影类型数 | 32 |
+| `ACTED_IN` 预估关系数 | 1,333,995 |
+| `DIRECTED` 预估关系数 | 217,108 |
+| `HAS_GENRE` 预估关系数 | 339,601 |
+| 核心关系预估总数 | 1,890,704 |
 
-规模属于 **小型图谱**，单机 Neo4j (Docker 1GB RAM) 即可轻松承载。
+地区、语言、内容形式和年代桶关系由 ETL 从电影元数据派生，数量与电影记录规模线性相关。论文中若需要精确写出这些扩展关系数量，应以实际 Neo4j 查询结果为准。

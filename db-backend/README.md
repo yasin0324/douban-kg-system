@@ -78,5 +78,5 @@ Notes:
 ## Notes
 
 - No Neo4j GDS plugin is required anymore.
-- Recommendation embeddings are trained only from structural graph relations and intentionally ignore historical Neo4j `User` nodes or `RATED` edges.
-- The evaluator writes the main multi-seed report to `reports/eval_results.json` and the single-seed appendix report to `reports/eval_results_legacy.json`.
+- KG-Embed can use structural graph relations and, in evaluation configurations, optional public-user positive rating triples.
+- Formal thesis evidence should use `reports/eval_results_neg499.md`; historical and legacy reports are explained in `reports/README.md`.
