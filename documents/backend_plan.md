@@ -7,7 +7,7 @@
 
 ## 1. 后端定位
 
-后端位于 `db-backend/`，使用 FastAPI 连接 MySQL 与 Neo4j，为前端提供数据查询、图谱探索、统计分析、用户认证、用户行为、推荐算法和管理接口。
+后端位于 `db-backend/`，使用 FastAPI 连接 MySQL 与 Neo4j，为前端提供数据查询、图谱探索、统计分析、用户认证、用户行为、推荐算法和推荐解释接口。
 
 启动入口为 `db-backend/app/main.py`，生命周期中初始化 MySQL 连接池、Neo4j Driver，并预热推荐图谱缓存与 KG-Embed 工件。
 
@@ -20,8 +20,6 @@
 | 系统 | `app/main.py` | `/health` 健康检查 |
 | 认证 | `app/routers/auth.py` | 注册、登录、登出、刷新 Token、当前用户 |
 | 用户行为 | `app/routers/users.py` | 喜欢、想看、评分、画像分析、画像图谱 |
-| 管理员认证 | `app/routers/admin_auth.py` | 管理员登录与登出 |
-| 管理员用户 | `app/routers/admin_users.py` | 用户列表、详情、封禁、解封、强制下线 |
 | 电影 | `app/routers/movies.py` | 搜索、类型、高分榜、筛选、详情、演职员 |
 | 影人 | `app/routers/persons.py` | 搜索、详情、作品、合作者 |
 | 图谱 | `app/routers/graph.py` | 电影图、影人图、全局概览、最短路径、共同电影 |
